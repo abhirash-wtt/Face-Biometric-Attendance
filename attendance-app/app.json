@@ -1,0 +1,7 @@
+{
+  "name": "AttendanceApp",
+  "displayName": "Attendance",
+  "version": "1.0.0",
+  "orientation": "portrait",
+  "userInterfaceStyle": "dark"
+}

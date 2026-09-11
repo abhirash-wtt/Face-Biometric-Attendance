@@ -1,0 +1,20 @@
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'app') THEN
+    CREATE ROLE app LOGIN PASSWORD 'app';
+  END IF;
+END
+$$;
+
+SELECT 'CREATE DATABASE attendance OWNER app'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'attendance')\gexec
+
+\c attendance
+
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+GRANT ALL ON SCHEMA public TO app;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO app;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO app;
