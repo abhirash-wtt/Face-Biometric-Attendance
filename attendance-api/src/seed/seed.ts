@@ -76,9 +76,9 @@ async function run() {
   }
 
   const seedEmployees = [
+    { code: 'EMP001', display_name: 'Abhirash' },
     { code: 'EMP002', display_name: 'Pavan Kumar' },
     { code: 'EMP003', display_name: 'Sushmita Singh' },
-    { code: 'EMP004', display_name: 'Abhirash' },
   ];
   for (const row of seedEmployees) {
     if (!(await employees.findOne({ where: { code: row.code } }))) {
@@ -97,7 +97,7 @@ async function run() {
     );
   }
 
-  console.log('Seed complete: admin, supervisor, HQ site, EMP001-EMP004, General shift');
+  console.log('Seed complete: admin, supervisor, HQ site, EMP001-EMP003, General shift');
   await ds.destroy();
 }
 
