@@ -29,4 +29,4 @@ Kiosks: device token from `POST /devices/register`.
 
 Identify accepts multipart `file` **or** JSON `{ image_b64, device_id, site_code, gps, embedding }`.
 
-Similarity rule (defaults): accept if `cosine_sim >= 0.98` and `liveness_score >= 0.6`.
+Similarity rule (defaults): accept if `cosine_sim >= 0.95` and `liveness_score >= 0.6`.

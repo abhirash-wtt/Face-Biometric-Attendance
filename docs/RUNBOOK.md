@@ -83,7 +83,7 @@ docker compose --profile compreface up -d
 
 Set `RECOGNITION_PROVIDER=compreface` and `COMPREFACE_API_KEY`.
 
-Accept rule: `cosine_sim >= 0.98` and `liveness_score >= 0.6`.
+Accept rule: `cosine_sim >= 0.95` and `liveness_score >= 0.6`.
 
 ## 5. Reports / payroll export
 
