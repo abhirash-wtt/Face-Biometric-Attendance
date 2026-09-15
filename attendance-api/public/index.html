@@ -29,9 +29,32 @@
     .emp.on { background:#123348; }
     .code { color:var(--mint); width:80px; font-weight:700; }
     .roster-toolbar { display:flex; gap:10px; align-items:flex-end; margin:8px 0 12px; }
-    .roster-toolbar label { flex:1; }
-    .roster-toolbar input { margin:4px 0 0; }
-    .roster-toolbar button { width:auto; margin:0; padding:12px 16px; }
+    .roster-toolbar > .cta { width:auto; margin:0; padding:12px 16px; }
+    .date-picker { flex:1; position:relative; }
+    .date-field {
+      width:100%; display:flex; align-items:center; justify-content:space-between; gap:8px;
+      background:transparent; border:1px solid var(--line); color:var(--text);
+      border-radius:10px; padding:10px 12px; margin:4px 0 0; font-weight:700;
+      cursor:pointer; text-align:left;
+    }
+    .date-field:hover { border-color:var(--mint); }
+    .cal-icon { color:var(--mint); font-size:16px; line-height:1; }
+    .calendar {
+      position:absolute; z-index:30; top:calc(100% + 6px); left:0; min-width:280px;
+      background:#152238; border:1px solid var(--line); border-radius:14px; padding:12px;
+      box-shadow:0 16px 40px rgba(0,0,0,.45);
+    }
+    .calendar-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
+    .calendar-head strong { font-size:14px; }
+    .calendar-head button { width:auto; margin:0; padding:6px 10px; background:#102038; color:var(--mint); border:0; border-radius:8px; font-weight:800; cursor:pointer; }
+    .calendar-grid { display:grid; grid-template-columns:repeat(7, 1fr); gap:4px; }
+    .calendar-grid span, .calendar-grid button.day {
+      width:100%; margin:0; padding:8px 0; border:0; border-radius:8px;
+      background:transparent; color:var(--text); font-weight:700; cursor:pointer;
+    }
+    .calendar-grid span { color:var(--muted); font-size:11px; cursor:default; font-weight:700; }
+    .calendar-grid button.day.on { background:var(--ok); color:#fff; }
+    .calendar-grid button.day:hover { background:#1b2b44; }
     .roster-wrap { overflow:auto; }
     table.roster { width:100%; border-collapse:collapse; font-size:14px; }
     table.roster th, table.roster td { text-align:left; padding:10px 8px; border-bottom:1px solid #22344f; vertical-align:top; }
@@ -80,7 +103,15 @@
       <h1>Attendance</h1>
       <p class="muted" id="rosterMeta">Clock-in, clock-out, and current status for every employee.</p>
       <div class="roster-toolbar">
-        <label>Date<input id="rosterDate" type="date" /></label>
+        <div class="date-picker">
+          <label for="rosterDateBtn">Date</label>
+          <button type="button" class="date-field" id="rosterDateBtn" aria-haspopup="dialog" aria-expanded="false">
+            <span id="rosterDateLabel">Select date</span>
+            <span class="cal-icon" aria-hidden="true">📅</span>
+          </button>
+          <input id="rosterDate" type="hidden" />
+          <div id="rosterCalendar" class="calendar hidden" role="dialog" aria-label="Choose date"></div>
+        </div>
         <button class="cta" id="rosterRefreshBtn">Refresh</button>
       </div>
       <div class="roster-wrap">
@@ -386,7 +417,10 @@
         ['kiosk','enroll','attendance','settings'].forEach((id) => $(id).classList.toggle('hidden', id !== state.tab));
         $('cameraPanel').classList.toggle('hidden', state.tab === 'settings' || state.tab === 'attendance');
         $('livenessPrompt').style.visibility = state.tab === 'kiosk' ? 'visible' : 'hidden';
-        if (state.tab === 'attendance') loadRoster().catch(() => {});
+        if (state.tab === 'attendance') {
+          if (!$('rosterDate').value) setRosterDate(todayYmd(), false);
+          loadRoster().catch(() => {});
+        }
       };
     });
     document.querySelectorAll('button.toggle[data-punch]').forEach((b) => {
@@ -520,12 +554,101 @@
         return String(iso);
       }
     }
+    function todayYmd() {
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date());
+    }
+    function formatDateLabel(ymd) {
+      if (!ymd) return 'Select date';
+      const parts = ymd.split('-').map(Number);
+      if (parts.length !== 3 || parts.some((n) => !n)) return ymd;
+      return new Date(Date.UTC(parts[0], parts[1] - 1, parts[2])).toLocaleDateString('en-IN', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        timeZone: 'UTC',
+      });
+    }
+    function setRosterDate(ymd, reload) {
+      $('rosterDate').value = ymd || '';
+      $('rosterDateLabel').textContent = formatDateLabel(ymd);
+      if (reload) loadRoster().catch((e) => status('rosterStatus', e.message));
+    }
+    let calMonth = new Date();
+    function renderCalendar() {
+      const ymd = $('rosterDate').value || todayYmd();
+      const year = calMonth.getFullYear();
+      const month = calMonth.getMonth();
+      const first = new Date(year, month, 1);
+      const startWeekday = first.getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const title = first.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+      const cells = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => '<span>' + d + '</span>');
+      for (let i = 0; i < startWeekday; i++) cells.push('<span></span>');
+      for (let d = 1; d <= daysInMonth; d++) {
+        const value = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+        cells.push(
+          '<button type="button" class="day' + (value === ymd ? ' on' : '') + '" data-ymd="' + value + '">' + d + '</button>',
+        );
+      }
+      $('rosterCalendar').innerHTML =
+        '<div class="calendar-head"><button type="button" id="calPrev" aria-label="Previous month">‹</button><strong>' +
+        title +
+        '</strong><button type="button" id="calNext" aria-label="Next month">›</button></div><div class="calendar-grid">' +
+        cells.join('') +
+        '</div>';
+      $('calPrev').onclick = (e) => {
+        e.stopPropagation();
+        calMonth = new Date(year, month - 1, 1);
+        renderCalendar();
+      };
+      $('calNext').onclick = (e) => {
+        e.stopPropagation();
+        calMonth = new Date(year, month + 1, 1);
+        renderCalendar();
+      };
+      $('rosterCalendar').querySelectorAll('button.day').forEach((btn) => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          closeCalendar();
+          setRosterDate(btn.dataset.ymd, true);
+        };
+      });
+    }
+    function openCalendar() {
+      const ymd = $('rosterDate').value || todayYmd();
+      const parts = ymd.split('-').map(Number);
+      calMonth = new Date(parts[0], (parts[1] || 1) - 1, 1);
+      renderCalendar();
+      $('rosterCalendar').classList.remove('hidden');
+      $('rosterDateBtn').setAttribute('aria-expanded', 'true');
+    }
+    function closeCalendar() {
+      $('rosterCalendar').classList.add('hidden');
+      $('rosterDateBtn').setAttribute('aria-expanded', 'false');
+    }
+    $('rosterDateBtn').onclick = (e) => {
+      e.stopPropagation();
+      if ($('rosterCalendar').classList.contains('hidden')) openCalendar();
+      else closeCalendar();
+    };
+    $('rosterCalendar').onclick = (e) => e.stopPropagation();
+    document.addEventListener('click', closeCalendar);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeCalendar();
+    });
+
     async function loadRoster() {
       const date = $('rosterDate').value;
       status('rosterStatus', 'Loading…');
       try {
         const res = await api('/attendance/status' + (date ? ('?date=' + encodeURIComponent(date)) : ''));
-        if (res.date) $('rosterDate').value = res.date;
+        if (res.date) setRosterDate(res.date, false);
         $('rosterMeta').textContent = 'Times in ' + (res.timezone || 'Asia/Kolkata') + ' for ' + (res.date || '') + '.';
         const rows = res.employees || [];
         $('rosterBody').innerHTML = rows.length

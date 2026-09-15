@@ -1,14 +1,16 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
+  Modal,
   Pressable,
   RefreshControl,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { api, AttendanceStatusRow } from '../services/api';
+
+const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
 function todayIst(): string {
   return new Intl.DateTimeFormat('en-CA', {
@@ -27,6 +29,105 @@ function formatPunch(iso: string | null) {
     minute: '2-digit',
     second: '2-digit',
   });
+}
+
+function formatDateLabel(ymd: string) {
+  const [y, m, d] = ymd.split('-').map(Number);
+  if (!y || !m || !d) return ymd || 'Select date';
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-IN', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+}
+
+function toYmd(year: number, monthIndex: number, day: number) {
+  return `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function DatePickerField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = value || todayIst();
+  const [viewYear, setViewYear] = useState(() => Number(selected.slice(0, 4)));
+  const [viewMonth, setViewMonth] = useState(() => Number(selected.slice(5, 7)) - 1);
+
+  useEffect(() => {
+    if (!open) return;
+    setViewYear(Number(selected.slice(0, 4)));
+    setViewMonth(Number(selected.slice(5, 7)) - 1);
+  }, [open, selected]);
+
+  const title = useMemo(
+    () => new Date(viewYear, viewMonth, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }),
+    [viewYear, viewMonth],
+  );
+  const cells = useMemo(() => {
+    const start = new Date(viewYear, viewMonth, 1).getDay();
+    const days = new Date(viewYear, viewMonth + 1, 0).getDate();
+    return [...Array(start).fill(null), ...Array.from({ length: days }, (_, i) => i + 1)];
+  }, [viewYear, viewMonth]);
+
+  const shiftMonth = (delta: number) => {
+    const next = new Date(viewYear, viewMonth + delta, 1);
+    setViewYear(next.getFullYear());
+    setViewMonth(next.getMonth());
+  };
+
+  return (
+    <>
+      <Pressable onPress={() => setOpen(true)} style={styles.dateField} accessibilityRole="button">
+        <Text style={styles.dateLabel}>{formatDateLabel(selected)}</Text>
+        <Text style={styles.calIcon}>📅</Text>
+      </Pressable>
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <Pressable style={styles.calBackdrop} onPress={() => setOpen(false)}>
+          <Pressable style={styles.calendar} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.calHead}>
+              <Pressable onPress={() => shiftMonth(-1)} style={styles.calNav}>
+                <Text style={styles.calNavText}>‹</Text>
+              </Pressable>
+              <Text style={styles.calTitle}>{title}</Text>
+              <Pressable onPress={() => shiftMonth(1)} style={styles.calNav}>
+                <Text style={styles.calNavText}>›</Text>
+              </Pressable>
+            </View>
+            <View style={styles.calGrid}>
+              {WEEKDAYS.map((d) => (
+                <Text key={d} style={styles.calDow}>
+                  {d}
+                </Text>
+              ))}
+              {cells.map((day, idx) => {
+                if (!day) return <View key={`empty-${idx}`} style={styles.calDay} />;
+                const ymd = toYmd(viewYear, viewMonth, day);
+                const on = ymd === selected;
+                return (
+                  <Pressable
+                    key={ymd}
+                    onPress={() => {
+                      onChange(ymd);
+                      setOpen(false);
+                    }}
+                    style={[styles.calDay, on && styles.calDayOn]}
+                  >
+                    <Text style={[styles.calDayText, on && styles.calDayTextOn]}>{day}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
+  );
 }
 
 export function AttendanceScreen() {
@@ -62,15 +163,14 @@ export function AttendanceScreen() {
         Times in {timezone} for {date || 'today'}.
       </Text>
       <View style={styles.toolbar}>
-        <TextInput
+        <DatePickerField
           value={date}
-          onChangeText={setDate}
-          placeholder="YYYY-MM-DD"
-          placeholderTextColor="#6d7f96"
-          autoCapitalize="none"
-          style={styles.input}
+          onChange={(next) => {
+            setDate(next);
+            load(next);
+          }}
         />
-        <Pressable onPress={load} style={styles.refresh}>
+        <Pressable onPress={() => load(date)} style={styles.refresh}>
           <Text style={styles.refreshText}>{busy ? '…' : 'Refresh'}</Text>
         </Pressable>
       </View>
@@ -83,7 +183,7 @@ export function AttendanceScreen() {
       <FlatList
         data={rows}
         keyExtractor={(item) => item.employee_id}
-        refreshControl={<RefreshControl refreshing={busy} onRefresh={load} tintColor="#7ee0c5" />}
+        refreshControl={<RefreshControl refreshing={busy} onRefresh={() => load(date)} tintColor="#7ee0c5" />}
         ListEmptyComponent={<Text style={styles.empty}>No employees found</Text>}
         renderItem={({ item }) => (
           <View style={styles.row}>
@@ -115,15 +215,42 @@ const styles = StyleSheet.create({
   title: { color: '#f4f7fb', fontSize: 24, fontWeight: '800', marginBottom: 6 },
   meta: { color: '#9fb0c8', fontSize: 12, marginBottom: 10 },
   toolbar: { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  input: {
+  dateField: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     borderWidth: 1,
     borderColor: '#2a3d5c',
     borderRadius: 10,
-    color: '#f4f7fb',
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
+  dateLabel: { color: '#f4f7fb', fontWeight: '700' },
+  calIcon: { fontSize: 16 },
+  calBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(4, 10, 22, 0.72)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  calendar: {
+    backgroundColor: '#152238',
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#2a3d5c',
+  },
+  calHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  calTitle: { color: '#f4f7fb', fontWeight: '800' },
+  calNav: { backgroundColor: '#102038', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
+  calNavText: { color: '#7ee0c5', fontWeight: '800', fontSize: 18 },
+  calGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  calDow: { width: '14.28%', textAlign: 'center', color: '#9fb0c8', fontSize: 11, fontWeight: '700', paddingVertical: 6 },
+  calDay: { width: '14.28%', paddingVertical: 8, alignItems: 'center', borderRadius: 8 },
+  calDayOn: { backgroundColor: '#1f8a70' },
+  calDayText: { color: '#f4f7fb', fontWeight: '700' },
+  calDayTextOn: { color: '#fff' },
   refresh: {
     backgroundColor: '#2d6cdf',
     borderRadius: 10,
