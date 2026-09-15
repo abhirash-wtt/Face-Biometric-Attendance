@@ -8,6 +8,11 @@ export class GpsDto {
 
   @IsNumber()
   lng: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  accuracy?: number;
 }
 
 export class IdentifyDto {
@@ -24,7 +29,7 @@ export class IdentifyDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsObject()
-  gps?: { lat: number; lng: number };
+  gps?: { lat: number; lng: number; accuracy?: number };
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -82,7 +87,7 @@ export class CreateAttendanceDto {
   gps_lng?: number;
 
   @IsOptional()
-  gps?: { lat: number; lng: number };
+  gps?: { lat: number; lng: number; accuracy?: number };
 
   @IsOptional()
   @IsNumber()

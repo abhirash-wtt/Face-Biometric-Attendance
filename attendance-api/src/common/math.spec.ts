@@ -25,8 +25,14 @@ describe('threshold and geo helpers', () => {
     expect(isWithinSiteGeofence(HQ_OFFICE.lat, HQ_OFFICE.lng, HQ_OFFICE, 0)).toBe(true);
   });
 
-  it('office polygon rejects the road and cafe west of the building', () => {
+  it('office polygon rejects a point far from the office', () => {
     expect(isPointInPolygon(27.15313, 78.0503, HQ_OFFICE.geofence_polygon)).toBe(false);
-    expect(isWithinSiteGeofence(27.16, 78.06, HQ_OFFICE, 3)).toBe(false);
+    expect(isWithinSiteGeofence(27.16, 78.06, HQ_OFFICE, 12, 30, 40)).toBe(false);
+  });
+
+  it('indoor GPS near the building is accepted on every floor', () => {
+    const eastOfPin = 27.1531296;
+    const slightlyEast = 78.05072;
+    expect(isWithinSiteGeofence(eastOfPin, slightlyEast, HQ_OFFICE, 12, 25, 40)).toBe(true);
   });
 });

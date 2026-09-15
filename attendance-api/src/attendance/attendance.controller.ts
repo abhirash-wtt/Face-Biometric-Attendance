@@ -64,7 +64,12 @@ export class AttendanceController {
       throw new BadRequestException('Provide multipart file, image_b64, or embedding');
     }
     const siteCode = dto.site_code || user.site_code;
-    await this.attendance.assertIdentifyGeofence(siteCode, dto.gps?.lat, dto.gps?.lng);
+    await this.attendance.assertIdentifyGeofence(
+      siteCode,
+      dto.gps?.lat,
+      dto.gps?.lng,
+      dto.gps?.accuracy,
+    );
     const result = await this.recognition.identify(imageBuf, {
       embedding: dto.embedding,
       clientLiveness: dto.liveness,
@@ -144,6 +149,7 @@ export class AttendanceController {
       geofence_enabled: this.config.get<boolean>('geofence.enabled'),
       geofence_radius_m: this.config.get<number>('geofence.defaultRadiusM'),
       geofence_buffer_m: this.config.get<number>('geofence.bufferM'),
+      geofence_indoor_radius_m: this.config.get<number>('geofence.indoorRadiusM'),
       geofence_mode: 'polygon',
       recognition_provider: this.config.get<string>('recognition.provider'),
       retention_days: this.config.get<number>('retentionDays'),

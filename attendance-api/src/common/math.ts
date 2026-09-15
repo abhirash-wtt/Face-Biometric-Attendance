@@ -69,6 +69,35 @@ export function expandPolygonMeters(ring: LatLng[], meters: number): LatLng[] {
   });
 }
 
+function toLocalMeters(lat0: number, lng0: number, lat: number, lng: number) {
+  const cos = Math.cos((lat0 * Math.PI) / 180) || 1e-6;
+  return {
+    x: (lng - lng0) * 111320 * cos,
+    y: (lat - lat0) * 111320,
+  };
+}
+
+function distancePointToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number) {
+  const abx = bx - ax;
+  const aby = by - ay;
+  const ab2 = abx * abx + aby * aby;
+  if (ab2 === 0) return Math.hypot(px - ax, py - ay);
+  const t = Math.max(0, Math.min(1, ((px - ax) * abx + (py - ay) * aby) / ab2));
+  return Math.hypot(px - (ax + t * abx), py - (ay + t * aby));
+}
+
+export function distanceToPolygonMeters(lat: number, lng: number, ring: LatLng[]): number {
+  if (!ring || ring.length < 3) return Number.POSITIVE_INFINITY;
+  if (isPointInPolygon(lat, lng, ring)) return 0;
+  let min = Number.POSITIVE_INFINITY;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
+    const a = toLocalMeters(lat, lng, ring[j][0], ring[j][1]);
+    const b = toLocalMeters(lat, lng, ring[i][0], ring[i][1]);
+    min = Math.min(min, distancePointToSegment(0, 0, a.x, a.y, b.x, b.y));
+  }
+  return min;
+}
+
 export function isWithinGeofence(
   lat: number,
   lng: number,
@@ -90,12 +119,24 @@ export function isWithinSiteGeofence(
     geofence_polygon?: LatLng[] | null;
   },
   bufferM = 0,
+  accuracyM?: number,
+  indoorRadiusM = 40,
 ): boolean {
   const ring = site.geofence_polygon;
+  const reported = Number.isFinite(accuracyM) ? Math.max(0, Number(accuracyM)) : 30;
+  const acc = Math.min(reported, 45);
+
   if (Array.isArray(ring) && ring.length >= 3) {
     const poly = bufferM > 0 ? expandPolygonMeters(ring, bufferM) : ring;
-    return isPointInPolygon(lat, lng, poly);
+    if (isPointInPolygon(lat, lng, poly)) return true;
+    if (distanceToPolygonMeters(lat, lng, poly) <= acc) return true;
   }
-  return isWithinGeofence(lat, lng, site.lat, site.lng, site.radius_m ?? 200);
+
+  if (site.lat != null && site.lng != null) {
+    const envelope = Math.max(indoorRadiusM, 40);
+    if (haversineMeters(lat, lng, site.lat, site.lng) <= envelope) return true;
+  }
+
+  return isWithinGeofence(lat, lng, site.lat, site.lng, (site.radius_m ?? 200) + bufferM);
 }
 

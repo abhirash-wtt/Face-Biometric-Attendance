@@ -83,7 +83,7 @@ export const api = {
   identify(payload: {
     device_id: string;
     site_code: string;
-    gps?: { lat: number; lng: number } | null;
+    gps?: { lat: number; lng: number; accuracy?: number } | null;
     image_b64: string;
     liveness?: number;
   }) {

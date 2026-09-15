@@ -27,8 +27,8 @@ export class AttendanceService {
     private readonly config: ConfigService,
   ) {}
 
-  assertIdentifyGeofence(siteCode?: string, lat?: number, lng?: number) {
-    return this.sites.assertGpsInside(siteCode, lat, lng);
+  assertIdentifyGeofence(siteCode?: string, lat?: number, lng?: number, accuracyM?: number) {
+    return this.sites.assertGpsInside(siteCode, lat, lng, accuracyM);
   }
 
   async create(dto: CreateAttendanceDto) {
@@ -39,7 +39,7 @@ export class AttendanceService {
     const lat = dto.gps_lat ?? dto.gps?.lat;
     const lng = dto.gps_lng ?? dto.gps?.lng;
     const siteCode = dto.site_code?.toUpperCase();
-    await this.sites.assertGpsInside(siteCode, lat, lng);
+    await this.sites.assertGpsInside(siteCode, lat, lng, dto.gps?.accuracy);
 
     const cooldown = this.config.get<number>('attendanceCooldownSec') || 60;
     const last = await this.repo.findOne({

@@ -33,7 +33,12 @@ export class SitesService {
     return site;
   }
 
-  async assertGpsInside(siteCode: string | undefined, lat?: number, lng?: number) {
+  async assertGpsInside(
+    siteCode: string | undefined,
+    lat?: number,
+    lng?: number,
+    accuracyM?: number,
+  ) {
     if (!this.config.get<boolean>('geofence.enabled')) return;
     if (lat == null || lng == null) {
       throw new UnprocessableEntityException(
@@ -47,8 +52,9 @@ export class SitesService {
     if (!site) {
       throw new UnprocessableEntityException('Unknown site for geofence check');
     }
-    const bufferM = this.config.get<number>('geofence.bufferM') ?? 3;
-    if (!isWithinSiteGeofence(lat, lng, site, bufferM)) {
+    const bufferM = this.config.get<number>('geofence.bufferM') ?? 12;
+    const indoorRadiusM = this.config.get<number>('geofence.indoorRadiusM') ?? 40;
+    if (!isWithinSiteGeofence(lat, lng, site, bufferM, accuracyM, indoorRadiusM)) {
       throw new UnprocessableEntityException('Outside office geofence');
     }
   }
