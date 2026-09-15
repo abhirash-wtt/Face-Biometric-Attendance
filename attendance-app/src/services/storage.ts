@@ -33,6 +33,20 @@ export const storage = {
     if (token) await AsyncStorage.setItem(TOKEN_KEY, token);
     else await AsyncStorage.removeItem(TOKEN_KEY);
   },
+  roleFromToken(token: string | null): 'admin' | 'user' | '' {
+    if (!token) return '';
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      if (payload.role === 'admin') return 'admin';
+      if (payload.role) return 'user';
+      return '';
+    } catch {
+      return '';
+    }
+  },
+  async getRole(): Promise<'admin' | 'user' | ''> {
+    return this.roleFromToken(await this.getToken());
+  },
   async getSettings(): Promise<Settings> {
     const raw = await AsyncStorage.getItem(SETTINGS_KEY);
     return raw ? { ...defaultSettings, ...JSON.parse(raw) } : defaultSettings;

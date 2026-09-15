@@ -19,6 +19,9 @@ export class DevicesService {
 
   async register(dto: RegisterDeviceDto, user?: JwtUser) {
     const isAdmin = user?.role === 'admin';
+    if (user?.type === 'user' && !isAdmin) {
+      throw new ForbiddenException('Only admins can register devices');
+    }
     const secret = this.config.get<string>('deviceBootstrapSecret');
     if (!isAdmin && dto.bootstrap_secret !== secret) {
       throw new ForbiddenException('Invalid device bind secret');

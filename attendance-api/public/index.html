@@ -31,12 +31,14 @@
     dialog { border:0; border-radius:16px; background:#152238; color:var(--text); padding:22px; width:min(420px, 92vw); }
     dialog::backdrop { background:rgba(4,10,22,.72); }
     .hidden { display:none; }
+    .rbac-hide { display:none !important; }
+    .role-badge { color:var(--mint); font-size:13px; margin:0 0 10px; }
   </style>
 </head>
 <body>
   <header>
     <button class="on" data-tab="kiosk">Kiosk</button>
-    <button data-tab="enroll">Enroll</button>
+    <button data-tab="enroll" id="enrollTabBtn">Enroll</button>
     <button data-tab="settings">Settings</button>
   </header>
   <main>
@@ -63,15 +65,19 @@
     </section>
     <section id="settings" class="hidden">
       <h1>Settings</h1>
+      <p class="role-badge" id="roleBadge">Not signed in</p>
       <label>API URL</label><input id="apiBase" />
       <label>Device ID</label><input id="deviceId" />
       <label>Site code</label><input id="siteCode" />
-      <label>Device bind secret</label><input id="secret" />
+      <div id="adminBindBlock">
+        <label>Device bind secret</label><input id="secret" />
+      </div>
       <button class="cta" id="saveBtn">Save</button>
-      <p style="color:#7ee0c5;font-weight:700">Admin login</p>
+      <p style="color:#7ee0c5;font-weight:700">Login</p>
       <label>Email</label><input id="email" />
       <label>Password</label><input id="password" type="password" />
       <button class="cta" id="loginBtn">Login</button>
+      <button class="alt" id="logoutBtn">Logout</button>
       <button class="alt" id="bindBtn">Register this device</button>
       <button class="alt" id="syncBtn">Sync offline queue</button>
       <p class="status" id="settingsStatus"></p>
@@ -117,6 +123,32 @@
     }
     function saveSettings() {
       localStorage.setItem('settings', JSON.stringify(state.settings));
+    }
+    function jwtRole() {
+      try {
+        if (!state.token) return '';
+        const payload = JSON.parse(atob(state.token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+        if (payload.role === 'admin') return 'admin';
+        if (payload.role) return 'user';
+        return '';
+      } catch {
+        return '';
+      }
+    }
+    function applyAccess() {
+      const role = jwtRole();
+      const isAdmin = role === 'admin';
+      $('enrollTabBtn').classList.toggle('rbac-hide', !isAdmin);
+      $('adminBindBlock').classList.toggle('rbac-hide', role === 'user');
+      $('bindBtn').classList.toggle('rbac-hide', role === 'user');
+      $('roleBadge').textContent = role ? ('Signed in as ' + role) : 'Not signed in';
+      if (!isAdmin && state.tab === 'enroll') {
+        state.tab = 'kiosk';
+        document.querySelectorAll('header button').forEach((x) => x.classList.toggle('on', x.dataset.tab === 'kiosk'));
+        ['kiosk','enroll','settings'].forEach((id) => $(id).classList.toggle('hidden', id !== 'kiosk'));
+        $('cameraPanel').classList.remove('hidden');
+        $('livenessPrompt').style.visibility = 'visible';
+      }
     }
     async function api(path, opts = {}) {
       const headers = {};
@@ -189,6 +221,7 @@
 
     document.querySelectorAll('header button').forEach((b) => {
       b.onclick = () => {
+        if (b.dataset.tab === 'enroll' && jwtRole() !== 'admin') return;
         state.tab = b.dataset.tab;
         document.querySelectorAll('header button').forEach((x) => x.classList.toggle('on', x === b));
         ['kiosk','enroll','settings'].forEach((id) => $(id).classList.toggle('hidden', id !== state.tab));
@@ -314,6 +347,7 @@
         const res = await api('/auth/login', { method: 'POST', body: { email: $('email').value, password: $('password').value } });
         state.token = res.access_token;
         localStorage.setItem('access_token', state.token);
+        applyAccess();
         status('settingsStatus', 'Logged in as ' + res.user.role);
       } catch (e) { status('settingsStatus', e.message); }
     };
@@ -326,8 +360,15 @@
         });
         state.token = res.access_token;
         localStorage.setItem('access_token', state.token);
+        applyAccess();
         status('settingsStatus', 'Device bound: ' + res.device.device_id);
       } catch (e) { status('settingsStatus', e.message); }
+    };
+    $('logoutBtn').onclick = () => {
+      state.token = '';
+      localStorage.removeItem('access_token');
+      applyAccess();
+      status('settingsStatus', 'Signed out');
     };
     $('syncBtn').onclick = async () => {
       const remain = [];
@@ -341,6 +382,7 @@
     };
 
     fillSettings();
+    applyAccess();
     rollPrompt();
     startCam().catch((e) => status('kioskStatus', e.message));
   </script>

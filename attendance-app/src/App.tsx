@@ -1,30 +1,49 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { Provider } from 'react-redux';
 import { KioskScreen } from './screens/KioskScreen';
 import { EnrollScreen } from './screens/EnrollScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { store } from './state/attendanceSlice';
+import { storage } from './services/storage';
 
 type Tab = 'kiosk' | 'enroll' | 'settings';
 
 function Shell() {
   const [tab, setTab] = useState<Tab>('kiosk');
+  const [role, setRole] = useState<'admin' | 'user' | ''>('');
+
+  const refreshRole = useCallback(async () => {
+    const next = await storage.getRole();
+    setRole(next);
+    setTab((current) => (next !== 'admin' && current === 'enroll' ? 'kiosk' : current));
+  }, []);
+
+  useEffect(() => {
+    refreshRole();
+  }, [refreshRole]);
+
+  const tabs: Array<[Tab, string]> =
+    role === 'admin'
+      ? [
+          ['kiosk', 'Kiosk'],
+          ['enroll', 'Enroll'],
+          ['settings', 'Settings'],
+        ]
+      : [
+          ['kiosk', 'Kiosk'],
+          ['settings', 'Settings'],
+        ];
+
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.body}>
         {tab === 'kiosk' && <KioskScreen />}
-        {tab === 'enroll' && <EnrollScreen />}
-        {tab === 'settings' && <SettingsScreen />}
+        {tab === 'enroll' && role === 'admin' && <EnrollScreen />}
+        {tab === 'settings' && <SettingsScreen onAuthChange={refreshRole} />}
       </View>
       <View style={styles.tabs}>
-        {(
-          [
-            ['kiosk', 'Kiosk'],
-            ['enroll', 'Enroll'],
-            ['settings', 'Settings'],
-          ] as Array<[Tab, string]>
-        ).map(([id, label]) => (
+        {tabs.map(([id, label]) => (
           <Pressable key={id} onPress={() => setTab(id)} style={[styles.tab, tab === id && styles.tabOn]}>
             <Text style={[styles.tabText, tab === id && styles.tabTextOn]}>{label}</Text>
           </Pressable>

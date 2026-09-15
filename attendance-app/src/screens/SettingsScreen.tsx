@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import { api } from '../services/api';
 import { storage, Settings } from '../services/storage';
 
-export function SettingsScreen() {
+export function SettingsScreen({ onAuthChange }: { onAuthChange?: () => void }) {
   const [settings, setSettings] = useState<Settings>({
     apiBase: '',
     deviceId: '',
@@ -13,9 +13,11 @@ export function SettingsScreen() {
   const [email, setEmail] = useState('admin@attendance.local');
   const [password, setPassword] = useState('Admin@123');
   const [message, setMessage] = useState('');
+  const [role, setRole] = useState<'admin' | 'user' | ''>('');
 
   useEffect(() => {
     storage.getSettings().then(setSettings);
+    storage.getRole().then(setRole);
   }, []);
 
   const save = async () => {
@@ -27,6 +29,9 @@ export function SettingsScreen() {
     try {
       const res = await api.login(email, password);
       await storage.setToken(res.access_token);
+      const nextRole = storage.roleFromToken(res.access_token);
+      setRole(nextRole);
+      onAuthChange?.();
       setMessage(`Logged in as ${res.user.role}`);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Login failed');
@@ -43,11 +48,23 @@ export function SettingsScreen() {
         description: 'Kiosk',
       });
       await storage.setToken(res.access_token);
+      const nextRole = storage.roleFromToken(res.access_token);
+      setRole(nextRole);
+      onAuthChange?.();
       setMessage(`Device bound: ${res.device.device_id}`);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Bind failed');
     }
   };
+
+  const logout = async () => {
+    await storage.setToken(null);
+    setRole('');
+    onAuthChange?.();
+    setMessage('Signed out');
+  };
+
+  const showBind = role !== 'user';
 
   const flush = async () => {
     try {
@@ -61,26 +78,34 @@ export function SettingsScreen() {
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
       <Text style={styles.title}>Settings</Text>
+      <Text style={styles.section}>{role ? `Signed in as ${role}` : 'Not signed in'}</Text>
       <Field label="API URL" value={settings.apiBase} onChange={(apiBase) => setSettings({ ...settings, apiBase })} />
       <Field label="Device ID" value={settings.deviceId} onChange={(deviceId) => setSettings({ ...settings, deviceId })} />
       <Field label="Site code" value={settings.siteCode} onChange={(siteCode) => setSettings({ ...settings, siteCode })} />
-      <Field
-        label="Device bind secret"
-        value={settings.bootstrapSecret}
-        onChange={(bootstrapSecret) => setSettings({ ...settings, bootstrapSecret })}
-      />
+      {showBind && (
+        <Field
+          label="Device bind secret"
+          value={settings.bootstrapSecret}
+          onChange={(bootstrapSecret) => setSettings({ ...settings, bootstrapSecret })}
+        />
+      )}
       <Pressable onPress={save} style={styles.btn}>
         <Text style={styles.btnText}>Save</Text>
       </Pressable>
-      <Text style={styles.section}>Admin login</Text>
+      <Text style={styles.section}>Login</Text>
       <Field label="Email" value={email} onChange={setEmail} />
       <Field label="Password" value={password} onChange={setPassword} secure />
       <Pressable onPress={login} style={styles.btn}>
         <Text style={styles.btnText}>Login</Text>
       </Pressable>
-      <Pressable onPress={bind} style={styles.btnAlt}>
-        <Text style={styles.btnText}>Register this device</Text>
+      <Pressable onPress={logout} style={styles.btnAlt}>
+        <Text style={styles.btnText}>Logout</Text>
       </Pressable>
+      {showBind && (
+        <Pressable onPress={bind} style={styles.btnAlt}>
+          <Text style={styles.btnText}>Register this device</Text>
+        </Pressable>
+      )}
       <Pressable onPress={flush} style={styles.btnAlt}>
         <Text style={styles.btnText}>Sync offline queue</Text>
       </Pressable>

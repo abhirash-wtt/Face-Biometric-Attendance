@@ -20,7 +20,7 @@ export class ShiftsController {
   }
 
   @Get()
-  @Roles('admin', 'supervisor', 'viewer', 'kiosk')
+  @Roles('admin')
   list() {
     return this.shifts.findAll();
   }

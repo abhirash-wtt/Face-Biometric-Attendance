@@ -4,6 +4,8 @@ import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { effectiveRole } from '../common/guards/roles.guard';
+import { JwtUser } from './jwt.strategy';
 import { IsString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -33,7 +35,7 @@ export class AuthController {
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  me(@CurrentUser() user: unknown) {
-    return user;
+  me(@CurrentUser() user: JwtUser) {
+    return { ...user, role: effectiveRole(user.role) };
   }
 }

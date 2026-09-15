@@ -38,6 +38,36 @@ export class DatabaseInitService implements OnModuleInit {
       this.pgvectorEnabled = false;
       this.logger.log('Schema applied with TEXT embeddings');
     }
+    await this.migrateRoles();
+  }
+
+  private async migrateRoles() {
+    await this.ds.query(`
+      DO $$
+      DECLARE r RECORD;
+      BEGIN
+        FOR r IN
+          SELECT conname FROM pg_constraint
+          WHERE conrelid = 'users'::regclass AND contype = 'c'
+            AND pg_get_constraintdef(oid) ILIKE '%role%'
+        LOOP
+          EXECUTE format('ALTER TABLE users DROP CONSTRAINT IF EXISTS %I', r.conname);
+        END LOOP;
+      END $$;
+    `);
+    await this.ds.query(
+      `UPDATE users SET role = 'user' WHERE role IS NULL OR role NOT IN ('admin', 'user')`,
+    );
+    await this.ds.query(`ALTER TABLE users ALTER COLUMN role SET DEFAULT 'user'`);
+    try {
+      await this.ds.query(
+        `ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'user'))`,
+      );
+    } catch (err) {
+      const message = (err as Error).message || '';
+      if (!/already exists/i.test(message)) throw err;
+    }
+    this.logger.log('RBAC roles migrated to admin | user');
   }
 
   private readSql(file: string): string {

@@ -21,14 +21,14 @@ export class EmployeesController {
   }
 
   @Get()
-  @Roles('admin', 'supervisor', 'viewer', 'kiosk')
+  @Roles('admin')
   @ApiOperation({ summary: 'List / search employees' })
   list(@Query('q') q?: string, @Query('status') status?: string) {
     return this.employees.findAll(q, status);
   }
 
   @Get(':id')
-  @Roles('admin', 'supervisor', 'viewer', 'kiosk')
+  @Roles('admin')
   get(@Param('id') id: string) {
     return this.employees.get(id);
   }

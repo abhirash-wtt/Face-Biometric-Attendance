@@ -44,7 +44,7 @@ export class AttendanceController {
   ) {}
 
   @Post('attend/identify')
-  @Roles('admin', 'supervisor', 'kiosk')
+  @Roles('user')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
   @ApiConsumes('multipart/form-data', 'application/json')
   @ApiOperation({ summary: '1:N identify from face crop or embedding' })
@@ -89,7 +89,7 @@ export class AttendanceController {
   }
 
   @Post('attend/verify')
-  @Roles('admin', 'supervisor', 'kiosk')
+  @Roles('user')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
   @ApiConsumes('multipart/form-data', 'application/json')
   @ApiOperation({ summary: '1:1 verify employee_id + face crop' })
@@ -99,7 +99,7 @@ export class AttendanceController {
   }
 
   @Post('attendance')
-  @Roles('admin', 'supervisor', 'kiosk')
+  @Roles('user')
   @ApiOperation({ summary: 'Create attendance log (usually after identify)' })
   create(@Body() dto: CreateAttendanceDto, @CurrentUser() user: JwtUser) {
     return this.attendance.create({
@@ -110,7 +110,7 @@ export class AttendanceController {
   }
 
   @Get('attendance')
-  @Roles('admin', 'supervisor', 'viewer')
+  @Roles('admin')
   @ApiOperation({ summary: 'Reports / export. format=json|csv|payroll' })
   async list(
     @Query('from') from: string,
@@ -134,7 +134,7 @@ export class AttendanceController {
   }
 
   @Get('config')
-  @Roles('admin', 'supervisor', 'viewer', 'kiosk')
+  @Roles('user')
   configPublic() {
     return {
       similarity_threshold: this.config.get<number>('recognition.similarityThreshold'),

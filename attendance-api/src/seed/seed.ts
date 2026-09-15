@@ -53,14 +53,19 @@ async function run() {
       }),
     );
   }
-  if (!(await users.findOne({ where: { email: 'supervisor@attendance.local' } }))) {
+  if (!(await users.findOne({ where: { email: 'user@attendance.local' } }))) {
     await users.save(
       users.create({
-        email: 'supervisor@attendance.local',
-        password_hash: await bcrypt.hash('Supervisor@123', 10),
-        role: 'supervisor',
+        email: 'user@attendance.local',
+        password_hash: await bcrypt.hash('User@123', 10),
+        role: 'user',
       }),
     );
+  }
+  const legacy = await users.findOne({ where: { email: 'supervisor@attendance.local' } });
+  if (legacy && legacy.role !== 'admin') {
+    legacy.role = 'user';
+    await users.save(legacy);
   }
 
   if (!(await sites.findOne({ where: { code: 'HQ' } }))) {
@@ -97,7 +102,7 @@ async function run() {
     );
   }
 
-  console.log('Seed complete: admin, supervisor, HQ site, EMP001-EMP003, General shift');
+  console.log('Seed complete: admin, user, HQ site, EMP001-EMP003, General shift');
   await ds.destroy();
 }
 

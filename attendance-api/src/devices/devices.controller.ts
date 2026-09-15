@@ -24,7 +24,7 @@ export class DevicesController {
   @Get()
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin', 'supervisor')
+  @Roles('admin')
   list() {
     return this.devices.findAll();
   }

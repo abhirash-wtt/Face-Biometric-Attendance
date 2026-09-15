@@ -43,7 +43,7 @@ export class TemplatesController {
   constructor(private readonly templates: TemplatesService) {}
 
   @Post('enroll')
-  @Roles('admin', 'supervisor', 'kiosk')
+  @Roles('admin')
   @UseInterceptors(FilesInterceptor('files', 8, { storage: memoryStorage() }))
   @ApiConsumes('multipart/form-data', 'application/json')
   @ApiOperation({ summary: 'Multipart image(s) → face_templates for employee_id' })

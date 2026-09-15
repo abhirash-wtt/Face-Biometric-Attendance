@@ -34,6 +34,18 @@ export class AuthService implements OnModuleInit {
       );
       this.logger.log(`Seeded admin user ${email}`);
     }
+    const userEmail = 'user@attendance.local';
+    const existingUser = await this.users.findOne({ where: { email: userEmail } });
+    if (!existingUser) {
+      await this.users.save(
+        this.users.create({
+          email: userEmail,
+          password_hash: await bcrypt.hash('User@123', 10),
+          role: 'user',
+        }),
+      );
+      this.logger.log(`Seeded regular user ${userEmail}`);
+    }
   }
 
   async login(email: string, password: string) {

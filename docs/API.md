@@ -13,19 +13,24 @@ Kiosks: device token from `POST /devices/register`.
 |---|---|---|---|
 | POST | `/auth/login` | public | User login; returns tokens |
 | POST | `/auth/refresh` | public | Rotate refresh token |
-| POST | `/devices/register` | public + bind secret, or admin | One-time device bind; device token |
+| GET | `/auth/me` | authenticated | Current principal; `role` is `admin` or `user` |
+| POST | `/devices/register` | public + bind secret, or admin | One-time device bind; device token (users cannot bind) |
 | POST | `/employees` | admin | Create employee |
-| GET | `/employees` | admin, supervisor, viewer, kiosk | List/search |
-| POST | `/enroll` | admin, supervisor, kiosk | Multipart images or `image_b64` → face templates |
-| POST | `/attend/identify` | admin, supervisor, kiosk | 1:N match; similarity + liveness |
-| POST | `/attend/verify` | admin, supervisor, kiosk | 1:1 verify |
-| POST | `/attendance` | admin, supervisor, kiosk | Create IN/OUT log |
-| GET | `/attendance` | admin, supervisor, viewer | Reports; `format=csv\|payroll` |
-| GET | `/sites` | authenticated | Sites |
+| GET | `/employees` | admin | List/search |
+| POST | `/enroll` | admin | Multipart images or `image_b64` → face templates |
+| POST | `/attend/identify` | admin, user (incl. kiosk device) | 1:N match; similarity + liveness |
+| POST | `/attend/verify` | admin, user (incl. kiosk device) | 1:1 verify |
+| POST | `/attendance` | admin, user (incl. kiosk device) | Create IN/OUT log |
+| GET | `/attendance` | admin | Reports; `format=csv\|payroll` |
+| GET | `/sites` | admin | Sites |
 | POST | `/sites` | admin | Create site |
-| GET | `/shifts` | authenticated | Shifts |
+| GET | `/shifts` | admin | Shifts |
 | POST | `/shifts` | admin | Create shift |
+| GET | `/devices` | admin | List devices |
+| GET | `/config` | admin, user (incl. kiosk device) | Client thresholds |
 | GET | `/health` | public | Liveness of API + DB |
+
+Roles: **admin** has full access. **user** may only clock IN/OUT (`identify` / `verify` / `POST /attendance`) and read `/config`. Device JWTs use `role=kiosk` and are treated as **user**.
 
 Identify accepts multipart `file` **or** JSON `{ image_b64, device_id, site_code, gps, embedding }`.
 

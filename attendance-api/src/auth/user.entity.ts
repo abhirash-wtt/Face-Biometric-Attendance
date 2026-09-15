@@ -16,8 +16,8 @@ export class User {
   @Column({ type: 'text', name: 'password_hash' })
   password_hash: string;
 
-  @Column({ type: 'text', default: 'viewer' })
-  role: 'admin' | 'supervisor' | 'viewer';
+  @Column({ type: 'text', default: 'user' })
+  role: 'admin' | 'user';
 
   @CreateDateColumn({ type: 'timestamptz' })
   created_at: Date;

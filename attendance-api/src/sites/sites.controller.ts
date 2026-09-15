@@ -20,7 +20,7 @@ export class SitesController {
   }
 
   @Get()
-  @Roles('admin', 'supervisor', 'viewer', 'kiosk')
+  @Roles('admin')
   list() {
     return this.sites.findAll();
   }
