@@ -51,8 +51,9 @@ Seeded users:
 - `admin@attendance.local` / `Admin@123` (admin — full access, including enroll and device bind)
 - `user@attendance.local` / `User@123` (user — not linked to an employee; cannot clock in until an admin sets `users.employee_id`)
 - `abhirash.garg@walkingtree.tech` / `faZWGpjhmB` (user — EMP001 Abhirash; clock-in requires Abhirash’s enrolled face)
+- `yatharth.kapoor@walkingtree.tech` / `nR8wKq2mX7pL` (user — EMP002 Yatharth Kapoor; clock-in requires Yatharth’s enrolled face)
 
-Seeded employees: EMP001 Abhirash, EMP004 Yatharth Kapoor.  
+Seeded employees: EMP001 Abhirash, EMP002 Yatharth Kapoor.  
 Site: `HQ` — Walking Tree Technologies, Agra (rectangular building geofence). Device bind secret: `bind-device-once`.
 
 ## 3. Mobile app

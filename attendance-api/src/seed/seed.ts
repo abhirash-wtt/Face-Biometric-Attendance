@@ -92,9 +92,16 @@ async function run() {
     }
   }
 
+  const yatharth004 = await employees.findOne({ where: { code: 'EMP004' } });
+  if (yatharth004) {
+    yatharth004.code = 'EMP002';
+    yatharth004.display_name = 'Yatharth Kapoor';
+    await employees.save(yatharth004);
+  }
+
   const seedEmployees = [
     { code: 'EMP001', display_name: 'Abhirash' },
-    { code: 'EMP004', display_name: 'Yatharth Kapoor' },
+    { code: 'EMP002', display_name: 'Yatharth Kapoor' },
   ];
   for (const row of seedEmployees) {
     if (!(await employees.findOne({ where: { code: row.code } }))) {
@@ -102,23 +109,30 @@ async function run() {
     }
   }
 
-  const emp001 = await employees.findOne({ where: { code: 'EMP001' } });
-  const abhirashEmail = 'abhirash.garg@walkingtree.tech';
-  const abhirashPassword = 'faZWGpjhmB';
-  const abhirashUser = await users.findOne({ where: { email: abhirashEmail } });
-  if (!abhirashUser) {
-    await users.save(
-      users.create({
-        email: abhirashEmail,
-        password_hash: await bcrypt.hash(abhirashPassword, 10),
-        role: 'user',
-        employee_id: emp001?.id,
-      }),
-    );
-  } else if (emp001 && abhirashUser.employee_id !== emp001.id) {
-    abhirashUser.employee_id = emp001.id;
-    await users.save(abhirashUser);
+  async function ensureEmployeeUser(email: string, password: string, employeeId?: string) {
+    const existing = await users.findOne({ where: { email } });
+    if (!existing) {
+      await users.save(
+        users.create({
+          email,
+          password_hash: await bcrypt.hash(password, 10),
+          role: 'user',
+          employee_id: employeeId,
+        }),
+      );
+      return;
+    }
+    if (employeeId && existing.employee_id !== employeeId) {
+      existing.employee_id = employeeId;
+      await users.save(existing);
+    }
   }
+
+  const emp001 = await employees.findOne({ where: { code: 'EMP001' } });
+  await ensureEmployeeUser('abhirash.garg@walkingtree.tech', 'faZWGpjhmB', emp001?.id);
+
+  const emp002 = await employees.findOne({ where: { code: 'EMP002' } });
+  await ensureEmployeeUser('yatharth.kapoor@walkingtree.tech', 'nR8wKq2mX7pL', emp002?.id);
 
   if (!(await shifts.findOne({ where: { name: 'General' } }))) {
     await shifts.save(
@@ -131,7 +145,7 @@ async function run() {
     );
   }
 
-  console.log('Seed complete: admin, user, HQ site, EMP001-EMP004, General shift');
+  console.log('Seed complete: admin, user, HQ site, EMP001-EMP002, General shift');
   await ds.destroy();
 }
 
