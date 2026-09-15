@@ -6,18 +6,19 @@ Interactive OpenAPI UI is generated at runtime:
 JSON: `GET http://localhost:3000/docs-json`
 
 Auth: `Authorization: Bearer <access_token>`  
-Users: JWT from `POST /auth/login` (short-lived access + refresh).  
+Users: JWT from `POST /auth/register` or `POST /auth/login` (short-lived access + refresh). Self-register creates a linked employee so the new user can enroll their own face and clock in.  
 Kiosks: device token from `POST /devices/register`.
 
 | Method | Path | Role | Description |
 |---|---|---|---|
+| POST | `/auth/register` | public | Self-register: creates a `user` account + linked employee (`EMP###`); returns tokens |
 | POST | `/auth/login` | public | User login; returns tokens |
 | POST | `/auth/refresh` | public | Rotate refresh token |
-| GET | `/auth/me` | authenticated | Current principal; `role` is `admin` or `user` |
+| GET | `/auth/me` | authenticated | Current principal; `role` is `admin` or `user`; includes `employee_id` / `employee_code` / `display_name` when linked |
 | POST | `/devices/register` | public + bind secret, or admin | One-time device bind; device token (users cannot bind) |
 | POST | `/employees` | admin | Create employee |
 | GET | `/employees` | admin | List/search |
-| POST | `/enroll` | admin | Multipart images or `image_b64` → face templates |
+| POST | `/enroll` | admin, or user (own `employee_id` only) | Multipart images or `image_b64` → face templates |
 | POST | `/attend/identify` | admin, user (incl. kiosk device) | Match face; employee logins are 1:1 against that employee only |
 | POST | `/attend/verify` | admin, user (incl. kiosk device) | 1:1 verify (must be the linked employee for user logins) |
 | POST | `/attendance` | admin, user (incl. kiosk device) | Create IN/OUT log (employee logins cannot clock in as someone else) |

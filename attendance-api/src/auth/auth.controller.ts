@@ -2,9 +2,9 @@ import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { RegisterDto } from './dto/register.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { effectiveRole } from '../common/guards/roles.guard';
 import { JwtUser } from './jwt.strategy';
 import { IsString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
@@ -19,6 +19,12 @@ class RefreshDto {
 @Controller('auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
+
+  @Post('register')
+  @ApiOperation({ summary: 'Self-register as an employee user; returns access + refresh tokens' })
+  register(@Body() dto: RegisterDto) {
+    return this.auth.register(dto.email, dto.password, dto.display_name);
+  }
 
   @Post('login')
   @ApiOperation({ summary: 'User login; returns access + refresh tokens' })
@@ -36,6 +42,6 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   me(@CurrentUser() user: JwtUser) {
-    return { ...user, role: effectiveRole(user.role) };
+    return this.auth.me(user);
   }
 }

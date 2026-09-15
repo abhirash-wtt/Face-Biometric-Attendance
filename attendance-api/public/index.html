@@ -234,8 +234,8 @@
       <p class="status" id="kioskStatus"></p>
     </section>
     <section id="enroll" class="hidden">
-      <h1>Enroll faces</h1>
-      <div class="search-row">
+      <h1 id="enrollTitle">Enroll faces</h1>
+      <div class="search-row" id="enrollSearchRow">
         <input id="search" placeholder="Search code or name" autocapitalize="none" autocomplete="off"
                spellcheck="false" enterkeyhint="search" />
         <button class="cta" id="searchBtn">Search</button>
@@ -288,13 +288,27 @@
         <input id="secret" autocapitalize="none" autocomplete="off" spellcheck="false" />
       </div>
       <button class="cta" id="saveBtn">Save</button>
-      <p style="color:#7ee0c5;font-weight:700">Login</p>
+      <p style="color:#7ee0c5;font-weight:700" id="authHeading">Login</p>
+      <div class="row" style="margin-top:0;margin-bottom:4px">
+        <button type="button" class="toggle on" id="authModeLogin">Login</button>
+        <button type="button" class="toggle" id="authModeRegister">Register</button>
+      </div>
+      <div id="registerNameBlock" class="hidden">
+        <label for="displayName">Full name</label>
+        <input id="displayName" autocomplete="name" spellcheck="false" enterkeyhint="next" />
+      </div>
       <label for="email">Email</label>
       <input id="email" type="email" inputmode="email" autocapitalize="none" autocomplete="username"
              spellcheck="false" enterkeyhint="next" />
       <label for="password">Password</label>
       <input id="password" type="password" autocomplete="current-password" enterkeyhint="go" />
+      <div id="registerConfirmBlock" class="hidden">
+        <label for="password2">Confirm password</label>
+        <input id="password2" type="password" autocomplete="new-password" enterkeyhint="go" />
+      </div>
+      <p class="muted hidden" id="registerHint">Creates your employee account. After that, open Enroll and capture 3–5 face samples so you can clock in.</p>
       <button class="cta" id="loginBtn">Login</button>
+      <button class="cta hidden" id="registerBtn">Create account</button>
       <button class="alt" id="logoutBtn">Logout</button>
       <button class="alt" id="bindBtn">Register this device</button>
       <button class="alt" id="syncBtn">Sync offline queue</button>
@@ -371,6 +385,17 @@
     function authUser() {
       try { return JSON.parse(localStorage.getItem('auth_user') || 'null'); } catch { return null; }
     }
+    function linkedEmployeeId() {
+      const user = authUser();
+      if (user && user.employee_id) return user.employee_id;
+      const payload = decodeJwt(state.token);
+      return payload && payload.employee_id ? payload.employee_id : '';
+    }
+    function canEnroll() {
+      const role = jwtRole();
+      if (role === 'admin') return true;
+      return role === 'user' && !!linkedEmployeeId();
+    }
     function setSession(res) {
       state.token = res.access_token || '';
       localStorage.setItem('access_token', state.token);
@@ -434,7 +459,7 @@
       const role = jwtRole();
       const isAdmin = role === 'admin';
       const user = authUser();
-      $('enrollTabBtn').classList.toggle('rbac-hide', !isAdmin);
+      $('enrollTabBtn').classList.toggle('rbac-hide', !canEnroll());
       $('attendanceTabBtn').classList.toggle('rbac-hide', !isAdmin);
       $('adminBindBlock').classList.toggle('rbac-hide', role === 'user');
       $('bindBtn').classList.toggle('rbac-hide', role === 'user');
@@ -445,7 +470,8 @@
       } else {
         $('roleBadge').textContent = 'Not signed in';
       }
-      if (!isAdmin && (state.tab === 'enroll' || state.tab === 'attendance')) {
+      const enrollOk = canEnroll();
+      if ((state.tab === 'attendance' && !isAdmin) || (state.tab === 'enroll' && !enrollOk)) {
         state.tab = 'kiosk';
         document.querySelectorAll('header button').forEach((x) => x.classList.toggle('on', x.dataset.tab === 'kiosk'));
         ['kiosk','enroll','attendance','settings'].forEach((id) => $(id).classList.toggle('hidden', id !== 'kiosk'));
@@ -493,7 +519,7 @@
       const text = await res.text();
       let data = null;
       try { data = text ? JSON.parse(text) : null; } catch { data = text; }
-      if (res.status === 401 && !opts._retry && path !== '/auth/login' && path !== '/auth/refresh') {
+      if (res.status === 401 && !opts._retry && path !== '/auth/login' && path !== '/auth/refresh' && path !== '/auth/register') {
         const ok = await refreshSession();
         if (ok) return api(path, Object.assign({}, opts, { _retry: true }));
         clearSession();
@@ -686,9 +712,34 @@
       return c.toDataURL('image/jpeg', 0.85).replace(/^data:image\/\w+;base64,/, '');
     }
 
+    function prepareEnrollTab() {
+      const isAdmin = jwtRole() === 'admin';
+      $('enrollTitle').textContent = isAdmin ? 'Enroll faces' : 'Enroll your face';
+      $('enrollSearchRow').classList.toggle('hidden', !isAdmin);
+      $('empList').classList.toggle('hidden', !isAdmin);
+      if (isAdmin) {
+        loadEmployees().catch((e) => status('enrollStatus', e.message));
+        return;
+      }
+      const user = authUser() || {};
+      const id = linkedEmployeeId();
+      if (!id) {
+        state.selected = null;
+        status('enrollStatus', 'This login is not linked to an employee.');
+        return;
+      }
+      state.selected = {
+        id,
+        code: user.employee_code || '',
+        display_name: user.display_name || user.email || 'your face',
+      };
+      state.samples = state.samples || 0;
+      status('enrollStatus', 'Confirm your face is visible above, then capture 3–5 samples' + (state.selected.code ? ' (' + state.selected.code + ')' : '') + '.');
+    }
     document.querySelectorAll('header button').forEach((b) => {
       b.onclick = () => {
-        if ((b.dataset.tab === 'enroll' || b.dataset.tab === 'attendance') && jwtRole() !== 'admin') return;
+        if (b.dataset.tab === 'attendance' && jwtRole() !== 'admin') return;
+        if (b.dataset.tab === 'enroll' && !canEnroll()) return;
         state.tab = b.dataset.tab;
         document.querySelectorAll('header button').forEach((x) => x.classList.toggle('on', x === b));
         ['kiosk','enroll','attendance','settings'].forEach((id) => $(id).classList.toggle('hidden', id !== state.tab));
@@ -699,6 +750,7 @@
         if (camHidden) stopCam();
         else if (!camActive()) ensureCam(false);
         window.scrollTo({ top: 0, behavior: 'smooth' });
+        if (state.tab === 'enroll') prepareEnrollTab();
         if (state.tab === 'attendance') {
           if (!$('rosterDate').value) setRosterDate(todayYmd(), false);
           loadRoster().catch(() => {});
@@ -967,6 +1019,26 @@
       saveSettings();
       status('settingsStatus', 'Settings saved');
     };
+    function setAuthMode(mode) {
+      const register = mode === 'register';
+      $('authModeLogin').classList.toggle('on', !register);
+      $('authModeRegister').classList.toggle('on', register);
+      $('authHeading').textContent = register ? 'Register' : 'Login';
+      $('registerNameBlock').classList.toggle('hidden', !register);
+      $('registerConfirmBlock').classList.toggle('hidden', !register);
+      $('registerHint').classList.toggle('hidden', !register);
+      $('loginBtn').classList.toggle('hidden', register);
+      $('registerBtn').classList.toggle('hidden', !register);
+      $('email').autocomplete = register ? 'email' : 'username';
+      $('password').autocomplete = register ? 'new-password' : 'current-password';
+      $('password').enterKeyHint = register ? 'next' : 'go';
+      if (register) {
+        $('password').value = '';
+        $('password2').value = '';
+      }
+    }
+    $('authModeLogin').onclick = () => setAuthMode('login');
+    $('authModeRegister').onclick = () => setAuthMode('register');
     $('loginBtn').onclick = async () => {
       try {
         const res = await api('/auth/login', { method: 'POST', body: { email: $('email').value, password: $('password').value } });
@@ -976,14 +1048,56 @@
         status('settingsStatus', 'Logged in as ' + (res.user && res.user.email ? res.user.email : res.user.role));
       } catch (e) { status('settingsStatus', e.message); }
     };
+    $('registerBtn').onclick = async () => {
+      const display_name = ($('displayName').value || '').trim();
+      const email = ($('email').value || '').trim();
+      const password = $('password').value || '';
+      const confirm = $('password2').value || '';
+      if (!display_name) return status('settingsStatus', 'Enter your full name');
+      if (!email) return status('settingsStatus', 'Enter your email');
+      if (password.length < 6) return status('settingsStatus', 'Password must be at least 6 characters');
+      if (password !== confirm) return status('settingsStatus', 'Passwords do not match');
+      try {
+        const res = await api('/auth/register', { method: 'POST', body: { display_name, email, password } });
+        setSession(res);
+        $('password').value = '';
+        $('password2').value = '';
+        setAuthMode('login');
+        applyAccess();
+        const who = res.user && (res.user.display_name || res.user.email);
+        status('settingsStatus', 'Account created' + (who ? ' for ' + who : ''));
+        if (canEnroll()) {
+          const enrollTab = document.querySelector('header button[data-tab="enroll"]');
+          if (enrollTab) enrollTab.click();
+          status('enrollStatus', 'Account created. Capture 3–5 samples of your face.');
+        }
+      } catch (e) { status('settingsStatus', e.message); }
+    };
+    function submitAuthForm() {
+      if ($('registerBtn').classList.contains('hidden')) $('loginBtn').onclick();
+      else $('registerBtn').onclick();
+    }
     $('password').onkeydown = (e) => {
       if (e.key !== 'Enter') return;
       e.preventDefault();
+      if (!$('registerBtn').classList.contains('hidden')) {
+        $('password2').focus();
+        return;
+      }
       e.target.blur();
       $('loginBtn').onclick();
     };
+    $('password2').onkeydown = (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      e.target.blur();
+      submitAuthForm();
+    };
     $('email').onkeydown = (e) => {
       if (e.key === 'Enter') $('password').focus();
+    };
+    $('displayName').onkeydown = (e) => {
+      if (e.key === 'Enter') $('email').focus();
     };
     $('bindBtn').onclick = async () => {
       try {

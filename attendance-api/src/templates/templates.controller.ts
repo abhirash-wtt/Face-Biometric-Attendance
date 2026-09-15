@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Post,
   UploadedFiles,
   UseGuards,
@@ -14,8 +15,10 @@ import { Transform } from 'class-transformer';
 import { IsNumber, IsOptional, IsString, IsUUID } from 'class-validator';
 import { TemplatesService } from './templates.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../common/guards/roles.guard';
+import { RolesGuard, effectiveRole } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { JwtUser } from '../auth/jwt.strategy';
 
 class EnrollDto {
   @IsUUID()
@@ -43,10 +46,10 @@ export class TemplatesController {
   constructor(private readonly templates: TemplatesService) {}
 
   @Post('enroll')
-  @Roles('admin')
+  @Roles('admin', 'user')
   @UseInterceptors(FilesInterceptor('files', 8, { storage: memoryStorage() }))
   @ApiConsumes('multipart/form-data', 'application/json')
-  @ApiOperation({ summary: 'Multipart image(s) → face_templates for employee_id' })
+  @ApiOperation({ summary: 'Multipart image(s) → face_templates for employee_id (users: own face only)' })
   @ApiBody({
     schema: {
       type: 'object',
@@ -60,7 +63,19 @@ export class TemplatesController {
   enroll(
     @Body() dto: EnrollDto,
     @UploadedFiles() files: Express.Multer.File[],
+    @CurrentUser() user: JwtUser,
   ) {
+    if (user.type !== 'user') {
+      throw new ForbiddenException('Only signed-in users can enroll faces');
+    }
+    if (effectiveRole(user.role) !== 'admin') {
+      if (!user.employee_id) {
+        throw new ForbiddenException('This login is not linked to an employee');
+      }
+      if (dto.employee_id !== user.employee_id) {
+        throw new ForbiddenException('You can only enroll your own face');
+      }
+    }
     const buffers = (files || []).map((f) => f.buffer);
     if (dto.image_b64) {
       buffers.push(Buffer.from(dto.image_b64.replace(/^data:image\/\w+;base64,/, ''), 'base64'));
