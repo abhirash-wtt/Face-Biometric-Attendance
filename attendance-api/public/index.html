@@ -102,6 +102,7 @@
       tab: 'kiosk',
       punch: 'IN',
       token: localStorage.getItem('access_token') || '',
+      refreshToken: localStorage.getItem('refresh_token') || '',
       settings: JSON.parse(localStorage.getItem('settings') || 'null') || {
         apiBase: location.origin,
         deviceId: 'KIOSK-01',
@@ -114,6 +115,7 @@
       pending: null,
       queue: JSON.parse(localStorage.getItem('offline_queue') || '[]'),
     };
+    let refreshInFlight = null;
 
     const $ = (id) => document.getElementById(id);
     function status(id, msg) { $(id).textContent = msg; }
@@ -124,24 +126,106 @@
     function saveSettings() {
       localStorage.setItem('settings', JSON.stringify(state.settings));
     }
-    function jwtRole() {
+    function decodeJwt(token) {
+      if (!token) return null;
       try {
-        if (!state.token) return '';
-        const payload = JSON.parse(atob(state.token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-        if (payload.role === 'admin') return 'admin';
-        if (payload.role) return 'user';
-        return '';
+        const part = token.split('.')[1];
+        if (!part) return null;
+        const b64 = part.replace(/-/g, '+').replace(/_/g, '/');
+        const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+        return JSON.parse(atob(padded));
       } catch {
-        return '';
+        return null;
+      }
+    }
+    function isJwtExpired(token, skewMs) {
+      const payload = decodeJwt(token);
+      if (!payload || !payload.exp) return !token;
+      return payload.exp * 1000 < Date.now() + (skewMs || 20000);
+    }
+    function jwtRole() {
+      const payload = decodeJwt(state.token);
+      if (!payload || isJwtExpired(state.token, 0)) return '';
+      if (payload.role === 'admin') return 'admin';
+      if (payload.role) return 'user';
+      return '';
+    }
+    function authUser() {
+      try { return JSON.parse(localStorage.getItem('auth_user') || 'null'); } catch { return null; }
+    }
+    function setSession(res) {
+      state.token = res.access_token || '';
+      localStorage.setItem('access_token', state.token);
+      if (res.refresh_token) {
+        state.refreshToken = res.refresh_token;
+        localStorage.setItem('refresh_token', res.refresh_token);
+      } else if (!res.keep_refresh) {
+        state.refreshToken = '';
+        localStorage.removeItem('refresh_token');
+      }
+      if (res.user) {
+        localStorage.setItem('auth_user', JSON.stringify(res.user));
+        if (res.user.email) localStorage.setItem('login_email', res.user.email);
+      } else if (!res.keep_user) {
+        localStorage.removeItem('auth_user');
+      }
+    }
+    function clearSession() {
+      state.token = '';
+      state.refreshToken = '';
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      localStorage.removeItem('auth_user');
+    }
+    async function refreshSession() {
+      const rt = state.refreshToken || localStorage.getItem('refresh_token');
+      if (!rt) return false;
+      if (refreshInFlight) return refreshInFlight;
+      refreshInFlight = (async () => {
+        try {
+          const res = await fetch(state.settings.apiBase.replace(/\/$/, '') + '/auth/refresh', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refresh_token: rt }),
+          });
+          const text = await res.text();
+          let data = null;
+          try { data = text ? JSON.parse(text) : null; } catch { data = null; }
+          if (!res.ok || !data || !data.access_token) return false;
+          setSession(data);
+          return true;
+        } catch {
+          return false;
+        } finally {
+          refreshInFlight = null;
+        }
+      })();
+      return refreshInFlight;
+    }
+    async function restoreSession() {
+      state.token = localStorage.getItem('access_token') || '';
+      state.refreshToken = localStorage.getItem('refresh_token') || '';
+      if (state.refreshToken && (!state.token || isJwtExpired(state.token))) {
+        const ok = await refreshSession();
+        if (!ok) clearSession();
+      } else if (state.token && isJwtExpired(state.token)) {
+        clearSession();
       }
     }
     function applyAccess() {
       const role = jwtRole();
       const isAdmin = role === 'admin';
+      const user = authUser();
       $('enrollTabBtn').classList.toggle('rbac-hide', !isAdmin);
       $('adminBindBlock').classList.toggle('rbac-hide', role === 'user');
       $('bindBtn').classList.toggle('rbac-hide', role === 'user');
-      $('roleBadge').textContent = role ? ('Signed in as ' + role) : 'Not signed in';
+      if (role && user && user.email) {
+        $('roleBadge').textContent = 'Signed in as ' + user.email + ' (' + role + ')';
+      } else if (role) {
+        $('roleBadge').textContent = 'Signed in as ' + role;
+      } else {
+        $('roleBadge').textContent = 'Not signed in';
+      }
       if (!isAdmin && state.tab === 'enroll') {
         state.tab = 'kiosk';
         document.querySelectorAll('header button').forEach((x) => x.classList.toggle('on', x.dataset.tab === 'kiosk'));
@@ -189,6 +273,12 @@
       const text = await res.text();
       let data = null;
       try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+      if (res.status === 401 && !opts._retry && path !== '/auth/login' && path !== '/auth/refresh') {
+        const ok = await refreshSession();
+        if (ok) return api(path, Object.assign({}, opts, { _retry: true }));
+        clearSession();
+        applyAccess();
+      }
       if (!res.ok) {
         const msg = data && data.message ? data.message : res.statusText;
         throw new Error(Array.isArray(msg) ? msg.join(', ') : String(msg));
@@ -382,8 +472,8 @@
       $('deviceId').value = state.settings.deviceId;
       $('siteCode').value = state.settings.siteCode;
       $('secret').value = state.settings.bootstrapSecret;
-      $('email').value = 'admin@attendance.local';
-      $('password').value = 'Admin@123';
+      $('email').value = localStorage.getItem('login_email') || 'admin@attendance.local';
+      $('password').value = state.token ? '' : 'Admin@123';
     }
     $('saveBtn').onclick = () => {
       state.settings = { apiBase: $('apiBase').value, deviceId: $('deviceId').value, siteCode: $('siteCode').value, bootstrapSecret: $('secret').value };
@@ -393,10 +483,10 @@
     $('loginBtn').onclick = async () => {
       try {
         const res = await api('/auth/login', { method: 'POST', body: { email: $('email').value, password: $('password').value } });
-        state.token = res.access_token;
-        localStorage.setItem('access_token', state.token);
+        setSession(res);
+        $('password').value = '';
         applyAccess();
-        status('settingsStatus', 'Logged in as ' + res.user.role);
+        status('settingsStatus', 'Logged in as ' + (res.user && res.user.email ? res.user.email : res.user.role));
       } catch (e) { status('settingsStatus', e.message); }
     };
     $('bindBtn').onclick = async () => {
@@ -406,15 +496,13 @@
           method: 'POST',
           body: { device_id: state.settings.deviceId, site_code: state.settings.siteCode, bootstrap_secret: state.settings.bootstrapSecret, description: 'Kiosk' },
         });
-        state.token = res.access_token;
-        localStorage.setItem('access_token', state.token);
+        setSession(res);
         applyAccess();
         status('settingsStatus', 'Device bound: ' + res.device.device_id);
       } catch (e) { status('settingsStatus', e.message); }
     };
     $('logoutBtn').onclick = () => {
-      state.token = '';
-      localStorage.removeItem('access_token');
+      clearSession();
       applyAccess();
       status('settingsStatus', 'Signed out');
     };
@@ -431,6 +519,10 @@
 
     fillSettings();
     applyAccess();
+    restoreSession().then(() => {
+      fillSettings();
+      applyAccess();
+    });
     rollPrompt();
     startCam().catch((e) => status('kioskStatus', e.message));
   </script>
