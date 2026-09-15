@@ -195,6 +195,12 @@
       }
       return data;
     }
+    function identifyFailMessage(reason) {
+      if (reason === 'identity_mismatch') return 'Face does not match this login';
+      if (reason === 'no_templates') return 'No face enrolled for this login';
+      if (reason === 'employee_not_found') return 'This employee account is not active';
+      return 'Please try again';
+    }
     async function startCam() {
       const v = $('cam');
       v.muted = true;
@@ -289,7 +295,7 @@
           $('confirm').showModal();
           status('kioskStatus', 'Matched ' + res.name);
         } else {
-          status('kioskStatus', 'Please try again');
+          status('kioskStatus', identifyFailMessage(res.reason));
           rollPrompt();
         }
       } catch (e) {
@@ -315,16 +321,29 @@
             similarity: p.similarity,
             liveness_score: p.liveness,
             face_crop_url: p.face_crop_url,
+            image_b64: p.image_b64,
           },
         });
         status('kioskStatus', 'Welcome ' + p.name);
         rollPrompt();
       } catch (e) {
         const msg = e.message || '';
-        if (/geofence|location is required|outside office/i.test(msg)) {
+        if (/geofence|location is required|outside office|not linked|does not match|Face verification required|only clock in|No face enrolled/i.test(msg)) {
           status('kioskStatus', msg);
         } else {
-          state.queue.push({ path: '/attendance', body: { employee_id: p.employee_id, type: state.punch, gps: p.gps }, createdAt: Date.now() });
+          state.queue.push({
+            path: '/attendance',
+            body: {
+              employee_id: p.employee_id,
+              type: state.punch,
+              gps: p.gps,
+              similarity: p.similarity,
+              liveness_score: p.liveness,
+              face_crop_url: p.face_crop_url,
+              image_b64: p.image_b64,
+            },
+            createdAt: Date.now(),
+          });
           localStorage.setItem('offline_queue', JSON.stringify(state.queue));
           status('kioskStatus', 'Saved offline: ' + msg);
         }

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Post,
   Query,
@@ -23,6 +24,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtUser } from '../auth/jwt.strategy';
+import { boundClockInEmployeeId } from '../auth/bound-employee';
 import { ConfigService } from '@nestjs/config';
 
 function bufferFrom(file?: Express.Multer.File, imageB64?: string): Buffer {
@@ -47,7 +49,9 @@ export class AttendanceController {
   @Roles('user')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
   @ApiConsumes('multipart/form-data', 'application/json')
-  @ApiOperation({ summary: '1:N identify from face crop or embedding' })
+  @ApiOperation({
+    summary: 'Identify from face crop or embedding (1:1 for employee logins, 1:N for kiosk devices)',
+  })
   @ApiBody({ type: IdentifyDto })
   async identify(
     @Body() dto: IdentifyDto,
@@ -70,9 +74,11 @@ export class AttendanceController {
       dto.gps?.lng,
       dto.gps?.accuracy,
     );
+    const boundEmployeeId = boundClockInEmployeeId(user);
     const result = await this.recognition.identify(imageBuf, {
       embedding: dto.embedding,
       clientLiveness: dto.liveness,
+      boundEmployeeId,
     });
     let face_crop_url: string | undefined;
     if (imageBuf.length) {
@@ -82,9 +88,9 @@ export class AttendanceController {
     return {
       ok: result.ok,
       reason: result.reason,
-      employee_id: result.match?.employee_id,
-      employee_code: result.match?.code,
-      name: result.match?.display_name,
+      employee_id: result.ok ? result.match?.employee_id : undefined,
+      employee_code: result.ok ? result.match?.code : undefined,
+      name: result.ok ? result.match?.display_name : undefined,
       similarity: result.similarity,
       liveness: result.liveness,
       thresholds: th,
@@ -100,20 +106,36 @@ export class AttendanceController {
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
   @ApiConsumes('multipart/form-data', 'application/json')
   @ApiOperation({ summary: '1:1 verify employee_id + face crop' })
-  async verify(@Body() dto: VerifyDto, @UploadedFile() file: Express.Multer.File) {
+  async verify(
+    @Body() dto: VerifyDto,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: JwtUser,
+  ) {
+    const boundEmployeeId = boundClockInEmployeeId(user);
+    if (boundEmployeeId && dto.employee_id !== boundEmployeeId) {
+      throw new ForbiddenException('You can only clock in with the employee linked to this login');
+    }
     const imageBuf = bufferFrom(file, dto.image_b64);
-    return this.recognition.verify(dto.employee_id, imageBuf, dto.liveness);
+    return this.recognition.verify(boundEmployeeId || dto.employee_id, imageBuf, dto.liveness);
   }
 
   @Post('attendance')
   @Roles('user')
   @ApiOperation({ summary: 'Create attendance log (usually after identify)' })
   create(@Body() dto: CreateAttendanceDto, @CurrentUser() user: JwtUser) {
-    return this.attendance.create({
-      ...dto,
-      device_id: dto.device_id || user.device_id,
-      site_code: dto.site_code || user.site_code,
-    });
+    const boundEmployeeId = boundClockInEmployeeId(user);
+    if (boundEmployeeId && dto.employee_id !== boundEmployeeId) {
+      throw new ForbiddenException('You can only clock in with the employee linked to this login');
+    }
+    return this.attendance.create(
+      {
+        ...dto,
+        employee_id: boundEmployeeId || dto.employee_id,
+        device_id: dto.device_id || user.device_id,
+        site_code: dto.site_code || user.site_code,
+      },
+      { requireFaceMatch: !!boundEmployeeId },
+    );
   }
 
   @Get('attendance')

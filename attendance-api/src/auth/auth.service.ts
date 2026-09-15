@@ -93,6 +93,7 @@ export class AuthService implements OnModuleInit {
       email: user.email,
       role: user.role,
       type: 'user',
+      employee_id: user.employee_id || undefined,
     };
     const access_token = this.jwt.sign(payload, {
       secret: this.config.get<string>('jwt.accessSecret'),
@@ -112,7 +113,12 @@ export class AuthService implements OnModuleInit {
       refresh_token,
       token_type: 'Bearer',
       expires_in: 900,
-      user: { id: user.id, email: user.email, role: user.role },
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        employee_id: user.employee_id || undefined,
+      },
     };
   }
 }

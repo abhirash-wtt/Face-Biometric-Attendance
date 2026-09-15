@@ -10,6 +10,7 @@ export type JwtUser = {
   type: 'user' | 'device';
   device_id?: string;
   site_code?: string;
+  employee_id?: string;
 };
 
 @Injectable()

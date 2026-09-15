@@ -94,14 +94,30 @@ async function run() {
 
   const seedEmployees = [
     { code: 'EMP001', display_name: 'Abhirash' },
-    { code: 'EMP002', display_name: 'Pavan Kumar' },
-    { code: 'EMP003', display_name: 'Sushmita Singh' },
     { code: 'EMP004', display_name: 'Yatharth Kapoor' },
   ];
   for (const row of seedEmployees) {
     if (!(await employees.findOne({ where: { code: row.code } }))) {
       await employees.save(employees.create(row));
     }
+  }
+
+  const emp001 = await employees.findOne({ where: { code: 'EMP001' } });
+  const abhirashEmail = 'abhirash.garg@walkingtree.tech';
+  const abhirashPassword = 'faZWGpjhmB';
+  const abhirashUser = await users.findOne({ where: { email: abhirashEmail } });
+  if (!abhirashUser) {
+    await users.save(
+      users.create({
+        email: abhirashEmail,
+        password_hash: await bcrypt.hash(abhirashPassword, 10),
+        role: 'user',
+        employee_id: emp001?.id,
+      }),
+    );
+  } else if (emp001 && abhirashUser.employee_id !== emp001.id) {
+    abhirashUser.employee_id = emp001.id;
+    await users.save(abhirashUser);
   }
 
   if (!(await shifts.findOne({ where: { name: 'General' } }))) {

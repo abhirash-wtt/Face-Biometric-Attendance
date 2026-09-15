@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { EmployeesService } from './employees.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
@@ -31,5 +31,12 @@ export class EmployeesController {
   @Roles('admin')
   get(@Param('id') id: string) {
     return this.employees.get(id);
+  }
+
+  @Delete(':id')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Delete employee and related records (admin)' })
+  remove(@Param('id') id: string) {
+    return this.employees.remove(id);
   }
 }

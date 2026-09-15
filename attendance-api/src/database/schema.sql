@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS employees (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
+ALTER TABLE users ADD COLUMN IF NOT EXISTS employee_id UUID REFERENCES employees(id) ON DELETE SET NULL;
+
 -- FACE TEMPLATES (multiple samples per employee)
 CREATE TABLE IF NOT EXISTS face_templates (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

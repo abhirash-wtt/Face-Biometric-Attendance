@@ -41,6 +41,7 @@ export class DatabaseInitService implements OnModuleInit {
     }
     await this.migrateRoles();
     await this.migrateHqGeofence();
+    await this.migrateUserEmployeeLink();
   }
 
   private async migrateRoles() {
@@ -87,6 +88,12 @@ export class DatabaseInitService implements OnModuleInit {
       ],
     );
     this.logger.log('HQ office geofence polygon applied');
+  }
+
+  private async migrateUserEmployeeLink() {
+    await this.ds.query(
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS employee_id UUID REFERENCES employees(id) ON DELETE SET NULL`,
+    );
   }
 
   private readSql(file: string): string {

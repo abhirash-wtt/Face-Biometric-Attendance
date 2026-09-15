@@ -57,7 +57,7 @@ async function request<T>(
 export const api = {
   request,
   login(email: string, password: string) {
-    return request<{ access_token: string; user: { email: string; role: string } }>('/auth/login', {
+    return request<{ access_token: string; user: { email: string; role: string; employee_id?: string } }>('/auth/login', {
       method: 'POST',
       body: { email, password },
       token: null,

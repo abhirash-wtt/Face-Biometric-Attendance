@@ -19,6 +19,9 @@ export class User {
   @Column({ type: 'text', default: 'user' })
   role: 'admin' | 'user';
 
+  @Column({ type: 'uuid', nullable: true })
+  employee_id?: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   created_at: Date;
 }

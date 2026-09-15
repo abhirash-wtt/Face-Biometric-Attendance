@@ -13,6 +13,7 @@ import { SitesService } from '../sites/sites.service';
 import { ShiftsService } from '../shifts/shifts.service';
 import { EmployeesService } from '../employees/employees.service';
 import { StorageService } from '../storage/storage.service';
+import { RecognitionService } from '../recognition/recognition.service';
 
 @Injectable()
 export class AttendanceService {
@@ -25,17 +26,38 @@ export class AttendanceService {
     private readonly employees: EmployeesService,
     private readonly storage: StorageService,
     private readonly config: ConfigService,
+    private readonly recognition: RecognitionService,
   ) {}
 
   assertIdentifyGeofence(siteCode?: string, lat?: number, lng?: number, accuracyM?: number) {
     return this.sites.assertGpsInside(siteCode, lat, lng, accuracyM);
   }
 
-  async create(dto: CreateAttendanceDto) {
+  async create(dto: CreateAttendanceDto, opts?: { requireFaceMatch?: boolean }) {
     if (dto.type !== 'IN' && dto.type !== 'OUT') {
       throw new BadRequestException('type must be IN or OUT');
     }
     await this.employees.get(dto.employee_id);
+
+    let similarity = dto.similarity;
+    let liveness_score = dto.liveness_score;
+    if (opts?.requireFaceMatch) {
+      if (!dto.image_b64) {
+        throw new UnprocessableEntityException('Face verification required');
+      }
+      const imageBuf = Buffer.from(dto.image_b64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+      const verified = await this.recognition.verify(dto.employee_id, imageBuf, dto.liveness_score);
+      if (!verified.ok) {
+        throw new UnprocessableEntityException(
+          verified.reason === 'no_templates'
+            ? 'No face enrolled for this login'
+            : 'Face does not match this login',
+        );
+      }
+      similarity = verified.similarity;
+      liveness_score = verified.liveness;
+    }
+
     const lat = dto.gps_lat ?? dto.gps?.lat;
     const lng = dto.gps_lng ?? dto.gps?.lng;
     const siteCode = dto.site_code?.toUpperCase();
@@ -74,8 +96,8 @@ export class AttendanceService {
         site_code: siteCode,
         gps_lat: lat,
         gps_lng: lng,
-        similarity: dto.similarity,
-        liveness_score: dto.liveness_score,
+        similarity,
+        liveness_score,
         face_crop_url,
         notes,
       }),

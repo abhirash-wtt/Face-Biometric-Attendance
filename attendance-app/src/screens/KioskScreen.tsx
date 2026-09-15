@@ -22,6 +22,13 @@ const promptCopy: Record<string, string> = {
   smile: 'Please smile',
 };
 
+function identifyFailMessage(reason?: string) {
+  if (reason === 'identity_mismatch') return 'Face does not match this login';
+  if (reason === 'no_templates') return 'No face enrolled for this login';
+  if (reason === 'employee_not_found') return 'This employee account is not active';
+  return 'Please try again';
+}
+
 export function KioskScreen() {
   const dispatch = useDispatch<AppDispatch>();
   const { punchType, lastMessage, busy, livenessPrompt } = useSelector(
@@ -74,7 +81,7 @@ export function KioskScreen() {
         });
         dispatch(setLastMessage(`Matched ${res.name}`));
       } else {
-        dispatch(setLastMessage('Please try again'));
+        dispatch(setLastMessage(identifyFailMessage(res.reason)));
         dispatch(rollLivenessPrompt());
       }
     } catch (err) {
@@ -114,6 +121,7 @@ export function KioskScreen() {
       similarity: pending.similarity,
       liveness_score: pending.liveness,
       face_crop_url: pending.face_crop_url,
+      image_b64: pending.image_b64,
     };
     try {
       await api.attendance(body);
@@ -121,7 +129,7 @@ export function KioskScreen() {
       dispatch(rollLivenessPrompt());
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Please try again';
-      if (/geofence|location is required|outside office/i.test(message)) {
+      if (/geofence|location is required|outside office|not linked|does not match|Face verification required|only clock in|No face enrolled/i.test(message)) {
         dispatch(setLastMessage(message));
       } else {
         await storage.enqueue({

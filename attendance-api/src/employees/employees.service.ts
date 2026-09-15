@@ -1,12 +1,15 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { ILike, Repository } from 'typeorm';
+import { DataSource, ILike, Repository } from 'typeorm';
 import { Employee } from './employee.entity';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 
 @Injectable()
 export class EmployeesService {
-  constructor(@InjectRepository(Employee) private readonly repo: Repository<Employee>) {}
+  constructor(
+    @InjectRepository(Employee) private readonly repo: Repository<Employee>,
+    private readonly ds: DataSource,
+  ) {}
 
   create(dto: CreateEmployeeDto) {
     return this.repo.save(
@@ -41,5 +44,13 @@ export class EmployeesService {
     const emp = await this.repo.findOne({ where: { code: code.toUpperCase() } });
     if (!emp) throw new NotFoundException('Employee not found');
     return emp;
+  }
+
+  async remove(id: string) {
+    const emp = await this.get(id);
+    await this.ds.query('DELETE FROM attendance_logs WHERE employee_id = $1', [emp.id]);
+    await this.ds.query('DELETE FROM face_templates WHERE employee_id = $1', [emp.id]);
+    await this.repo.remove(emp);
+    return { ok: true, code: emp.code, display_name: emp.display_name };
   }
 }

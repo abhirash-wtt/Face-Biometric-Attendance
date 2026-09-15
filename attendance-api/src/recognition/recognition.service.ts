@@ -63,7 +63,7 @@ export class RecognitionService {
 
   async identify(
     imageBuf: Buffer,
-    opts?: { embedding?: number[]; clientLiveness?: number },
+    opts?: { embedding?: number[]; clientLiveness?: number; boundEmployeeId?: string },
   ): Promise<{
     ok: boolean;
     reason?: string;
@@ -92,6 +92,10 @@ export class RecognitionService {
         };
       }
       embedding = await this.embeddings.embed(imageBuf);
+    }
+
+    if (opts?.boundEmployeeId) {
+      return this.identifyBound(opts.boundEmployeeId, embedding, liveness);
     }
 
     if (this.compreface.enabled()) {
@@ -160,21 +164,88 @@ export class RecognitionService {
 
   async verify(employeeId: string, imageBuf: Buffer, clientLiveness?: number) {
     const { embedding, liveness_score } = await this.embedAndLiveness(imageBuf, clientLiveness);
-    const rows = await this.ds.query(
-      `SELECT embedding FROM face_templates WHERE employee_id = $1`,
-      [employeeId],
-    );
-    let best = 0;
-    for (const row of rows) {
-      const sim = cosineSimilarity(embedding, parsePgVector(row.embedding));
-      if (sim > best) best = sim;
-    }
-    const th = this.thresholds();
-    const ok = best >= th.similarity && liveness_score >= th.liveness;
-    return { ok, similarity: best, liveness: liveness_score, employee_id: employeeId };
+    const identified = await this.identifyBound(employeeId, embedding, liveness_score);
+    return {
+      ok: identified.ok,
+      reason: identified.reason,
+      similarity: identified.similarity,
+      liveness: identified.liveness,
+      employee_id: employeeId,
+      match: identified.match,
+    };
   }
 
-  private async search(probe: number[], limit: number): Promise<MatchRow[]> {
+  private async identifyBound(
+    employeeId: string,
+    embedding: number[],
+    liveness: number,
+  ): Promise<{
+    ok: boolean;
+    reason?: string;
+    embedding: number[];
+    liveness: number;
+    similarity: number;
+    match?: MatchRow;
+    top: MatchRow[];
+  }> {
+    const th = this.thresholds();
+    const employee = await this.ds.query(
+      `SELECT id, code, display_name, status FROM employees WHERE id = $1 LIMIT 1`,
+      [employeeId],
+    );
+    if (!employee[0] || employee[0].status !== 'active') {
+      this.metrics.identifyRejected += 1;
+      return {
+        ok: false,
+        reason: 'employee_not_found',
+        embedding,
+        liveness,
+        similarity: 0,
+        top: [],
+      };
+    }
+
+    const top = await this.search(embedding, 1, employeeId);
+    const best = top[0];
+    const similarity = best?.cosine_sim ?? 0;
+    const match: MatchRow = best || {
+      employee_id: employee[0].id,
+      code: employee[0].code,
+      display_name: employee[0].display_name,
+      cosine_sim: 0,
+    };
+    const ok = !!best && similarity >= th.similarity && liveness >= th.liveness;
+    if (ok) this.metrics.identifyAccepted += 1;
+    else this.metrics.identifyRejected += 1;
+
+    let reason: string | undefined;
+    if (!best) reason = 'no_templates';
+    else if (liveness < th.liveness) reason = 'low_liveness';
+    else if (similarity < th.similarity) reason = 'identity_mismatch';
+
+    this.logger.log(
+      JSON.stringify({
+        event: 'identify_bound',
+        ok,
+        similarity: Number(similarity.toFixed(4)),
+        liveness,
+        employee_id: employeeId,
+        reason,
+      }),
+    );
+
+    return {
+      ok,
+      reason,
+      embedding,
+      liveness,
+      similarity,
+      match,
+      top: best ? [match] : [],
+    };
+  }
+
+  private async search(probe: number[], limit: number, employeeId?: string): Promise<MatchRow[]> {
     const probeVec = toPgVector(probe);
     if (this.dbInit.pgvectorEnabled) {
       try {
@@ -184,9 +255,10 @@ export class RecognitionService {
              FROM face_templates ft
              JOIN employees e ON e.id = ft.employee_id
             WHERE e.status = 'active'
+              AND ($3::uuid IS NULL OR e.id = $3)
             ORDER BY ft.embedding <-> $1::vector
             LIMIT $2`,
-          [probeVec, limit],
+          [probeVec, limit, employeeId ?? null],
         );
         return this.dedupeEmployees(rows);
       } catch (err) {
@@ -198,7 +270,9 @@ export class RecognitionService {
       `SELECT e.id AS employee_id, e.code, e.display_name, ft.embedding
          FROM face_templates ft
          JOIN employees e ON e.id = ft.employee_id
-        WHERE e.status = 'active'`,
+        WHERE e.status = 'active'
+          AND ($1::uuid IS NULL OR e.id = $1)`,
+      [employeeId ?? null],
     );
     const scored: MatchRow[] = rows.map((r: { employee_id: string; code: string; display_name: string; embedding: string }) => ({
       employee_id: r.employee_id,
