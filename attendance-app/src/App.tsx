@@ -3,11 +3,12 @@ import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { Provider } from 'react-redux';
 import { KioskScreen } from './screens/KioskScreen';
 import { EnrollScreen } from './screens/EnrollScreen';
+import { AttendanceScreen } from './screens/AttendanceScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { store } from './state/attendanceSlice';
 import { storage } from './services/storage';
 
-type Tab = 'kiosk' | 'enroll' | 'settings';
+type Tab = 'kiosk' | 'enroll' | 'attendance' | 'settings';
 
 function Shell() {
   const [tab, setTab] = useState<Tab>('kiosk');
@@ -16,7 +17,9 @@ function Shell() {
   const refreshRole = useCallback(async () => {
     const next = await storage.getRole();
     setRole(next);
-    setTab((current) => (next !== 'admin' && current === 'enroll' ? 'kiosk' : current));
+    setTab((current) =>
+      next !== 'admin' && (current === 'enroll' || current === 'attendance') ? 'kiosk' : current,
+    );
   }, []);
 
   useEffect(() => {
@@ -28,6 +31,7 @@ function Shell() {
       ? [
           ['kiosk', 'Kiosk'],
           ['enroll', 'Enroll'],
+          ['attendance', 'Attend'],
           ['settings', 'Settings'],
         ]
       : [
@@ -40,6 +44,7 @@ function Shell() {
       <View style={styles.body}>
         {tab === 'kiosk' && <KioskScreen />}
         {tab === 'enroll' && role === 'admin' && <EnrollScreen />}
+        {tab === 'attendance' && role === 'admin' && <AttendanceScreen />}
         {tab === 'settings' && <SettingsScreen onAuthChange={refreshRole} />}
       </View>
       <View style={styles.tabs}>

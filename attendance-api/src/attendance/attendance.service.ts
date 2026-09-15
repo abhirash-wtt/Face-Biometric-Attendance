@@ -14,6 +14,8 @@ import { ShiftsService } from '../shifts/shifts.service';
 import { EmployeesService } from '../employees/employees.service';
 import { StorageService } from '../storage/storage.service';
 import { RecognitionService } from '../recognition/recognition.service';
+import { User } from '../auth/user.entity';
+import { ATTENDANCE_TZ, buildRoster, dayBoundsIst, parseRosterDate } from './roster';
 
 @Injectable()
 export class AttendanceService {
@@ -21,6 +23,7 @@ export class AttendanceService {
 
   constructor(
     @InjectRepository(AttendanceLog) private readonly repo: Repository<AttendanceLog>,
+    @InjectRepository(User) private readonly users: Repository<User>,
     private readonly sites: SitesService,
     private readonly shifts: ShiftsService,
     private readonly employees: EmployeesService,
@@ -114,6 +117,36 @@ export class AttendanceService {
       }),
     );
     return log;
+  }
+
+  async roster(date?: string) {
+    const day = parseRosterDate(date);
+    const { from, to } = dayBoundsIst(day);
+    const logs = await this.repo
+      .createQueryBuilder('a')
+      .where('a.event_time >= :from AND a.event_time <= :to', { from, to })
+      .orderBy('a.event_time', 'ASC')
+      .getMany();
+    const employees = await this.employees.findAll();
+    const users = await this.users.find();
+    const emailByEmployee = new Map(
+      users
+        .filter((u) => u.employee_id)
+        .map((u) => [u.employee_id as string, u.email]),
+    );
+    return {
+      date: day,
+      timezone: ATTENDANCE_TZ,
+      employees: buildRoster(
+        employees.map((e) => ({
+          id: e.id,
+          code: e.code,
+          display_name: e.display_name,
+          email: emailByEmployee.get(e.id) || null,
+        })),
+        logs,
+      ),
+    };
   }
 
   async query(from?: string, to?: string, employeeId?: string) {

@@ -138,6 +138,15 @@ export class AttendanceController {
     );
   }
 
+  @Get('attendance/status')
+  @Roles('admin')
+  @ApiOperation({
+    summary: 'Admin roster: clock-in, clock-out, and Present/Absent for every employee',
+  })
+  status(@Query('date') date?: string) {
+    return this.attendance.roster(date);
+  }
+
   @Get('attendance')
   @Roles('admin')
   @ApiOperation({ summary: 'Reports / export. format=json|csv|payroll' })

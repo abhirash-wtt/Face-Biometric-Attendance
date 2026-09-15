@@ -37,7 +37,7 @@ npm run start:dev
 
 API: http://localhost:3000  
 OpenAPI: http://localhost:3000/docs  
-Kiosk UI (same Kiosk / Enroll / Settings flows): http://localhost:3000/  
+Kiosk UI (Kiosk / Enroll / Attendance / Settings): http://localhost:3000/  
 Health: http://localhost:3000/health
 
 Seed employees / site / shift (admin user is also created on first boot):
@@ -48,7 +48,7 @@ npm run seed
 
 Seeded users:
 
-- `admin@attendance.local` / `Admin@123` (admin — full access, including enroll and device bind)
+- `admin@attendance.local` / `Admin@123` (admin — full access, including enroll, device bind, and viewing every employee’s clock-in/out and Present/Absent status)
 - `user@attendance.local` / `User@123` (user — not linked to an employee; cannot clock in until an admin sets `users.employee_id`)
 - `abhirash.garg@walkingtree.tech` / `faZWGpjhmB` (user — EMP001 Abhirash; clock-in requires Abhirash’s enrolled face)
 - `yatharth.kapoor@walkingtree.tech` / `nR8wKq2mX7pL` (user — EMP002 Yatharth Kapoor; clock-in requires Yatharth’s enrolled face)
@@ -69,7 +69,7 @@ On a device/emulator, set **Settings → API URL**:
 - Android emulator: `http://10.0.2.2:3000`
 - Physical device: `http://<your-lan-ip>:3000`
 
-Then **Login** (admin) or **Register this device**, enroll 3+ face samples, and use **Kiosk** to clock IN/OUT.
+Then **Login** (admin) or **Register this device**, enroll 3+ face samples, and use **Kiosk** to clock IN/OUT. Admins can open **Attendance** to see any user’s clock-in time, clock-out time, and Present/Absent status.
 
 Camera: `react-native-vision-camera`. Active liveness prompts: blink, turn left/right, smile.
 

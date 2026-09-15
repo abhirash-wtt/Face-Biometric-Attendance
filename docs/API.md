@@ -22,6 +22,7 @@ Kiosks: device token from `POST /devices/register`.
 | POST | `/attend/verify` | admin, user (incl. kiosk device) | 1:1 verify (must be the linked employee for user logins) |
 | POST | `/attendance` | admin, user (incl. kiosk device) | Create IN/OUT log (employee logins cannot clock in as someone else) |
 | GET | `/attendance` | admin | Reports; `format=csv\|payroll` |
+| GET | `/attendance/status` | admin | Roster for any employee: clock-in, clock-out, Present/Absent (`date=YYYY-MM-DD`, default today in Asia/Kolkata) |
 | GET | `/sites` | admin | Sites |
 | POST | `/sites` | admin | Create site |
 | GET | `/shifts` | admin | Shifts |
@@ -30,7 +31,7 @@ Kiosks: device token from `POST /devices/register`.
 | GET | `/config` | admin, user (incl. kiosk device) | Client thresholds |
 | GET | `/health` | public | Liveness of API + DB |
 
-Roles: **admin** has full access. **user** may only clock IN/OUT (`identify` / `verify` / `POST /attendance`) and read `/config`. Device JWTs use `role=kiosk` and are treated as **user**.
+Roles: **admin** has full access, including viewing any employee’s clock-in time, clock-out time, and Present/Absent status. **user** may only clock IN/OUT (`identify` / `verify` / `POST /attendance`) and read `/config`. Device JWTs use `role=kiosk` and are treated as **user**.
 
 Employee user accounts (`users.employee_id` set) can only clock in as that employee. `POST /attend/identify` then does **1:1** verification against that employee’s enrolled templates (it does not search other faces). A User login with no linked employee is rejected with HTTP 403. Shared kiosk device tokens remain **1:N**. `POST /attendance` for a linked login must send that employee’s `employee_id` plus `image_b64`; a spoofed id or a face that does not match returns 403 / 422. Re-login after this change so the access token includes `employee_id`.
 

@@ -28,6 +28,18 @@
     .emp { display:flex; gap:10px; padding:8px; border-bottom:1px solid #22344f; cursor:pointer; }
     .emp.on { background:#123348; }
     .code { color:var(--mint); width:80px; font-weight:700; }
+    .roster-toolbar { display:flex; gap:10px; align-items:flex-end; margin:8px 0 12px; }
+    .roster-toolbar label { flex:1; }
+    .roster-toolbar input { margin:4px 0 0; }
+    .roster-toolbar button { width:auto; margin:0; padding:12px 16px; }
+    .roster-wrap { overflow:auto; }
+    table.roster { width:100%; border-collapse:collapse; font-size:14px; }
+    table.roster th, table.roster td { text-align:left; padding:10px 8px; border-bottom:1px solid #22344f; vertical-align:top; }
+    table.roster th { color:var(--muted); font-weight:700; font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
+    .pill { display:inline-block; border-radius:999px; padding:4px 10px; font-weight:800; font-size:12px; }
+    .pill.present { background:#1f8a70; color:#fff; }
+    .pill.absent { background:#3a4a63; color:#c5d2e4; }
+    .muted { color:var(--muted); font-size:12px; }
     dialog { border:0; border-radius:16px; background:#152238; color:var(--text); padding:22px; width:min(420px, 92vw); }
     dialog::backdrop { background:rgba(4,10,22,.72); }
     .hidden { display:none; }
@@ -39,6 +51,7 @@
   <header>
     <button class="on" data-tab="kiosk">Kiosk</button>
     <button data-tab="enroll" id="enrollTabBtn">Enroll</button>
+    <button data-tab="attendance" id="attendanceTabBtn">Attendance</button>
     <button data-tab="settings">Settings</button>
   </header>
   <main>
@@ -62,6 +75,28 @@
       <div class="list" id="empList"></div>
       <button class="cta" id="sampleBtn">Capture sample</button>
       <p class="status" id="enrollStatus">Select an employee. Confirm your face is visible above, then capture 3–5 samples.</p>
+    </section>
+    <section id="attendance" class="hidden">
+      <h1>Attendance</h1>
+      <p class="muted" id="rosterMeta">Clock-in, clock-out, and current status for every employee.</p>
+      <div class="roster-toolbar">
+        <label>Date<input id="rosterDate" type="date" /></label>
+        <button class="cta" id="rosterRefreshBtn">Refresh</button>
+      </div>
+      <div class="roster-wrap">
+        <table class="roster">
+          <thead>
+            <tr>
+              <th>Employee</th>
+              <th>Clock in</th>
+              <th>Clock out</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="rosterBody"></tbody>
+        </table>
+      </div>
+      <p class="status" id="rosterStatus"></p>
     </section>
     <section id="settings" class="hidden">
       <h1>Settings</h1>
@@ -217,6 +252,7 @@
       const isAdmin = role === 'admin';
       const user = authUser();
       $('enrollTabBtn').classList.toggle('rbac-hide', !isAdmin);
+      $('attendanceTabBtn').classList.toggle('rbac-hide', !isAdmin);
       $('adminBindBlock').classList.toggle('rbac-hide', role === 'user');
       $('bindBtn').classList.toggle('rbac-hide', role === 'user');
       if (role && user && user.email) {
@@ -226,10 +262,10 @@
       } else {
         $('roleBadge').textContent = 'Not signed in';
       }
-      if (!isAdmin && state.tab === 'enroll') {
+      if (!isAdmin && (state.tab === 'enroll' || state.tab === 'attendance')) {
         state.tab = 'kiosk';
         document.querySelectorAll('header button').forEach((x) => x.classList.toggle('on', x.dataset.tab === 'kiosk'));
-        ['kiosk','enroll','settings'].forEach((id) => $(id).classList.toggle('hidden', id !== 'kiosk'));
+        ['kiosk','enroll','attendance','settings'].forEach((id) => $(id).classList.toggle('hidden', id !== 'kiosk'));
         $('cameraPanel').classList.remove('hidden');
         $('livenessPrompt').style.visibility = 'visible';
       }
@@ -344,12 +380,13 @@
 
     document.querySelectorAll('header button').forEach((b) => {
       b.onclick = () => {
-        if (b.dataset.tab === 'enroll' && jwtRole() !== 'admin') return;
+        if ((b.dataset.tab === 'enroll' || b.dataset.tab === 'attendance') && jwtRole() !== 'admin') return;
         state.tab = b.dataset.tab;
         document.querySelectorAll('header button').forEach((x) => x.classList.toggle('on', x === b));
-        ['kiosk','enroll','settings'].forEach((id) => $(id).classList.toggle('hidden', id !== state.tab));
-        $('cameraPanel').classList.toggle('hidden', state.tab === 'settings');
+        ['kiosk','enroll','attendance','settings'].forEach((id) => $(id).classList.toggle('hidden', id !== state.tab));
+        $('cameraPanel').classList.toggle('hidden', state.tab === 'settings' || state.tab === 'attendance');
         $('livenessPrompt').style.visibility = state.tab === 'kiosk' ? 'visible' : 'hidden';
+        if (state.tab === 'attendance') loadRoster().catch(() => {});
       };
     });
     document.querySelectorAll('button.toggle[data-punch]').forEach((b) => {
@@ -466,6 +503,45 @@
         status('enrollStatus', 'Saved sample ' + state.samples + ' for ' + state.selected.display_name);
       } catch (e) { status('enrollStatus', e.message); }
     };
+
+    function esc(s) {
+      return String(s || '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;' }[c]));
+    }
+    function formatPunch(iso) {
+      if (!iso) return '—';
+      try {
+        return new Date(iso).toLocaleTimeString('en-IN', {
+          timeZone: 'Asia/Kolkata',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        });
+      } catch {
+        return String(iso);
+      }
+    }
+    async function loadRoster() {
+      const date = $('rosterDate').value;
+      status('rosterStatus', 'Loading…');
+      try {
+        const res = await api('/attendance/status' + (date ? ('?date=' + encodeURIComponent(date)) : ''));
+        if (res.date) $('rosterDate').value = res.date;
+        $('rosterMeta').textContent = 'Times in ' + (res.timezone || 'Asia/Kolkata') + ' for ' + (res.date || '') + '.';
+        const rows = res.employees || [];
+        $('rosterBody').innerHTML = rows.length
+          ? rows.map((r) => {
+              const who = esc(r.display_name) + ' (' + esc(r.employee_code) + ')';
+              const email = r.email ? '<div class="muted">' + esc(r.email) + '</div>' : '';
+              const pill = r.status === 'Present' ? 'present' : 'absent';
+              return '<tr><td>' + who + email + '</td><td>' + formatPunch(r.clock_in) + '</td><td>' + formatPunch(r.clock_out) + '</td><td><span class="pill ' + pill + '">' + esc(r.status) + '</span></td></tr>';
+            }).join('')
+          : '<tr><td colspan="4" class="muted">No employees found</td></tr>';
+        status('rosterStatus', rows.length + ' employee' + (rows.length === 1 ? '' : 's'));
+      } catch (e) {
+        status('rosterStatus', e.message || 'Unable to load attendance');
+      }
+    }
+    $('rosterRefreshBtn').onclick = () => loadRoster().catch((e) => status('rosterStatus', e.message));
 
     function fillSettings() {
       $('apiBase').value = state.settings.apiBase;

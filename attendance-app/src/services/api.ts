@@ -13,6 +13,16 @@ export type IdentifyResponse = {
   top?: Array<{ employee_id: string; display_name: string; cosine_sim: number }>;
 };
 
+export type AttendanceStatusRow = {
+  employee_id: string;
+  employee_code: string;
+  display_name: string;
+  email: string | null;
+  clock_in: string | null;
+  clock_out: string | null;
+  status: 'Present' | 'Absent';
+};
+
 async function request<T>(
   path: string,
   options: {
@@ -91,6 +101,12 @@ export const api = {
   },
   attendance(payload: Record<string, unknown>) {
     return request('/attendance', { method: 'POST', body: payload });
+  },
+  attendanceStatus(date?: string) {
+    const qs = date ? `?date=${encodeURIComponent(date)}` : '';
+    return request<{ date: string; timezone: string; employees: AttendanceStatusRow[] }>(
+      `/attendance/status${qs}`,
+    );
   },
   enroll(employeeId: string, imageB64: string, liveness?: number) {
     return request('/enroll', {
