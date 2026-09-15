@@ -84,8 +84,8 @@ function DatePickerField({
   return (
     <>
       <Pressable onPress={() => setOpen(true)} style={styles.dateField} accessibilityRole="button">
-        <Text style={styles.dateLabel}>{formatDateLabel(selected)}</Text>
         <Text style={styles.calIcon}>📅</Text>
+        <Text style={styles.dateLabel}>{formatDateLabel(selected)}</Text>
       </Pressable>
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <Pressable style={styles.calBackdrop} onPress={() => setOpen(false)}>
@@ -219,7 +219,8 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
+    gap: 10,
     borderWidth: 1,
     borderColor: '#2a3d5c',
     borderRadius: 10,

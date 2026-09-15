@@ -32,7 +32,7 @@
     .roster-toolbar > .cta { width:auto; margin:0; padding:12px 16px; }
     .date-picker { flex:1; position:relative; }
     .date-field {
-      width:100%; display:flex; align-items:center; justify-content:space-between; gap:8px;
+      width:100%; display:flex; align-items:center; justify-content:flex-start; gap:10px;
       background:transparent; border:1px solid var(--line); color:var(--text);
       border-radius:10px; padding:10px 12px; margin:4px 0 0; font-weight:700;
       cursor:pointer; text-align:left;
@@ -106,8 +106,8 @@
         <div class="date-picker">
           <label for="rosterDateBtn">Date</label>
           <button type="button" class="date-field" id="rosterDateBtn" aria-haspopup="dialog" aria-expanded="false">
-            <span id="rosterDateLabel">Select date</span>
             <span class="cal-icon" aria-hidden="true">📅</span>
+            <span id="rosterDateLabel">Select date</span>
           </button>
           <input id="rosterDate" type="hidden" />
           <div id="rosterCalendar" class="calendar hidden" role="dialog" aria-label="Choose date"></div>
