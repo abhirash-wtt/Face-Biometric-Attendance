@@ -1,11 +1,12 @@
 import React, { useCallback, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { CameraView } from '../components/CameraView';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { api } from '../services/api';
 import { getCurrentGps } from '../services/geo';
 import { storage } from '../services/storage';
+import { TAP_TARGET, useLayout } from '../theme/responsive';
 import {
   AppDispatch,
   RootState,
@@ -31,6 +32,7 @@ function identifyFailMessage(reason?: string) {
 
 export function KioskScreen() {
   const dispatch = useDispatch<AppDispatch>();
+  const layout = useLayout();
   const { punchType, lastMessage, busy, livenessPrompt } = useSelector(
     (s: RootState) => s.attendance,
   );
@@ -150,10 +152,18 @@ export function KioskScreen() {
   };
 
   return (
-    <View style={styles.root}>
-      <Text style={styles.brand}>Face Attendance</Text>
+    <ScrollView
+      style={styles.root}
+      contentContainerStyle={[
+        styles.content,
+        { padding: layout.gutter, maxWidth: layout.maxContentWidth },
+      ]}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+    >
+      <Text style={[styles.brand, layout.short && styles.brandShort]}>Face Attendance</Text>
       <Text style={styles.prompt}>{promptCopy[livenessPrompt] || livenessPrompt}</Text>
-      <View style={styles.camera}>
+      <View style={[styles.camera, { height: layout.cameraHeight }]}>
         <CameraView onReady={onReady} />
       </View>
       <View style={styles.toggle}>
@@ -161,13 +171,20 @@ export function KioskScreen() {
           <Pressable
             key={t}
             onPress={() => dispatch(setPunchType(t))}
+            accessibilityRole="button"
+            accessibilityState={{ selected: punchType === t }}
             style={[styles.toggleBtn, punchType === t && styles.toggleOn]}
           >
             <Text style={[styles.toggleText, punchType === t && styles.toggleTextOn]}>{t}</Text>
           </Pressable>
         ))}
       </View>
-      <Pressable disabled={busy} onPress={captureAndIdentify} style={styles.cta}>
+      <Pressable
+        disabled={busy}
+        onPress={captureAndIdentify}
+        accessibilityRole="button"
+        style={[styles.cta, busy && styles.ctaBusy]}
+      >
         <Text style={styles.ctaText}>{busy ? 'Working…' : `Clock ${punchType}`}</Text>
       </Pressable>
       {!!lastMessage && <Text style={styles.status}>{lastMessage}</Text>}
@@ -183,34 +200,47 @@ export function KioskScreen() {
         onConfirm={confirmAttendance}
         onCancel={() => setPending(null)}
       />
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#07111f', padding: 16 },
-  brand: { color: '#f4f7fb', fontSize: 28, fontWeight: '800', textAlign: 'center', marginTop: 8 },
+  root: { flex: 1, backgroundColor: '#07111f' },
+  content: { flexGrow: 1, width: '100%', alignSelf: 'center' },
+  brand: {
+    color: '#f4f7fb',
+    fontSize: 28,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  brandShort: { fontSize: 22, marginTop: 0 },
   prompt: { color: '#7ee0c5', textAlign: 'center', marginVertical: 10, fontSize: 16 },
-  camera: { flex: 1, minHeight: 280, marginVertical: 8 },
+  camera: { marginVertical: 8 },
   toggle: { flexDirection: 'row', gap: 10, marginTop: 12 },
   toggleBtn: {
     flex: 1,
+    minHeight: TAP_TARGET,
     borderWidth: 1,
     borderColor: '#2a3d5c',
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   toggleOn: { backgroundColor: '#1f8a70', borderColor: '#1f8a70' },
   toggleText: { color: '#9fb0c8', fontWeight: '700', fontSize: 18 },
   toggleTextOn: { color: '#fff' },
   cta: {
     marginTop: 12,
+    minHeight: TAP_TARGET + 4,
     backgroundColor: '#2d6cdf',
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
+    justifyContent: 'center',
   },
+  ctaBusy: { opacity: 0.6 },
   ctaText: { color: '#fff', fontSize: 18, fontWeight: '800' },
   status: { color: '#c5d2e4', textAlign: 'center', marginTop: 12, fontSize: 16 },
 });

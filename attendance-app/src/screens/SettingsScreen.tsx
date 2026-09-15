@@ -1,9 +1,21 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TextInputProps,
+  View,
+} from 'react-native';
 import { api } from '../services/api';
 import { storage, Settings } from '../services/storage';
+import { TAP_TARGET, useLayout } from '../theme/responsive';
 
 export function SettingsScreen({ onAuthChange }: { onAuthChange?: () => void }) {
+  const layout = useLayout();
   const [settings, setSettings] = useState<Settings>({
     apiBase: '',
     deviceId: '',
@@ -76,41 +88,74 @@ export function SettingsScreen({ onAuthChange }: { onAuthChange?: () => void }) 
   };
 
   return (
-    <ScrollView style={styles.root} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Settings</Text>
-      <Text style={styles.section}>{role ? `Signed in as ${role}` : 'Not signed in'}</Text>
-      <Field label="API URL" value={settings.apiBase} onChange={(apiBase) => setSettings({ ...settings, apiBase })} />
-      <Field label="Device ID" value={settings.deviceId} onChange={(deviceId) => setSettings({ ...settings, deviceId })} />
-      <Field label="Site code" value={settings.siteCode} onChange={(siteCode) => setSettings({ ...settings, siteCode })} />
-      {showBind && (
+    <KeyboardAvoidingView
+      style={styles.root}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView
+        style={styles.root}
+        contentContainerStyle={[
+          styles.content,
+          { paddingHorizontal: layout.gutter, maxWidth: layout.maxContentWidth },
+        ]}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
+        <Text style={styles.title}>Settings</Text>
+        <Text style={styles.section}>{role ? `Signed in as ${role}` : 'Not signed in'}</Text>
         <Field
-          label="Device bind secret"
-          value={settings.bootstrapSecret}
-          onChange={(bootstrapSecret) => setSettings({ ...settings, bootstrapSecret })}
+          label="API URL"
+          value={settings.apiBase}
+          onChange={(apiBase) => setSettings({ ...settings, apiBase })}
+          keyboardType="url"
         />
-      )}
-      <Pressable onPress={save} style={styles.btn}>
-        <Text style={styles.btnText}>Save</Text>
-      </Pressable>
-      <Text style={styles.section}>Login</Text>
-      <Field label="Email" value={email} onChange={setEmail} />
-      <Field label="Password" value={password} onChange={setPassword} secure />
-      <Pressable onPress={login} style={styles.btn}>
-        <Text style={styles.btnText}>Login</Text>
-      </Pressable>
-      <Pressable onPress={logout} style={styles.btnAlt}>
-        <Text style={styles.btnText}>Logout</Text>
-      </Pressable>
-      {showBind && (
-        <Pressable onPress={bind} style={styles.btnAlt}>
-          <Text style={styles.btnText}>Register this device</Text>
+        <Field
+          label="Device ID"
+          value={settings.deviceId}
+          onChange={(deviceId) => setSettings({ ...settings, deviceId })}
+        />
+        <Field
+          label="Site code"
+          value={settings.siteCode}
+          onChange={(siteCode) => setSettings({ ...settings, siteCode })}
+        />
+        {showBind && (
+          <Field
+            label="Device bind secret"
+            value={settings.bootstrapSecret}
+            onChange={(bootstrapSecret) => setSettings({ ...settings, bootstrapSecret })}
+          />
+        )}
+        <Pressable onPress={save} accessibilityRole="button" style={styles.btn}>
+          <Text style={styles.btnText}>Save</Text>
         </Pressable>
-      )}
-      <Pressable onPress={flush} style={styles.btnAlt}>
-        <Text style={styles.btnText}>Sync offline queue</Text>
-      </Pressable>
-      {!!message && <Text style={styles.status}>{message}</Text>}
-    </ScrollView>
+        <Text style={styles.section}>Login</Text>
+        <Field label="Email" value={email} onChange={setEmail} keyboardType="email-address" />
+        <Field
+          label="Password"
+          value={password}
+          onChange={setPassword}
+          secure
+          returnKeyType="go"
+          onSubmit={login}
+        />
+        <Pressable onPress={login} accessibilityRole="button" style={styles.btn}>
+          <Text style={styles.btnText}>Login</Text>
+        </Pressable>
+        <Pressable onPress={logout} accessibilityRole="button" style={styles.btnAlt}>
+          <Text style={styles.btnText}>Logout</Text>
+        </Pressable>
+        {showBind && (
+          <Pressable onPress={bind} accessibilityRole="button" style={styles.btnAlt}>
+            <Text style={styles.btnText}>Register this device</Text>
+          </Pressable>
+        )}
+        <Pressable onPress={flush} accessibilityRole="button" style={styles.btnAlt}>
+          <Text style={styles.btnText}>Sync offline queue</Text>
+        </Pressable>
+        {!!message && <Text style={styles.status}>{message}</Text>}
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -119,11 +164,17 @@ function Field({
   value,
   onChange,
   secure,
+  keyboardType,
+  returnKeyType,
+  onSubmit,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   secure?: boolean;
+  keyboardType?: TextInputProps['keyboardType'];
+  returnKeyType?: TextInputProps['returnKeyType'];
+  onSubmit?: () => void;
 }) {
   return (
     <View style={styles.field}>
@@ -133,7 +184,13 @@ function Field({
         onChangeText={onChange}
         secureTextEntry={secure}
         autoCapitalize="none"
+        autoCorrect={false}
+        spellCheck={false}
+        keyboardType={keyboardType}
+        returnKeyType={returnKeyType ?? 'next'}
+        onSubmitEditing={onSubmit}
         placeholderTextColor="#6d7f96"
+        accessibilityLabel={label}
         style={styles.input}
       />
     </View>
@@ -142,31 +199,43 @@ function Field({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#07111f' },
-  content: { padding: 16, paddingBottom: 40 },
+  content: {
+    width: '100%',
+    alignSelf: 'center',
+    paddingTop: 16,
+    // Leaves room to scroll the last button clear of the keyboard on short screens.
+    paddingBottom: 48,
+  },
   title: { color: '#f4f7fb', fontSize: 24, fontWeight: '800', marginBottom: 12 },
   section: { color: '#7ee0c5', fontWeight: '700', marginTop: 18, marginBottom: 8 },
   field: { marginBottom: 10 },
   label: { color: '#9fb0c8', marginBottom: 4 },
   input: {
+    minHeight: TAP_TARGET,
     borderWidth: 1,
     borderColor: '#2a3d5c',
     borderRadius: 10,
     color: '#f4f7fb',
+    fontSize: 16,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
   btn: {
+    minHeight: TAP_TARGET,
     backgroundColor: '#2d6cdf',
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
+    justifyContent: 'center',
     marginTop: 8,
   },
   btnAlt: {
+    minHeight: TAP_TARGET,
     backgroundColor: '#1f8a70',
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
+    justifyContent: 'center',
     marginTop: 8,
   },
   btnText: { color: '#fff', fontWeight: '800' },

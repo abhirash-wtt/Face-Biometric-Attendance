@@ -7,6 +7,8 @@ build/
 coverage/
 minio/
 attendance-api/uploads/
+attendance-api/certs/
+*.pem
 attendance-api/models/*.onnx
 attendance-app/android/app/build/
 attendance-app/ios/Pods/

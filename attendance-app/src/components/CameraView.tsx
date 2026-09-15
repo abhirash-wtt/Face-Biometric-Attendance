@@ -35,8 +35,13 @@ function WebCamera({ onReady }: Props) {
     let cancelled = false;
     (async () => {
       try {
+        // Phone browsers reject exact dimensions far more often than desktops, so stay on "ideal".
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'user', width: 640, height: 480 },
+          video: {
+            facingMode: { ideal: 'user' },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
           audio: false,
         });
         if (cancelled) return;
@@ -68,7 +73,8 @@ function WebCamera({ onReady }: Props) {
         autoPlay: true,
         playsInline: true,
         muted: true,
-        style: { width: '100%', height: '100%', objectFit: 'cover' },
+        // The preview mirrors like a selfie camera; the captured frame stays unmirrored.
+        style: { width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' },
       })}
     </View>
   );
@@ -99,29 +105,28 @@ function NativeCamera({ onReady }: Props) {
 
   if (!Camera || !device) {
     return (
-      <View style={styles.box}>
+      <View style={[styles.box, styles.center]}>
         <Text style={styles.hint}>Point the kiosk camera at the employee</Text>
       </View>
     );
   }
 
   return (
-    <Camera
-      ref={cameraRef}
-      style={StyleSheet.absoluteFill}
-      device={device}
-      isActive
-      photo
-    />
+    <View style={styles.box}>
+      <Camera ref={cameraRef} style={StyleSheet.absoluteFill} device={device} isActive photo />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   box: {
     flex: 1,
+    width: '100%',
+    minHeight: 160,
     backgroundColor: '#0b1220',
     overflow: 'hidden',
     borderRadius: 16,
   },
-  hint: { color: '#9fb0c8', textAlign: 'center', marginTop: 24, paddingHorizontal: 16 },
+  center: { alignItems: 'center', justifyContent: 'center' },
+  hint: { color: '#9fb0c8', textAlign: 'center', paddingHorizontal: 16 },
 });

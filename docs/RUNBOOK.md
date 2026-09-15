@@ -40,6 +40,34 @@ OpenAPI: http://localhost:3000/docs
 Kiosk UI (Kiosk / Enroll / Attendance / Settings): http://localhost:3000/  
 Health: http://localhost:3000/health
 
+### 2a. HTTPS for phones (required for the camera)
+
+Browsers only expose the camera and GPS on a *secure context*: HTTPS, or `localhost`.
+A phone opening `http://<lan-ip>:3000` therefore shows "Camera needs a secure
+connection" and cannot clock anyone in. Serve the kiosk over HTTPS instead:
+
+```bash
+cd attendance-api
+npm run cert:dev                 # writes certs/dev-{key,cert}.pem for localhost + your LAN IPs
+# set HTTPS_ENABLED=true in .env
+npm run start:dev
+```
+
+The API then listens on both schemes and logs the phone URL on startup:
+
+- `http://localhost:3000` — unchanged; still serves the API for the React Native app
+- `https://<lan-ip>:3443` — kiosk with a working camera (`HTTPS_PORT` to change the port)
+
+Browser page loads arriving over plain HTTP from a non-localhost address are redirected
+to the HTTPS origin, so typing `http://<lan-ip>:3000` on a phone lands on HTTPS. API
+requests over HTTP are never redirected, so the native app keeps working as before.
+
+The dev certificate is self-signed, so a phone warns on first visit — choose **Advanced →
+Proceed** (Chrome) or **Show Details → visit this website** (Safari). The camera works
+normally once accepted. For a warning-free setup, use a certificate trusted by the device
+(`mkcert` with its root CA installed, a real cert via `HTTPS_KEY_PATH`/`HTTPS_CERT_PATH`,
+or an HTTPS tunnel such as `cloudflared`).
+
 Seed employees / site / shift (admin user is also created on first boot):
 
 ```bash
@@ -68,6 +96,9 @@ On a device/emulator, set **Settings → API URL**:
 
 - Android emulator: `http://10.0.2.2:3000`
 - Physical device: `http://<your-lan-ip>:3000`
+
+The native app talks to plain HTTP happily; the secure-context rule above applies only to
+browsers, so there is no need to point the app at the HTTPS port.
 
 Then **Login** (admin) or **Register this device**, enroll 3+ face samples, and use **Kiosk** to clock IN/OUT. Admins can open **Attendance** to see any user’s clock-in time, clock-out time, and Present/Absent status.
 

@@ -2,60 +2,148 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0c182c" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="format-detection" content="telephone=no" />
   <title>Face Attendance</title>
   <style>
-    :root { --bg:#07111f; --card:#102038; --line:#2a3d5c; --text:#f4f7fb; --muted:#9fb0c8; --accent:#2d6cdf; --ok:#1f8a70; --mint:#7ee0c5; }
+    :root {
+      --bg:#07111f; --card:#102038; --line:#2a3d5c; --text:#f4f7fb; --muted:#9fb0c8;
+      --accent:#2d6cdf; --ok:#1f8a70; --mint:#7ee0c5;
+      --tap:48px;
+      --gutter:16px;
+      --safe-l:env(safe-area-inset-left, 0px);
+      --safe-r:env(safe-area-inset-right, 0px);
+      --safe-t:env(safe-area-inset-top, 0px);
+      --safe-b:env(safe-area-inset-bottom, 0px);
+    }
     * { box-sizing: border-box; }
-    body { margin:0; font-family: Segoe UI, system-ui, sans-serif; background:var(--bg); color:var(--text); }
-    header { display:flex; gap:8px; padding:10px 12px; border-bottom:1px solid #1b2b44; background:#0c182c; }
-    header button { flex:1; background:transparent; color:var(--muted); border:0; padding:12px; font-weight:700; cursor:pointer; }
-    header button.on { color:var(--mint); border-bottom:2px solid var(--mint); }
-    main { max-width:720px; margin:0 auto; padding:16px; }
-    h1 { margin:0 0 8px; font-size:28px; }
-    .prompt { color:var(--mint); text-align:center; margin:8px 0 12px; }
-    video, canvas { width:100%; height:320px; object-fit:cover; background:#0b1220; border-radius:16px; }
-    .row { display:flex; gap:10px; margin-top:12px; }
-    button.cta, button.alt, button.toggle { border:0; border-radius:12px; padding:14px; font-weight:800; cursor:pointer; color:#fff; }
+    html {
+      -webkit-text-size-adjust:100%; text-size-adjust:100%;
+      /* Keeps the layout stable when the mobile keyboard or URL bar resizes the viewport. */
+      height:100%;
+    }
+    body {
+      margin:0; min-height:100dvh; font-family: Segoe UI, system-ui, sans-serif;
+      background:var(--bg); color:var(--text);
+      overscroll-behavior-y:contain;
+      -webkit-tap-highlight-color:transparent;
+    }
+    button, .date-field, .emp, .toggle { touch-action:manipulation; }
+    :focus-visible { outline:2px solid var(--mint); outline-offset:2px; }
+
+    header {
+      display:flex; gap:4px; border-bottom:1px solid #1b2b44; background:#0c182c;
+      position:sticky; top:0; z-index:40;
+      padding:calc(8px + var(--safe-t)) max(8px, var(--safe-l)) 0 max(8px, var(--safe-r));
+      overflow-x:auto; overflow-y:hidden;
+      scrollbar-width:none; -ms-overflow-style:none; -webkit-overflow-scrolling:touch;
+    }
+    header::-webkit-scrollbar { display:none; }
+    header button {
+      flex:1 1 auto; min-width:fit-content; min-height:var(--tap);
+      background:transparent; color:var(--muted); border:0;
+      padding:12px 10px; font-size:clamp(13px, 3.6vw, 15px); font-weight:700;
+      white-space:nowrap; cursor:pointer;
+      border-bottom:2px solid transparent;
+    }
+    header button.on { color:var(--mint); border-bottom-color:var(--mint); }
+
+    main {
+      max-width:720px; margin:0 auto;
+      padding:var(--gutter) max(var(--gutter), var(--safe-l)) calc(var(--gutter) + var(--safe-b)) max(var(--gutter), var(--safe-r));
+    }
+    h1 { margin:0 0 8px; font-size:clamp(22px, 6.5vw, 28px); line-height:1.2; }
+    .prompt { color:var(--mint); text-align:center; margin:8px 0 12px; font-size:clamp(14px, 4vw, 16px); }
+
+    #cameraPanel { position:relative; }
+    video, canvas {
+      display:block; width:100%; height:clamp(200px, 42dvh, 360px);
+      object-fit:cover; background:#0b1220; border-radius:16px;
+    }
+    /* Selfie preview reads as a mirror; the captured frame stays unmirrored. */
+    #cam { transform:scaleX(-1); }
+    .cam-overlay {
+      position:absolute; inset:0; display:flex; flex-direction:column;
+      align-items:center; justify-content:center; gap:10px; padding:16px;
+      background:rgba(7,17,31,.88); border-radius:16px; text-align:center;
+    }
+    .cam-overlay .cta { width:auto; min-width:min(260px, 80%); margin:0; }
+    .cam-secure-link {
+      display:flex; align-items:center; justify-content:center;
+      background:var(--ok); color:#fff; text-decoration:none;
+    }
+
+    .row { display:flex; flex-wrap:wrap; gap:10px; margin-top:12px; }
+    button.cta, button.alt, button.toggle {
+      border:0; border-radius:12px; padding:14px; min-height:var(--tap);
+      font-size:16px; font-weight:800; cursor:pointer; color:#fff;
+    }
     button.cta { background:var(--accent); width:100%; margin-top:12px; }
     button.alt { background:var(--ok); width:100%; margin-top:8px; }
-    button.toggle { flex:1; background:transparent; border:1px solid var(--line); color:var(--muted); }
+    button.toggle { flex:1 1 120px; background:transparent; border:1px solid var(--line); color:var(--muted); }
     button.toggle.on { background:var(--ok); border-color:var(--ok); color:#fff; }
-    input { width:100%; background:transparent; border:1px solid var(--line); color:var(--text); border-radius:10px; padding:10px 12px; margin:4px 0 10px; }
-    label { color:var(--muted); font-size:13px; }
-    .status { text-align:center; color:#c5d2e4; margin-top:12px; min-height:24px; }
-    .list { max-height:150px; overflow:auto; margin-bottom:10px; }
-    .emp { display:flex; gap:10px; padding:8px; border-bottom:1px solid #22344f; cursor:pointer; }
+    button:disabled { opacity:.6; cursor:not-allowed; }
+
+    input {
+      width:100%; background:transparent; border:1px solid var(--line); color:var(--text);
+      border-radius:10px; padding:12px; margin:4px 0 10px;
+      /* 16px keeps iOS Safari from zooming in when a field gets focus. */
+      font-size:16px; min-height:var(--tap);
+    }
+    label { display:block; color:var(--muted); font-size:13px; }
+    .status { text-align:center; color:#c5d2e4; margin-top:12px; min-height:24px; overflow-wrap:anywhere; }
+
+    /* Search field and button share a line so the keyboard leaves room for the camera. */
+    .search-row { display:flex; gap:10px; align-items:stretch; }
+    .search-row input { flex:1 1 auto; min-width:0; margin:0; }
+    .search-row .cta { flex:0 0 auto; width:auto; margin:0; padding:12px 18px; }
+
+    .list { max-height:min(40dvh, 240px); overflow-y:auto; -webkit-overflow-scrolling:touch; margin:10px 0; }
+    .emp {
+      display:flex; gap:10px; align-items:center; min-height:var(--tap);
+      padding:10px 8px; border-bottom:1px solid #22344f; cursor:pointer;
+    }
     .emp.on { background:#123348; }
-    .code { color:var(--mint); width:80px; font-weight:700; }
-    .roster-toolbar { display:flex; gap:10px; align-items:flex-end; margin:8px 0 12px; }
-    .roster-toolbar > .cta { width:auto; margin:0; padding:12px 16px; }
-    .date-picker { flex:1; position:relative; }
+    .emp > span:last-child { overflow-wrap:anywhere; }
+    .code { color:var(--mint); flex:0 0 72px; font-weight:700; }
+
+    .roster-toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin:8px 0 12px; }
+    .roster-toolbar > .cta { flex:0 1 auto; width:auto; margin:0; padding:12px 18px; }
+    .date-picker { flex:1 1 200px; position:relative; }
     .date-field {
       width:100%; display:flex; align-items:center; justify-content:flex-start; gap:10px;
       background:transparent; border:1px solid var(--line); color:var(--text);
-      border-radius:10px; padding:10px 12px; margin:4px 0 0; font-weight:700;
-      cursor:pointer; text-align:left;
+      border-radius:10px; padding:12px; margin:4px 0 0; min-height:var(--tap);
+      font-size:15px; font-weight:700; cursor:pointer; text-align:left;
     }
-    .date-field:hover { border-color:var(--mint); }
+    .date-field > span:last-child { overflow-wrap:anywhere; }
     .cal-icon { color:var(--mint); font-size:16px; line-height:1; }
     .calendar {
-      position:absolute; z-index:30; top:calc(100% + 6px); left:0; min-width:280px;
+      position:absolute; z-index:60; top:calc(100% + 6px); left:0;
+      width:max(280px, 100%); max-width:calc(100vw - 2 * var(--gutter));
       background:#152238; border:1px solid var(--line); border-radius:14px; padding:12px;
       box-shadow:0 16px 40px rgba(0,0,0,.45);
     }
     .calendar-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
     .calendar-head strong { font-size:14px; }
-    .calendar-head button { width:auto; margin:0; padding:6px 10px; background:#102038; color:var(--mint); border:0; border-radius:8px; font-weight:800; cursor:pointer; }
+    .calendar-head button {
+      width:auto; margin:0; padding:8px 14px; min-height:40px; background:#102038;
+      color:var(--mint); border:0; border-radius:8px; font-size:16px; font-weight:800; cursor:pointer;
+    }
     .calendar-grid { display:grid; grid-template-columns:repeat(7, 1fr); gap:4px; }
     .calendar-grid span, .calendar-grid button.day {
       width:100%; margin:0; padding:8px 0; border:0; border-radius:8px;
       background:transparent; color:var(--text); font-weight:700; cursor:pointer;
     }
+    .calendar-grid button.day { min-height:40px; font-size:15px; }
     .calendar-grid span { color:var(--muted); font-size:11px; cursor:default; font-weight:700; }
     .calendar-grid button.day.on { background:var(--ok); color:#fff; }
-    .calendar-grid button.day:hover { background:#1b2b44; }
-    .roster-wrap { overflow:auto; }
+
+    .roster-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
     table.roster { width:100%; border-collapse:collapse; font-size:14px; }
     table.roster th, table.roster td { text-align:left; padding:10px 8px; border-bottom:1px solid #22344f; vertical-align:top; }
     table.roster th { color:var(--muted); font-weight:700; font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
@@ -63,11 +151,60 @@
     .pill.present { background:#1f8a70; color:#fff; }
     .pill.absent { background:#3a4a63; color:#c5d2e4; }
     .muted { color:var(--muted); font-size:12px; }
-    dialog { border:0; border-radius:16px; background:#152238; color:var(--text); padding:22px; width:min(420px, 92vw); }
+
+    dialog {
+      border:0; border-radius:16px; background:#152238; color:var(--text);
+      padding:22px; width:min(420px, calc(100vw - 2 * var(--gutter)));
+      max-height:calc(100dvh - 2 * var(--gutter)); overflow-y:auto;
+    }
+    dialog h2 { margin:0 0 8px; font-size:clamp(19px, 5vw, 22px); }
+    dialog p { white-space:pre-line; overflow-wrap:anywhere; }
+    dialog .row > button { flex:1 1 96px; margin:0; }
     dialog::backdrop { background:rgba(4,10,22,.72); }
-    .hidden { display:none; }
+
+    .hidden { display:none !important; }
     .rbac-hide { display:none !important; }
-    .role-badge { color:var(--mint); font-size:13px; margin:0 0 10px; }
+    .role-badge { color:var(--mint); font-size:13px; margin:0 0 10px; overflow-wrap:anywhere; }
+
+    /* Phones: the roster reads as stacked cards instead of a four-column table. */
+    @media (max-width: 600px) {
+      table.roster thead { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+      table.roster, table.roster tbody, table.roster tr, table.roster td { display:block; width:100%; }
+      table.roster tr {
+        border:1px solid #22344f; border-radius:12px; background:var(--card);
+        padding:6px 12px; margin-bottom:10px;
+      }
+      table.roster td {
+        display:flex; gap:12px; align-items:baseline; justify-content:space-between;
+        padding:8px 0; border-bottom:1px solid #1b2b44; text-align:right;
+      }
+      table.roster tr td:last-child { border-bottom:0; }
+      table.roster td::before {
+        content:attr(data-label); flex:0 0 auto;
+        color:var(--muted); font-size:11px; font-weight:700;
+        text-transform:uppercase; letter-spacing:.04em; text-align:left;
+      }
+      table.roster td[data-label="Employee"] { display:block; text-align:left; font-size:15px; }
+      table.roster td[data-label="Employee"]::before { display:block; margin-bottom:2px; }
+      table.roster td:empty, table.roster td[colspan]::before { display:none; }
+    }
+
+    /* Landscape phones are short but wide, so the camera moves beside the controls
+       instead of pushing the action button below the fold. */
+    @media (orientation: landscape) and (max-height: 560px) {
+      main { display:flex; flex-direction:row; gap:16px; align-items:flex-start; max-width:960px; }
+      #cameraPanel { flex:1 1 44%; min-width:0; }
+      main > section { flex:1 1 56%; min-width:0; }
+      video, canvas { height:clamp(150px, 62dvh, 300px); }
+      h1 { margin:0 0 6px; }
+      .prompt { margin:0 0 8px; }
+      button.cta { margin-top:10px; }
+      .list { max-height:min(30dvh, 132px); margin:8px 0; }
+    }
+
+    @media (min-width: 900px) {
+      main { padding-top:24px; }
+    }
   </style>
 </head>
 <body>
@@ -80,7 +217,12 @@
   <main>
     <div id="cameraPanel">
       <p class="prompt" id="livenessPrompt">Please blink twice</p>
-      <video id="cam" autoplay playsinline webkit-playsinline muted></video>
+      <video id="cam" autoplay playsinline webkit-playsinline muted disablepictureinpicture></video>
+      <div class="cam-overlay hidden" id="camOverlay">
+        <button type="button" class="cta" id="camStartBtn">Tap to enable camera</button>
+        <a class="cta cam-secure-link hidden" id="camSecureLink" href="#">Open the secure (https) kiosk</a>
+        <p class="muted" id="camHint"></p>
+      </div>
     </div>
     <section id="kiosk">
       <h1>Face Attendance</h1>
@@ -93,8 +235,11 @@
     </section>
     <section id="enroll" class="hidden">
       <h1>Enroll faces</h1>
-      <input id="search" placeholder="Search code or name" />
-      <button class="cta" id="searchBtn" style="margin-top:0">Search</button>
+      <div class="search-row">
+        <input id="search" placeholder="Search code or name" autocapitalize="none" autocomplete="off"
+               spellcheck="false" enterkeyhint="search" />
+        <button class="cta" id="searchBtn">Search</button>
+      </div>
       <div class="list" id="empList"></div>
       <button class="cta" id="sampleBtn">Capture sample</button>
       <p class="status" id="enrollStatus">Select an employee. Confirm your face is visible above, then capture 3–5 samples.</p>
@@ -132,16 +277,23 @@
     <section id="settings" class="hidden">
       <h1>Settings</h1>
       <p class="role-badge" id="roleBadge">Not signed in</p>
-      <label>API URL</label><input id="apiBase" />
-      <label>Device ID</label><input id="deviceId" />
-      <label>Site code</label><input id="siteCode" />
+      <label for="apiBase">API URL</label>
+      <input id="apiBase" type="url" inputmode="url" autocapitalize="none" autocomplete="off" spellcheck="false" />
+      <label for="deviceId">Device ID</label>
+      <input id="deviceId" autocapitalize="characters" autocomplete="off" spellcheck="false" />
+      <label for="siteCode">Site code</label>
+      <input id="siteCode" autocapitalize="characters" autocomplete="off" spellcheck="false" />
       <div id="adminBindBlock">
-        <label>Device bind secret</label><input id="secret" />
+        <label for="secret">Device bind secret</label>
+        <input id="secret" autocapitalize="none" autocomplete="off" spellcheck="false" />
       </div>
       <button class="cta" id="saveBtn">Save</button>
       <p style="color:#7ee0c5;font-weight:700">Login</p>
-      <label>Email</label><input id="email" />
-      <label>Password</label><input id="password" type="password" />
+      <label for="email">Email</label>
+      <input id="email" type="email" inputmode="email" autocapitalize="none" autocomplete="username"
+             spellcheck="false" enterkeyhint="next" />
+      <label for="password">Password</label>
+      <input id="password" type="password" autocomplete="current-password" enterkeyhint="go" />
       <button class="cta" id="loginBtn">Login</button>
       <button class="alt" id="logoutBtn">Logout</button>
       <button class="alt" id="bindBtn">Register this device</button>
@@ -299,6 +451,7 @@
         ['kiosk','enroll','attendance','settings'].forEach((id) => $(id).classList.toggle('hidden', id !== 'kiosk'));
         $('cameraPanel').classList.remove('hidden');
         $('livenessPrompt').style.visibility = 'visible';
+        if (!camActive()) ensureCam(false);
       }
     }
     function getGps() {
@@ -358,21 +511,145 @@
       if (reason === 'employee_not_found') return 'This employee account is not active';
       return 'Please try again';
     }
+    function insecureOrigin() {
+      return !window.isSecureContext && !['localhost', '127.0.0.1', '::1'].includes(location.hostname);
+    }
+    // The API reports the port its HTTPS listener uses, so the link below is only
+    // offered when a secure origin actually exists to send the phone to.
+    let httpsPort = null;
+    async function loadHttpsPort() {
+      if (httpsPort !== null) return httpsPort;
+      try {
+        const res = await fetch('/health');
+        const data = await res.json();
+        httpsPort = data && data.https_port ? data.https_port : 0;
+      } catch {
+        httpsPort = 0;
+      }
+      return httpsPort;
+    }
+    function showCamOverlay(msg, label) {
+      $('camHint').textContent = msg || '';
+      $('camStartBtn').textContent = label || 'Tap to enable camera';
+      $('camOverlay').classList.remove('hidden');
+      const link = $('camSecureLink');
+      if (!insecureOrigin()) {
+        link.classList.add('hidden');
+        $('camStartBtn').classList.remove('hidden');
+        return;
+      }
+      $('camStartBtn').classList.add('hidden');
+      loadHttpsPort().then((port) => {
+        if (!port) {
+          link.classList.add('hidden');
+          $('camHint').textContent =
+            'Phone browsers only allow the camera over a secure connection. Start the API with ' +
+            'HTTPS_ENABLED=true (see npm run cert:dev), then reopen this kiosk over https://.';
+          return;
+        }
+        link.href = 'https://' + location.hostname + ':' + port + location.pathname + location.search;
+        link.classList.remove('hidden');
+        $('camHint').textContent =
+          'Phone browsers only allow the camera over a secure connection. Tap above to reopen ' +
+          'this kiosk on https://' + location.hostname + ':' + port + '.';
+      });
+    }
+    function hideCamOverlay() {
+      $('camOverlay').classList.add('hidden');
+      $('camHint').textContent = '';
+      $('camStartBtn').disabled = false;
+    }
+    function camError(err) {
+      if (insecureOrigin()) {
+        // showCamOverlay replaces this with a message naming the secure URL once known.
+        return 'Phone browsers only allow the camera over a secure connection.';
+      }
+      if (!window.isSecureContext) {
+        return 'Camera needs a secure connection. Open this page over https:// or on localhost.';
+      }
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        return 'This browser cannot open the camera. Try Chrome or Safari.';
+      }
+      const name = (err && err.name) || '';
+      if (name === 'NotAllowedError' || name === 'SecurityError') {
+        return 'Camera access was blocked. Allow the camera for this site in your browser settings, then retry.';
+      }
+      if (name === 'NotFoundError' || name === 'OverconstrainedError') return 'No camera was found on this device.';
+      if (name === 'NotReadableError' || name === 'AbortError') {
+        return 'Another app is using the camera. Close it, then retry.';
+      }
+      return (err && err.message) || 'Unable to open the camera.';
+    }
+    function camActive() {
+      const v = $('cam');
+      const stream = v.srcObject;
+      if (!stream || !stream.getVideoTracks) return false;
+      return stream.getVideoTracks().some((t) => t.readyState === 'live');
+    }
+    function stopCam() {
+      const v = $('cam');
+      const stream = v.srcObject;
+      if (stream && stream.getTracks) stream.getTracks().forEach((t) => t.stop());
+      v.srcObject = null;
+    }
     async function startCam() {
       const v = $('cam');
       v.muted = true;
       v.autoplay = true;
       v.playsInline = true;
-      let stream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
-      } catch {
-        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error(camError(null));
       }
+      if (camActive()) return;
+      stopCam();
+      // Phone cameras reject exact sizes far more often than desktops, so every hint stays "ideal".
+      const attempts = [
+        { video: { facingMode: { ideal: 'user' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+        { video: { facingMode: 'user' }, audio: false },
+        { video: true, audio: false },
+      ];
+      let stream;
+      let lastErr;
+      for (const constraints of attempts) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(constraints);
+          break;
+        } catch (err) {
+          lastErr = err;
+          if (err && (err.name === 'NotAllowedError' || err.name === 'SecurityError')) break;
+        }
+      }
+      if (!stream) throw new Error(camError(lastErr));
       v.srcObject = stream;
+      stream.getVideoTracks().forEach((track) => {
+        track.onended = () => showCamOverlay('The camera stopped.', 'Tap to restart camera');
+      });
       try { await v.play(); } catch { /* Chrome autoplay can reject; stream still attaches */ }
       await waitForFrame(v, 2500);
+      hideCamOverlay();
     }
+    async function ensureCam(showErrors) {
+      try {
+        await startCam();
+        return true;
+      } catch (err) {
+        showCamOverlay(err.message || camError(err), 'Tap to enable camera');
+        if (showErrors) status('kioskStatus', err.message || 'Unable to open the camera.');
+        return false;
+      }
+    }
+    $('camStartBtn').onclick = async () => {
+      $('camStartBtn').disabled = true;
+      $('camHint').textContent = 'Starting camera…';
+      await ensureCam(false);
+      $('camStartBtn').disabled = false;
+    };
+    // Mobile browsers release camera tracks when the tab is backgrounded or the screen locks.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      if (state.tab === 'settings' || state.tab === 'attendance') return;
+      if (!camActive()) ensureCam(false);
+    });
     function frameSize(v) {
       const track = v.srcObject && v.srcObject.getVideoTracks && v.srcObject.getVideoTracks()[0];
       const s = track && track.getSettings ? track.getSettings() : {};
@@ -390,7 +667,7 @@
     }
     async function captureB64() {
       const v = $('cam');
-      if (!v.srcObject) await startCam();
+      if (!camActive()) await startCam();
       await waitForFrame(v, 2500);
       try { if (v.paused) await v.play(); } catch {}
       const size = frameSize(v);
@@ -415,8 +692,13 @@
         state.tab = b.dataset.tab;
         document.querySelectorAll('header button').forEach((x) => x.classList.toggle('on', x === b));
         ['kiosk','enroll','attendance','settings'].forEach((id) => $(id).classList.toggle('hidden', id !== state.tab));
-        $('cameraPanel').classList.toggle('hidden', state.tab === 'settings' || state.tab === 'attendance');
+        const camHidden = state.tab === 'settings' || state.tab === 'attendance';
+        $('cameraPanel').classList.toggle('hidden', camHidden);
         $('livenessPrompt').style.visibility = state.tab === 'kiosk' ? 'visible' : 'hidden';
+        // Holding the camera open behind a hidden panel drains phone batteries.
+        if (camHidden) stopCam();
+        else if (!camActive()) ensureCam(false);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
         if (state.tab === 'attendance') {
           if (!$('rosterDate').value) setRosterDate(todayYmd(), false);
           loadRoster().catch(() => {});
@@ -529,6 +811,12 @@
       });
     }
     $('searchBtn').onclick = () => loadEmployees().catch((e) => status('enrollStatus', e.message));
+    $('search').onkeydown = (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      e.target.blur();
+      $('searchBtn').onclick();
+    };
     $('sampleBtn').onclick = async () => {
       if (!state.selected) return status('enrollStatus', 'Select an employee first');
       try {
@@ -656,7 +944,7 @@
               const who = esc(r.display_name) + ' (' + esc(r.employee_code) + ')';
               const email = r.email ? '<div class="muted">' + esc(r.email) + '</div>' : '';
               const pill = r.status === 'Present' ? 'present' : 'absent';
-              return '<tr><td>' + who + email + '</td><td>' + formatPunch(r.clock_in) + '</td><td>' + formatPunch(r.clock_out) + '</td><td><span class="pill ' + pill + '">' + esc(r.status) + '</span></td></tr>';
+              return '<tr><td data-label="Employee">' + who + email + '</td><td data-label="Clock in">' + formatPunch(r.clock_in) + '</td><td data-label="Clock out">' + formatPunch(r.clock_out) + '</td><td data-label="Status"><span class="pill ' + pill + '">' + esc(r.status) + '</span></td></tr>';
             }).join('')
           : '<tr><td colspan="4" class="muted">No employees found</td></tr>';
         status('rosterStatus', rows.length + ' employee' + (rows.length === 1 ? '' : 's'));
@@ -687,6 +975,15 @@
         applyAccess();
         status('settingsStatus', 'Logged in as ' + (res.user && res.user.email ? res.user.email : res.user.role));
       } catch (e) { status('settingsStatus', e.message); }
+    };
+    $('password').onkeydown = (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      e.target.blur();
+      $('loginBtn').onclick();
+    };
+    $('email').onkeydown = (e) => {
+      if (e.key === 'Enter') $('password').focus();
     };
     $('bindBtn').onclick = async () => {
       try {
@@ -723,7 +1020,7 @@
       applyAccess();
     });
     rollPrompt();
-    startCam().catch((e) => status('kioskStatus', e.message));
+    ensureCam(false);
   </script>
 </body>
 </html>

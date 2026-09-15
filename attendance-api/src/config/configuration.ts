@@ -1,6 +1,14 @@
 export const configuration = () => ({
   nodeEnv: process.env.NODE_ENV || 'local',
   port: Number(process.env.PORT) || 3000,
+  https: {
+    // Phone browsers only expose the camera and GPS on a secure context, so the kiosk
+    // needs HTTPS whenever it is reached by hostname or LAN IP instead of localhost.
+    enabled: process.env.HTTPS_ENABLED === 'true' || !!process.env.HTTPS_KEY_PATH,
+    port: Number(process.env.HTTPS_PORT) || 3443,
+    keyPath: process.env.HTTPS_KEY_PATH || './certs/dev-key.pem',
+    certPath: process.env.HTTPS_CERT_PATH || './certs/dev-cert.pem',
+  },
   database: {
     host: process.env.DATABASE_HOST || 'localhost',
     port: Number(process.env.DATABASE_PORT) || 5432,

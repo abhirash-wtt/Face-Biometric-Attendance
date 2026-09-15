@@ -1,6 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -10,10 +12,12 @@ import {
 import { CameraView } from '../components/CameraView';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { api } from '../services/api';
+import { TAP_TARGET, useLayout } from '../theme/responsive';
 
 type Employee = { id: string; code: string; display_name: string; status: string };
 
 export function EnrollScreen() {
+  const layout = useLayout();
   const [q, setQ] = useState('');
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selected, setSelected] = useState<Employee | null>(null);
@@ -24,6 +28,11 @@ export function EnrollScreen() {
   const captureRef = React.useRef<() => Promise<string>>(async () => {
     throw new Error('Camera not ready');
   });
+
+  // A stable callback keeps CameraView from re-requesting the camera on every render.
+  const onCameraReady = useCallback((capture: () => Promise<string>) => {
+    captureRef.current = capture;
+  }, []);
 
   const load = async () => {
     try {
@@ -57,45 +66,92 @@ export function EnrollScreen() {
     }
   };
 
+  // Landscape phones are too short to stack the list and the camera, so they sit side by side.
+  const twoColumn = layout.landscape && layout.short;
+
+  const camera = (
+    <View
+      style={[
+        styles.camera,
+        twoColumn
+          ? styles.cameraColumn
+          : { minHeight: layout.short ? 140 : 180, maxHeight: layout.cameraHeight },
+      ]}
+    >
+      <CameraView onReady={onCameraReady} />
+    </View>
+  );
+
   return (
-    <View style={styles.root}>
-      <Text style={styles.title}>Enroll faces</Text>
-      <TextInput
-        value={q}
-        onChangeText={setQ}
-        placeholder="Search code or name"
-        placeholderTextColor="#6d7f96"
-        style={styles.input}
-        onSubmitEditing={load}
-      />
-      <Pressable onPress={load} style={styles.smallBtn}>
-        <Text style={styles.smallBtnText}>Search</Text>
-      </Pressable>
-      <FlatList
-        style={styles.list}
-        data={employees}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
+    <KeyboardAvoidingView
+      style={styles.root}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <View
+        style={[
+          styles.inner,
+          { padding: layout.gutter, maxWidth: layout.maxContentWidth },
+          twoColumn && styles.innerRow,
+        ]}
+      >
+        {twoColumn && camera}
+        <View style={styles.controls}>
+          <Text style={styles.title}>Enroll faces</Text>
+          {/* Search sits on one line so the keyboard leaves room for the camera. */}
+          <View style={styles.searchRow}>
+            <TextInput
+              value={q}
+              onChangeText={setQ}
+              placeholder="Search code or name"
+              placeholderTextColor="#6d7f96"
+              style={[styles.input, styles.searchInput]}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="search"
+              onSubmitEditing={load}
+            />
+            <Pressable onPress={load} accessibilityRole="button" style={styles.searchBtn}>
+              <Text style={styles.searchBtnText}>Search</Text>
+            </Pressable>
+          </View>
+          <FlatList
+            style={[styles.list, twoColumn ? styles.listFlexible : { maxHeight: layout.short ? 116 : 168 }]}
+            data={employees}
+            keyExtractor={(item) => item.id}
+            keyboardShouldPersistTaps="handled"
+            ListEmptyComponent={<Text style={styles.empty}>No employees found</Text>}
+            renderItem={({ item }) => (
+              <Pressable
+                onPress={() => {
+                  setSelected(item);
+                  setSamples(0);
+                  setMessage(`Enrolling ${item.display_name} (${item.code})`);
+                }}
+                accessibilityRole="button"
+                accessibilityState={{ selected: selected?.id === item.id }}
+                style={[styles.row, selected?.id === item.id && styles.rowOn]}
+              >
+                <Text style={styles.code}>{item.code}</Text>
+                <Text style={styles.name} numberOfLines={2}>
+                  {item.display_name}
+                </Text>
+              </Pressable>
+            )}
+          />
+          {!twoColumn && camera}
           <Pressable
-            onPress={() => {
-              setSelected(item);
-              setSamples(0);
-              setMessage(`Enrolling ${item.display_name} (${item.code})`);
-            }}
-            style={[styles.row, selected?.id === item.id && styles.rowOn]}
+            disabled={busy}
+            onPress={captureSample}
+            accessibilityRole="button"
+            style={[styles.cta, busy && styles.ctaBusy]}
           >
-            <Text style={styles.code}>{item.code}</Text>
-            <Text style={styles.name}>{item.display_name}</Text>
+            <Text style={styles.ctaText}>{busy ? 'Saving…' : 'Capture sample'}</Text>
           </Pressable>
-        )}
-      />
-      <View style={styles.camera}>
-        <CameraView onReady={(fn) => (captureRef.current = fn)} />
+          <Text style={styles.status} numberOfLines={2}>
+            {message}
+          </Text>
+        </View>
       </View>
-      <Pressable disabled={busy} onPress={captureSample} style={styles.cta}>
-        <Text style={styles.ctaText}>{busy ? 'Saving…' : 'Capture sample'}</Text>
-      </Pressable>
-      <Text style={styles.status}>{message}</Text>
       <ConfirmModal
         visible={confirm}
         title="Enrollment samples saved"
@@ -104,41 +160,64 @@ export function EnrollScreen() {
         onConfirm={() => setConfirm(false)}
         onCancel={() => setConfirm(false)}
       />
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#07111f', padding: 16 },
+  root: { flex: 1, backgroundColor: '#07111f' },
+  inner: { flex: 1, width: '100%', alignSelf: 'center' },
+  innerRow: { flexDirection: 'row', gap: 12 },
+  controls: { flex: 1, minWidth: 0 },
   title: { color: '#f4f7fb', fontSize: 24, fontWeight: '800', marginBottom: 10 },
+  searchRow: { flexDirection: 'row', gap: 8, alignItems: 'stretch' },
   input: {
+    minHeight: TAP_TARGET,
     borderWidth: 1,
     borderColor: '#2a3d5c',
     borderRadius: 10,
     color: '#f4f7fb',
+    fontSize: 16,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
-  smallBtn: { alignSelf: 'flex-start', marginTop: 8, marginBottom: 8 },
-  smallBtnText: { color: '#7ee0c5', fontWeight: '700' },
-  list: { maxHeight: 140 },
+  searchInput: { flex: 1 },
+  searchBtn: {
+    minHeight: TAP_TARGET,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#2a3d5c',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchBtnText: { color: '#7ee0c5', fontWeight: '700', fontSize: 15 },
+  list: { marginTop: 10 },
+  listFlexible: { flex: 1 },
   row: {
     flexDirection: 'row',
     gap: 10,
+    minHeight: TAP_TARGET,
+    alignItems: 'center',
     paddingVertical: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#22344f',
   },
   rowOn: { backgroundColor: '#123348' },
-  code: { color: '#7ee0c5', width: 80, fontWeight: '700' },
-  name: { color: '#f4f7fb' },
-  camera: { flex: 1, minHeight: 180, marginVertical: 10 },
+  code: { color: '#7ee0c5', width: 76, fontWeight: '700' },
+  name: { color: '#f4f7fb', flex: 1 },
+  empty: { color: '#9fb0c8', paddingVertical: 12 },
+  camera: { flex: 1, marginVertical: 10 },
+  cameraColumn: { flex: 0.85, marginVertical: 0, minHeight: 0 },
   cta: {
+    minHeight: TAP_TARGET,
     backgroundColor: '#2d6cdf',
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
+    justifyContent: 'center',
   },
+  ctaBusy: { opacity: 0.6 },
   ctaText: { color: '#fff', fontWeight: '800', fontSize: 16 },
   status: { color: '#c5d2e4', marginTop: 10, textAlign: 'center' },
 });

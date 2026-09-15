@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { api, AttendanceStatusRow } from '../services/api';
+import { TAP_TARGET, useLayout } from '../theme/responsive';
 
 const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
@@ -54,6 +55,7 @@ function DatePickerField({
   value: string;
   onChange: (next: string) => void;
 }) {
+  const layout = useLayout();
   const [open, setOpen] = useState(false);
   const selected = value || todayIst();
   const [viewYear, setViewYear] = useState(() => Number(selected.slice(0, 4)));
@@ -83,13 +85,26 @@ function DatePickerField({
 
   return (
     <>
-      <Pressable onPress={() => setOpen(true)} style={styles.dateField} accessibilityRole="button">
+      <Pressable
+        onPress={() => setOpen(true)}
+        style={styles.dateField}
+        accessibilityRole="button"
+        accessibilityLabel={`Change date, currently ${formatDateLabel(selected)}`}
+      >
         <Text style={styles.calIcon}>📅</Text>
-        <Text style={styles.dateLabel}>{formatDateLabel(selected)}</Text>
+        <Text style={styles.dateLabel} numberOfLines={1}>
+          {formatDateLabel(selected)}
+        </Text>
       </Pressable>
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <Pressable style={styles.calBackdrop} onPress={() => setOpen(false)}>
-          <Pressable style={styles.calendar} onPress={(e) => e.stopPropagation()}>
+          <Pressable
+            style={[
+              styles.calendar,
+              { width: Math.min(360, layout.width - 2 * layout.gutter - 16) },
+            ]}
+            onPress={(e) => e.stopPropagation()}
+          >
             <View style={styles.calHead}>
               <Pressable onPress={() => shiftMonth(-1)} style={styles.calNav}>
                 <Text style={styles.calNavText}>‹</Text>
@@ -130,7 +145,19 @@ function DatePickerField({
   );
 }
 
+function StatusPill({ status }: { status: string }) {
+  const present = status === 'Present';
+  return (
+    <View style={[styles.pill, present ? styles.present : styles.absent]}>
+      <Text style={[styles.pillText, present ? styles.presentText : styles.absentText]}>
+        {status}
+      </Text>
+    </View>
+  );
+}
+
 export function AttendanceScreen() {
+  const layout = useLayout();
   const [date, setDate] = useState(todayIst());
   const [rows, setRows] = useState<AttendanceStatusRow[]>([]);
   const [timezone, setTimezone] = useState('Asia/Kolkata');
@@ -157,7 +184,9 @@ export function AttendanceScreen() {
   }, []);
 
   return (
-    <View style={styles.root}>
+    <View
+      style={[styles.root, { paddingHorizontal: layout.gutter, maxWidth: layout.maxContentWidth }]}
+    >
       <Text style={styles.title}>Attendance</Text>
       <Text style={styles.meta}>
         Times in {timezone} for {date || 'today'}.
@@ -170,40 +199,67 @@ export function AttendanceScreen() {
             load(next);
           }}
         />
-        <Pressable onPress={() => load(date)} style={styles.refresh}>
+        <Pressable onPress={() => load(date)} accessibilityRole="button" style={styles.refresh}>
           <Text style={styles.refreshText}>{busy ? '…' : 'Refresh'}</Text>
         </Pressable>
       </View>
-      <View style={styles.head}>
-        <Text style={[styles.headText, styles.colName]}>Employee</Text>
-        <Text style={[styles.headText, styles.colTime]}>In</Text>
-        <Text style={[styles.headText, styles.colTime]}>Out</Text>
-        <Text style={[styles.headText, styles.colStatus]}>Status</Text>
-      </View>
+      {/* Four columns only fit on wider screens; phones get stacked cards instead. */}
+      {!layout.stackRows && (
+        <View style={styles.head}>
+          <Text style={[styles.headText, styles.colName]}>Employee</Text>
+          <Text style={[styles.headText, styles.colTime]}>In</Text>
+          <Text style={[styles.headText, styles.colTime]}>Out</Text>
+          <Text style={[styles.headText, styles.colStatus]}>Status</Text>
+        </View>
+      )}
       <FlatList
         data={rows}
         keyExtractor={(item) => item.employee_id}
         refreshControl={<RefreshControl refreshing={busy} onRefresh={() => load(date)} tintColor="#7ee0c5" />}
         ListEmptyComponent={<Text style={styles.empty}>No employees found</Text>}
-        renderItem={({ item }) => (
-          <View style={styles.row}>
-            <View style={styles.colName}>
-              <Text style={styles.name}>
-                {item.display_name} ({item.employee_code})
-              </Text>
-              {!!item.email && <Text style={styles.email}>{item.email}</Text>}
-            </View>
-            <Text style={[styles.time, styles.colTime]}>{formatPunch(item.clock_in)}</Text>
-            <Text style={[styles.time, styles.colTime]}>{formatPunch(item.clock_out)}</Text>
-            <View style={styles.colStatus}>
-              <View style={[styles.pill, item.status === 'Present' ? styles.present : styles.absent]}>
-                <Text style={[styles.pillText, item.status === 'Present' ? styles.presentText : styles.absentText]}>
-                  {item.status}
-                </Text>
+        contentContainerStyle={styles.listContent}
+        renderItem={({ item }) =>
+          layout.stackRows ? (
+            <View style={styles.card}>
+              <View style={styles.cardHead}>
+                <View style={styles.cardWho}>
+                  <Text style={styles.name}>{item.display_name}</Text>
+                  <Text style={styles.code}>{item.employee_code}</Text>
+                  {!!item.email && (
+                    <Text style={styles.email} numberOfLines={1}>
+                      {item.email}
+                    </Text>
+                  )}
+                </View>
+                <StatusPill status={item.status} />
+              </View>
+              <View style={styles.cardTimes}>
+                <View style={styles.cardTime}>
+                  <Text style={styles.cardTimeLabel}>Clock in</Text>
+                  <Text style={styles.cardTimeValue}>{formatPunch(item.clock_in)}</Text>
+                </View>
+                <View style={styles.cardTime}>
+                  <Text style={styles.cardTimeLabel}>Clock out</Text>
+                  <Text style={styles.cardTimeValue}>{formatPunch(item.clock_out)}</Text>
+                </View>
               </View>
             </View>
-          </View>
-        )}
+          ) : (
+            <View style={styles.row}>
+              <View style={styles.colName}>
+                <Text style={styles.name}>
+                  {item.display_name} ({item.employee_code})
+                </Text>
+                {!!item.email && <Text style={styles.email}>{item.email}</Text>}
+              </View>
+              <Text style={[styles.time, styles.colTime]}>{formatPunch(item.clock_in)}</Text>
+              <Text style={[styles.time, styles.colTime]}>{formatPunch(item.clock_out)}</Text>
+              <View style={styles.colStatus}>
+                <StatusPill status={item.status} />
+              </View>
+            </View>
+          )
+        }
       />
       {!!message && <Text style={styles.status}>{message}</Text>}
     </View>
@@ -211,7 +267,7 @@ export function AttendanceScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#07111f', padding: 16 },
+  root: { flex: 1, width: '100%', alignSelf: 'center', backgroundColor: '#07111f', paddingVertical: 16 },
   title: { color: '#f4f7fb', fontSize: 24, fontWeight: '800', marginBottom: 6 },
   meta: { color: '#9fb0c8', fontSize: 12, marginBottom: 10 },
   toolbar: { flexDirection: 'row', gap: 8, marginBottom: 12 },
@@ -221,21 +277,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-start',
     gap: 10,
+    minHeight: TAP_TARGET,
     borderWidth: 1,
     borderColor: '#2a3d5c',
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
-  dateLabel: { color: '#f4f7fb', fontWeight: '700' },
+  dateLabel: { flex: 1, color: '#f4f7fb', fontWeight: '700' },
   calIcon: { fontSize: 16 },
   calBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(4, 10, 22, 0.72)',
+    alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
+    padding: 16,
   },
   calendar: {
+    maxWidth: '100%',
     backgroundColor: '#152238',
     borderRadius: 14,
     padding: 12,
@@ -243,24 +302,35 @@ const styles = StyleSheet.create({
     borderColor: '#2a3d5c',
   },
   calHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  calTitle: { color: '#f4f7fb', fontWeight: '800' },
-  calNav: { backgroundColor: '#102038', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
+  calTitle: { flex: 1, textAlign: 'center', color: '#f4f7fb', fontWeight: '800' },
+  calNav: {
+    minWidth: 44,
+    minHeight: 40,
+    backgroundColor: '#102038',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
   calNavText: { color: '#7ee0c5', fontWeight: '800', fontSize: 18 },
   calGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   calDow: { width: '14.28%', textAlign: 'center', color: '#9fb0c8', fontSize: 11, fontWeight: '700', paddingVertical: 6 },
-  calDay: { width: '14.28%', paddingVertical: 8, alignItems: 'center', borderRadius: 8 },
+  calDay: { width: '14.28%', minHeight: 40, paddingVertical: 8, alignItems: 'center', justifyContent: 'center', borderRadius: 8 },
   calDayOn: { backgroundColor: '#1f8a70' },
   calDayText: { color: '#f4f7fb', fontWeight: '700' },
   calDayTextOn: { color: '#fff' },
   refresh: {
+    minHeight: TAP_TARGET,
     backgroundColor: '#2d6cdf',
     borderRadius: 10,
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
+    alignItems: 'center',
     justifyContent: 'center',
   },
   refreshText: { color: '#fff', fontWeight: '800' },
   head: { flexDirection: 'row', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#22344f' },
   headText: { color: '#9fb0c8', fontSize: 11, fontWeight: '700' },
+  listContent: { paddingBottom: 12 },
   row: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -271,7 +341,35 @@ const styles = StyleSheet.create({
   colName: { flex: 1.4, paddingRight: 6 },
   colTime: { flex: 0.9 },
   colStatus: { width: 78, alignItems: 'flex-end' },
-  name: { color: '#f4f7fb', fontWeight: '700' },
+  card: {
+    backgroundColor: '#102038',
+    borderWidth: 1,
+    borderColor: '#22344f',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+  },
+  cardHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  cardWho: { flex: 1 },
+  cardTimes: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#22344f',
+  },
+  cardTime: { flex: 1 },
+  cardTimeLabel: {
+    color: '#9fb0c8',
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  cardTimeValue: { color: '#f4f7fb', fontSize: 16, fontWeight: '700', marginTop: 2 },
+  code: { color: '#7ee0c5', fontSize: 12, fontWeight: '700', marginTop: 2 },
+  name: { color: '#f4f7fb', fontWeight: '700', fontSize: 15 },
   email: { color: '#9fb0c8', fontSize: 11, marginTop: 2 },
   time: { color: '#c5d2e4', fontSize: 12 },
   pill: {
