@@ -51,7 +51,7 @@ Seeded users:
 - `admin@attendance.local` / `Admin@123` (admin — full access, including enroll and device bind)
 - `user@attendance.local` / `User@123` (user — kiosk clock IN/OUT only)
 
-Seeded employees: EMP001 Abhirash, EMP002 Pavan Kumar, EMP003 Sushmita Singh.  
+Seeded employees: EMP001 Abhirash, EMP002 Pavan Kumar, EMP003 Sushmita Singh, EMP004 Yatharth Kapoor.  
 Site: `HQ` — Walking Tree Technologies, Agra (rectangular building geofence). Device bind secret: `bind-device-once`.
 
 ## 3. Mobile app
@@ -83,7 +83,7 @@ docker compose --profile compreface up -d
 
 Set `RECOGNITION_PROVIDER=compreface` and `COMPREFACE_API_KEY`.
 
-Accept rule: `cosine_sim >= 0.95` and `liveness_score >= 0.6`.
+Accept rule: `cosine_sim >= 0.97` and `liveness_score >= 0.6`.
 
 ## 5. Reports / payroll export
 

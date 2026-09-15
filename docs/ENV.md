@@ -15,7 +15,7 @@ Copy `attendance-api/.env.example` to `.env` per environment (`local` / `dev` / 
 | `MINIO_*` | minio/minio123 | Object storage for face crops |
 | `RECOGNITION_PROVIDER` | internal | `internal` (ONNX) or `compreface` |
 | `ONNX_MODEL_PATH` | ./models/arcface_mobile.onnx | ArcFace model |
-| `SIMILARITY_THRESHOLD` | 0.95 | Cosine accept threshold (minimum 95%) |
+| `SIMILARITY_THRESHOLD` | 0.97 | Cosine accept threshold (minimum 97%) |
 | `LIVENESS_THRESHOLD` | 0.6 | Liveness accept threshold |
 | `GEOFENCE_ENABLED` | true | Require GPS; clock-in must be at the office (all floors) |
 | `GEOFENCE_RADIUS_M` | 45 | Indoor envelope around the office pin (basement–2nd floor) |

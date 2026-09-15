@@ -96,6 +96,7 @@ async function run() {
     { code: 'EMP001', display_name: 'Abhirash' },
     { code: 'EMP002', display_name: 'Pavan Kumar' },
     { code: 'EMP003', display_name: 'Sushmita Singh' },
+    { code: 'EMP004', display_name: 'Yatharth Kapoor' },
   ];
   for (const row of seedEmployees) {
     if (!(await employees.findOne({ where: { code: row.code } }))) {
@@ -114,7 +115,7 @@ async function run() {
     );
   }
 
-  console.log('Seed complete: admin, user, HQ site, EMP001-EMP003, General shift');
+  console.log('Seed complete: admin, user, HQ site, EMP001-EMP004, General shift');
   await ds.destroy();
 }
 
