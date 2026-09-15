@@ -2,13 +2,15 @@ import { Platform } from 'react-native';
 
 export type Gps = { lat: number; lng: number };
 
+const gpsOptions = { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 };
+
 export async function getCurrentGps(): Promise<Gps | null> {
   if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.geolocation) {
     return new Promise((resolve) => {
       navigator.geolocation.getCurrentPosition(
         (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
         () => resolve(null),
-        { timeout: 4000, maximumAge: 15000 },
+        gpsOptions,
       );
     });
   }
@@ -19,7 +21,7 @@ export async function getCurrentGps(): Promise<Gps | null> {
         (pos: { coords: { latitude: number; longitude: number } }) =>
           resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
         () => resolve(null),
-        { timeout: 4000, maximumAge: 15000 },
+        gpsOptions,
       );
     });
   } catch {

@@ -1,4 +1,5 @@
-import { cosineSimilarity, isWithinGeofence } from './math';
+import { cosineSimilarity, isPointInPolygon, isWithinGeofence, isWithinSiteGeofence } from './math';
+import { HQ_OFFICE } from '../sites/hq-office';
 
 describe('threshold and geo helpers', () => {
   it('accepts cosine_sim >= 0.95', () => {
@@ -17,5 +18,15 @@ describe('threshold and geo helpers', () => {
 
   it('geofence rejects a distant point', () => {
     expect(isWithinGeofence(13.08, 80.27, 12.9716, 77.5946, 200)).toBe(false);
+  });
+
+  it('office polygon contains the Maps pin', () => {
+    expect(isPointInPolygon(HQ_OFFICE.lat, HQ_OFFICE.lng, HQ_OFFICE.geofence_polygon)).toBe(true);
+    expect(isWithinSiteGeofence(HQ_OFFICE.lat, HQ_OFFICE.lng, HQ_OFFICE, 0)).toBe(true);
+  });
+
+  it('office polygon rejects the road and cafe west of the building', () => {
+    expect(isPointInPolygon(27.15313, 78.0503, HQ_OFFICE.geofence_polygon)).toBe(false);
+    expect(isWithinSiteGeofence(27.16, 78.06, HQ_OFFICE, 3)).toBe(false);
   });
 });

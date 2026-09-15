@@ -50,6 +50,10 @@ export function KioskScreen() {
       const image_b64 = await captureRef.current();
       const settings = await storage.getSettings();
       const gps = await getCurrentGps();
+      if (!gps) {
+        dispatch(setLastMessage('Location is required. Allow GPS and stand inside the office.'));
+        return;
+      }
       const res = await api.identify({
         device_id: settings.deviceId,
         site_code: settings.siteCode,
@@ -116,17 +120,22 @@ export function KioskScreen() {
       dispatch(setLastMessage(`Welcome ${pending.name}`));
       dispatch(rollLivenessPrompt());
     } catch (err) {
-      await storage.enqueue({
-        id: String(Date.now()),
-        path: '/attendance',
-        body,
-        createdAt: Date.now(),
-      });
-      dispatch(
-        setLastMessage(
-          err instanceof Error ? `Saved offline: ${err.message}` : 'Saved offline',
-        ),
-      );
+      const message = err instanceof Error ? err.message : 'Please try again';
+      if (/geofence|location is required|outside office/i.test(message)) {
+        dispatch(setLastMessage(message));
+      } else {
+        await storage.enqueue({
+          id: String(Date.now()),
+          path: '/attendance',
+          body,
+          createdAt: Date.now(),
+        });
+        dispatch(
+          setLastMessage(
+            err instanceof Error ? `Saved offline: ${err.message}` : 'Saved offline',
+          ),
+        );
+      }
     } finally {
       setPending(null);
     }

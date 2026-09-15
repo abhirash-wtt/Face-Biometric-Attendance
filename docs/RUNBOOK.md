@@ -51,8 +51,8 @@ Seeded users:
 - `admin@attendance.local` / `Admin@123` (admin — full access, including enroll and device bind)
 - `user@attendance.local` / `User@123` (user — kiosk clock IN/OUT only)
 
-Seeded employees: EMP001 Rahul Saxena, EMP002 Pavan Kumar, EMP003 Sushmita Singh.  
-Site: `HQ`. Device bind secret: `bind-device-once`.
+Seeded employees: EMP001 Abhirash, EMP002 Pavan Kumar, EMP003 Sushmita Singh.  
+Site: `HQ` — Walking Tree Technologies, Agra (rectangular building geofence). Device bind secret: `bind-device-once`.
 
 ## 3. Mobile app
 

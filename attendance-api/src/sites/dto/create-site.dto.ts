@@ -1,4 +1,4 @@
-import { IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsNumber, IsOptional, IsString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateSiteDto {
@@ -6,7 +6,7 @@ export class CreateSiteDto {
   @IsString()
   code: string;
 
-  @ApiProperty({ example: 'Headquarters' })
+  @ApiProperty({ example: 'Walking Tree Technologies — Agra' })
   @IsString()
   name: string;
 
@@ -24,4 +24,9 @@ export class CreateSiteDto {
   @IsOptional()
   @IsNumber()
   radius_m?: number;
+
+  @ApiPropertyOptional({ description: 'Rectangular building ring as [lat, lng] vertices' })
+  @IsOptional()
+  @IsArray()
+  geofence_polygon?: Array<[number, number]>;
 }

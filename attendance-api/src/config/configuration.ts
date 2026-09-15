@@ -45,7 +45,8 @@ export const configuration = () => ({
   },
   geofence: {
     enabled: process.env.GEOFENCE_ENABLED !== 'false',
-    defaultRadiusM: Number(process.env.GEOFENCE_RADIUS_M) || 200,
+    defaultRadiusM: Number(process.env.GEOFENCE_RADIUS_M) || 25,
+    bufferM: Number(process.env.GEOFENCE_BUFFER_M) || 3,
   },
   retentionDays: Number(process.env.RETENTION_DAYS) || 90,
   attendanceCooldownSec: Number(process.env.ATTENDANCE_COOLDOWN_SEC) || 60,

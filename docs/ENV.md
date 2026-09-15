@@ -17,8 +17,9 @@ Copy `attendance-api/.env.example` to `.env` per environment (`local` / `dev` / 
 | `ONNX_MODEL_PATH` | ./models/arcface_mobile.onnx | ArcFace model |
 | `SIMILARITY_THRESHOLD` | 0.95 | Cosine accept threshold (minimum 95%) |
 | `LIVENESS_THRESHOLD` | 0.6 | Liveness accept threshold |
-| `GEOFENCE_ENABLED` | true | Enforce site radius when GPS present |
-| `GEOFENCE_RADIUS_M` | 200 | Default radius |
+| `GEOFENCE_ENABLED` | true | Require GPS and enforce the office polygon on identify and clock-in |
+| `GEOFENCE_RADIUS_M` | 25 | Fallback circle if a site has no polygon |
+| `GEOFENCE_BUFFER_M` | 3 | Extra meters around the building rectangle for GPS jitter |
 | `RETENTION_DAYS` | 90 | Auto-delete proof images |
 | `DEVICE_BOOTSTRAP_SECRET` | bind-device-once | One-time kiosk bind |
 | `COMPREFACE_URL` / `COMPREFACE_API_KEY` | localhost:8000 | Option A engine |

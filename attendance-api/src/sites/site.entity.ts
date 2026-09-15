@@ -21,6 +21,9 @@ export class Site {
   @Column({ type: 'int', default: 200 })
   radius_m: number;
 
+  @Column({ type: 'jsonb', nullable: true })
+  geofence_polygon?: Array<[number, number]> | null;
+
   @OneToMany(() => Device, (d) => d.site)
   devices: Device[];
 }

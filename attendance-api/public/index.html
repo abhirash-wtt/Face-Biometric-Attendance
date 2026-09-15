@@ -246,9 +246,11 @@
           gps = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(
             (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
             reject,
-            { timeout: 3000 },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
           ));
-        } catch {}
+        } catch {
+          return status('kioskStatus', 'Location is required. Allow GPS and stand inside the office.');
+        }
         const res = await api('/attend/identify', {
           method: 'POST',
           body: {
@@ -262,7 +264,7 @@
         const minSim = (res.thresholds && res.thresholds.similarity) || 0.95;
         const minLive = (res.thresholds && res.thresholds.liveness) || 0.6;
         if (res.ok && res.similarity >= minSim && res.liveness >= minLive && res.employee_id) {
-          state.pending = { ...res, image_b64 };
+          state.pending = { ...res, image_b64, gps };
           $('confirmTitle').textContent = 'Welcome ' + res.name;
           $('confirmMsg').textContent = 'Similarity ' + Number(res.similarity).toFixed(2) + ' · Liveness ' + Number(res.liveness).toFixed(2) + '\nConfirm clock ' + state.punch + '?';
           $('confirm').showModal();
@@ -281,6 +283,14 @@
       $('confirm').close();
       if (!p) return;
       try {
+        let gps = p.gps;
+        try {
+          gps = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(
+            (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+            reject,
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+          ));
+        } catch {}
         await api('/attendance', {
           method: 'POST',
           body: {
@@ -288,6 +298,7 @@
             type: state.punch,
             device_id: state.settings.deviceId,
             site_code: state.settings.siteCode,
+            gps,
             similarity: p.similarity,
             liveness_score: p.liveness,
             face_crop_url: p.face_crop_url,
@@ -296,9 +307,14 @@
         status('kioskStatus', 'Welcome ' + p.name);
         rollPrompt();
       } catch (e) {
-        state.queue.push({ path: '/attendance', body: { employee_id: p.employee_id, type: state.punch }, createdAt: Date.now() });
-        localStorage.setItem('offline_queue', JSON.stringify(state.queue));
-        status('kioskStatus', 'Saved offline: ' + e.message);
+        const msg = e.message || '';
+        if (/geofence|location is required|outside office/i.test(msg)) {
+          status('kioskStatus', msg);
+        } else {
+          state.queue.push({ path: '/attendance', body: { employee_id: p.employee_id, type: state.punch, gps: p.gps }, createdAt: Date.now() });
+          localStorage.setItem('offline_queue', JSON.stringify(state.queue));
+          status('kioskStatus', 'Saved offline: ' + msg);
+        }
       }
       state.pending = null;
     };

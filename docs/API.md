@@ -34,4 +34,6 @@ Roles: **admin** has full access. **user** may only clock IN/OUT (`identify` / `
 
 Identify accepts multipart `file` **or** JSON `{ image_b64, device_id, site_code, gps, embedding }`.
 
+Clock-in is limited to the HQ office polygon (Walking Tree Technologies, Plot 140A M.G. Plaza, Agra). `POST /attend/identify` and `POST /attendance` require GPS when `GEOFENCE_ENABLED=true`. Points outside the Google Maps building rectangle return HTTP 422 `Outside office geofence`.
+
 Similarity rule (defaults): accept if `cosine_sim >= 0.95` and `liveness_score >= 0.6`.

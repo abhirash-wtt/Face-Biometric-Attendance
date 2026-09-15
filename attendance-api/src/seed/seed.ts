@@ -6,6 +6,7 @@ import { User } from '../auth/user.entity';
 import { Employee } from '../employees/employee.entity';
 import { FaceTemplate } from '../templates/face-template.entity';
 import { Site } from '../sites/site.entity';
+import { HQ_OFFICE } from '../sites/hq-office';
 import { Device } from '../devices/device.entity';
 import { Shift } from '../shifts/shift.entity';
 import { AttendanceLog } from '../attendance/attendance-log.entity';
@@ -71,13 +72,24 @@ async function run() {
   if (!(await sites.findOne({ where: { code: 'HQ' } }))) {
     await sites.save(
       sites.create({
-        code: 'HQ',
-        name: 'Headquarters',
-        lat: 12.9716,
-        lng: 77.5946,
-        radius_m: 200,
+        code: HQ_OFFICE.code,
+        name: HQ_OFFICE.name,
+        lat: HQ_OFFICE.lat,
+        lng: HQ_OFFICE.lng,
+        radius_m: HQ_OFFICE.radius_m,
+        geofence_polygon: HQ_OFFICE.geofence_polygon,
       }),
     );
+  } else {
+    const hq = await sites.findOne({ where: { code: 'HQ' } });
+    if (hq) {
+      hq.name = HQ_OFFICE.name;
+      hq.lat = HQ_OFFICE.lat;
+      hq.lng = HQ_OFFICE.lng;
+      hq.radius_m = HQ_OFFICE.radius_m;
+      hq.geofence_polygon = HQ_OFFICE.geofence_polygon;
+      await sites.save(hq);
+    }
   }
 
   const seedEmployees = [

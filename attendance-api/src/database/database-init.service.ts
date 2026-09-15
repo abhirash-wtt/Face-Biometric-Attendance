@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import * as fs from 'fs';
 import * as path from 'path';
+import { HQ_OFFICE } from '../sites/hq-office';
 
 @Injectable()
 export class DatabaseInitService implements OnModuleInit {
@@ -39,6 +40,7 @@ export class DatabaseInitService implements OnModuleInit {
       this.logger.log('Schema applied with TEXT embeddings');
     }
     await this.migrateRoles();
+    await this.migrateHqGeofence();
   }
 
   private async migrateRoles() {
@@ -68,6 +70,23 @@ export class DatabaseInitService implements OnModuleInit {
       if (!/already exists/i.test(message)) throw err;
     }
     this.logger.log('RBAC roles migrated to admin | user');
+  }
+
+  private async migrateHqGeofence() {
+    await this.ds.query(`ALTER TABLE sites ADD COLUMN IF NOT EXISTS geofence_polygon JSONB`);
+    await this.ds.query(
+      `UPDATE sites
+       SET name = $1, lat = $2, lng = $3, radius_m = $4, geofence_polygon = $5::jsonb
+       WHERE code = 'HQ'`,
+      [
+        HQ_OFFICE.name,
+        HQ_OFFICE.lat,
+        HQ_OFFICE.lng,
+        HQ_OFFICE.radius_m,
+        JSON.stringify(HQ_OFFICE.geofence_polygon),
+      ],
+    );
+    this.logger.log('HQ office geofence polygon applied');
   }
 
   private readSql(file: string): string {

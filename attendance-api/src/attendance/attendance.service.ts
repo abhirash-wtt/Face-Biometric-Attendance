@@ -13,7 +13,6 @@ import { SitesService } from '../sites/sites.service';
 import { ShiftsService } from '../shifts/shifts.service';
 import { EmployeesService } from '../employees/employees.service';
 import { StorageService } from '../storage/storage.service';
-import { isWithinGeofence } from '../common/math';
 
 @Injectable()
 export class AttendanceService {
@@ -28,6 +27,10 @@ export class AttendanceService {
     private readonly config: ConfigService,
   ) {}
 
+  assertIdentifyGeofence(siteCode?: string, lat?: number, lng?: number) {
+    return this.sites.assertGpsInside(siteCode, lat, lng);
+  }
+
   async create(dto: CreateAttendanceDto) {
     if (dto.type !== 'IN' && dto.type !== 'OUT') {
       throw new BadRequestException('type must be IN or OUT');
@@ -36,13 +39,7 @@ export class AttendanceService {
     const lat = dto.gps_lat ?? dto.gps?.lat;
     const lng = dto.gps_lng ?? dto.gps?.lng;
     const siteCode = dto.site_code?.toUpperCase();
-
-    if (this.config.get<boolean>('geofence.enabled') && siteCode && lat != null && lng != null) {
-      const site = await this.sites.getByCode(siteCode).catch(() => null);
-      if (site && !isWithinGeofence(lat, lng, site.lat, site.lng, site.radius_m)) {
-        throw new UnprocessableEntityException('Outside site geofence');
-      }
-    }
+    await this.sites.assertGpsInside(siteCode, lat, lng);
 
     const cooldown = this.config.get<number>('attendanceCooldownSec') || 60;
     const last = await this.repo.findOne({

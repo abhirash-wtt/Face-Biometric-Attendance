@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS sites (
   name TEXT NOT NULL,
   lat DOUBLE PRECISION,
   lng DOUBLE PRECISION,
-  radius_m INTEGER DEFAULT 200
+  radius_m INTEGER DEFAULT 200,
+  geofence_polygon JSONB
 );
 
 CREATE TABLE IF NOT EXISTS devices (
