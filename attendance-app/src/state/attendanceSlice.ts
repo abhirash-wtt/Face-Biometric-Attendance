@@ -4,7 +4,6 @@ import { configureStore } from '@reduxjs/toolkit';
 export type PunchType = 'IN' | 'OUT';
 
 type AttendanceState = {
-  punchType: PunchType;
   lastMessage: string;
   busy: boolean;
   livenessPrompt: string;
@@ -13,7 +12,6 @@ type AttendanceState = {
 const prompts = ['blink', 'turn_left', 'turn_right', 'smile'];
 
 const initialState: AttendanceState = {
-  punchType: 'IN',
   lastMessage: '',
   busy: false,
   livenessPrompt: prompts[0],
@@ -23,9 +21,6 @@ const attendanceSlice = createSlice({
   name: 'attendance',
   initialState,
   reducers: {
-    setPunchType(state, action: PayloadAction<PunchType>) {
-      state.punchType = action.payload;
-    },
     setBusy(state, action: PayloadAction<boolean>) {
       state.busy = action.payload;
     },
@@ -38,7 +33,7 @@ const attendanceSlice = createSlice({
   },
 });
 
-export const { setPunchType, setBusy, setLastMessage, rollLivenessPrompt } = attendanceSlice.actions;
+export const { setBusy, setLastMessage, rollLivenessPrompt } = attendanceSlice.actions;
 
 export const store = configureStore({
   reducer: { attendance: attendanceSlice.reducer },

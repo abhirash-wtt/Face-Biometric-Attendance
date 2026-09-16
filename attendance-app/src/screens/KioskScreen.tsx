@@ -9,11 +9,11 @@ import { storage } from '../services/storage';
 import { TAP_TARGET, useLayout } from '../theme/responsive';
 import {
   AppDispatch,
+  PunchType,
   RootState,
   rollLivenessPrompt,
   setBusy,
   setLastMessage,
-  setPunchType,
 } from '../state/attendanceSlice';
 
 const promptCopy: Record<string, string> = {
@@ -33,9 +33,7 @@ function identifyFailMessage(reason?: string) {
 export function KioskScreen() {
   const dispatch = useDispatch<AppDispatch>();
   const layout = useLayout();
-  const { punchType, lastMessage, busy, livenessPrompt } = useSelector(
-    (s: RootState) => s.attendance,
-  );
+  const { lastMessage, busy, livenessPrompt } = useSelector((s: RootState) => s.attendance);
   const captureRef = React.useRef<() => Promise<string>>(async () => {
     throw new Error('Camera not ready');
   });
@@ -47,13 +45,14 @@ export function KioskScreen() {
     face_crop_url?: string;
     image_b64: string;
     gps?: { lat: number; lng: number; accuracy?: number };
+    type: PunchType;
   } | null>(null);
 
   const onReady = useCallback((capture: () => Promise<string>) => {
     captureRef.current = capture;
   }, []);
 
-  const captureAndIdentify = async () => {
+  const captureAndIdentify = async (type: PunchType) => {
     try {
       dispatch(setBusy(true));
       dispatch(setLastMessage('Checking liveness…'));
@@ -84,6 +83,7 @@ export function KioskScreen() {
           face_crop_url: res.face_crop_url,
           image_b64,
           gps,
+          type,
         });
         dispatch(
           setLastMessage(
@@ -145,7 +145,7 @@ export function KioskScreen() {
     }
     const body = {
       employee_id: pending.employee_id,
-      type: punchType,
+      type: pending.type,
       device_id: settings.deviceId,
       site_code: settings.siteCode,
       gps,
@@ -195,37 +195,34 @@ export function KioskScreen() {
       <View style={[styles.camera, { height: layout.cameraHeight }]}>
         <CameraView onReady={onReady} />
       </View>
-      <View style={styles.toggle}>
-        {(['IN', 'OUT'] as const).map((t) => (
-          <Pressable
-            key={t}
-            onPress={() => dispatch(setPunchType(t))}
-            accessibilityRole="button"
-            accessibilityState={{ selected: punchType === t }}
-            style={[styles.toggleBtn, punchType === t && styles.toggleOn]}
-          >
-            <Text style={[styles.toggleText, punchType === t && styles.toggleTextOn]}>{t}</Text>
-          </Pressable>
-        ))}
+      <View style={styles.actions}>
+        <Pressable
+          disabled={busy}
+          onPress={() => captureAndIdentify('IN')}
+          accessibilityRole="button"
+          style={[styles.cta, styles.ctaHalf, busy && styles.ctaBusy]}
+        >
+          <Text style={styles.ctaText}>{busy ? 'Working…' : 'Clock In'}</Text>
+        </Pressable>
+        <Pressable
+          disabled={busy}
+          onPress={() => captureAndIdentify('OUT')}
+          accessibilityRole="button"
+          style={[styles.cta, styles.ctaHalf, busy && styles.ctaBusy]}
+        >
+          <Text style={styles.ctaText}>{busy ? 'Working…' : 'Clock Out'}</Text>
+        </Pressable>
       </View>
-      <Pressable
-        disabled={busy}
-        onPress={captureAndIdentify}
-        accessibilityRole="button"
-        style={[styles.cta, busy && styles.ctaBusy]}
-      >
-        <Text style={styles.ctaText}>{busy ? 'Working…' : `Clock ${punchType}`}</Text>
-      </Pressable>
       {!!lastMessage && <Text style={styles.status}>{lastMessage}</Text>}
       <ConfirmModal
         visible={!!pending}
         title={pending ? `Welcome ${pending?.name}` : ''}
         message={
           pending
-            ? `Similarity ${Math.round(pending.similarity * 100)}% · Liveness ${Math.round(pending.liveness * 100)}%\nConfirm clock ${punchType}?`
+            ? `Similarity ${Math.round(pending.similarity * 100)}% · Liveness ${Math.round(pending.liveness * 100)}%\nConfirm clock ${pending.type}?`
             : ''
         }
-        confirmLabel={`Confirm ${punchType}`}
+        confirmLabel={`Confirm ${pending?.type || ''}`}
         onConfirm={confirmAttendance}
         onCancel={() => setPending(null)}
       />
@@ -246,22 +243,8 @@ const styles = StyleSheet.create({
   brandShort: { fontSize: 22, marginTop: 0 },
   prompt: { color: '#7ee0c5', textAlign: 'center', marginVertical: 10, fontSize: 16 },
   camera: { marginVertical: 8 },
-  toggle: { flexDirection: 'row', gap: 10, marginTop: 12 },
-  toggleBtn: {
-    flex: 1,
-    minHeight: TAP_TARGET,
-    borderWidth: 1,
-    borderColor: '#2a3d5c',
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  toggleOn: { backgroundColor: '#1f8a70', borderColor: '#1f8a70' },
-  toggleText: { color: '#9fb0c8', fontWeight: '700', fontSize: 18 },
-  toggleTextOn: { color: '#fff' },
+  actions: { flexDirection: 'row', gap: 10, marginTop: 12 },
   cta: {
-    marginTop: 12,
     minHeight: TAP_TARGET + 4,
     backgroundColor: '#2d6cdf',
     borderRadius: 14,
@@ -269,6 +252,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  ctaHalf: { flex: 1 },
   ctaBusy: { opacity: 0.6 },
   ctaText: { color: '#fff', fontSize: 18, fontWeight: '800' },
   status: { color: '#c5d2e4', textAlign: 'center', marginTop: 12, fontSize: 16 },

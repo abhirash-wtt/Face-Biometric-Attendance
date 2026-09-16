@@ -88,6 +88,8 @@
     button.toggle { flex:1 1 120px; background:transparent; border:1px solid var(--line); color:var(--muted); }
     button.toggle.on { background:var(--ok); border-color:var(--ok); color:#fff; }
     button:disabled { opacity:.6; cursor:not-allowed; }
+    .clock-actions { margin-top:12px; }
+    .clock-actions .cta { flex:1 1 140px; width:auto; margin:0; }
 
     input {
       width:100%; background:transparent; border:1px solid var(--line); color:var(--text);
@@ -305,11 +307,10 @@
     </div>
     <section id="kiosk">
       <h1>Face Attendance</h1>
-      <div class="row">
-        <button class="toggle on" data-punch="IN">IN</button>
-        <button class="toggle" data-punch="OUT">OUT</button>
+      <div class="row clock-actions">
+        <button class="cta" id="clockInBtn">Clock In</button>
+        <button class="cta" id="clockOutBtn">Clock Out</button>
       </div>
-      <button class="cta" id="clockBtn">Clock IN</button>
       <p class="status" id="kioskStatus"></p>
     </section>
     <section id="enroll" class="hidden">
@@ -913,15 +914,12 @@
         }
       };
     });
-    document.querySelectorAll('button.toggle[data-punch]').forEach((b) => {
-      b.onclick = () => {
-        state.punch = b.dataset.punch;
-        document.querySelectorAll('button.toggle[data-punch]').forEach((x) => x.classList.toggle('on', x === b));
-        $('clockBtn').textContent = 'Clock ' + state.punch;
-      };
-    });
-
-    $('clockBtn').onclick = async () => {
+    async function startClock(punch) {
+      state.punch = punch;
+      const busy = punch === 'IN' ? $('clockInBtn') : $('clockOutBtn');
+      const other = punch === 'IN' ? $('clockOutBtn') : $('clockInBtn');
+      busy.disabled = true;
+      other.disabled = true;
       try {
         status('kioskStatus', 'Checking liveness…');
         const image_b64 = await captureB64();
@@ -940,9 +938,12 @@
         const minSim = (res.thresholds && res.thresholds.similarity) || 0.97;
         const minLive = (res.thresholds && res.thresholds.liveness) || 0.6;
         if (res.ok && res.similarity >= minSim && res.liveness >= minLive && res.employee_id) {
-          state.pending = { ...res, image_b64, gps };
+          state.pending = { ...res, image_b64, gps, punch };
           $('confirmTitle').textContent = 'Welcome ' + res.name;
-          $('confirmMsg').textContent = 'Similarity ' + Math.round(Number(res.similarity) * 100) + '% · Liveness ' + Math.round(Number(res.liveness) * 100) + '%\nConfirm clock ' + state.punch + '?';
+          $('confirmMsg').textContent =
+            'Similarity ' + Math.round(Number(res.similarity) * 100) +
+            '% · Liveness ' + Math.round(Number(res.liveness) * 100) +
+            '%\nConfirm clock ' + punch + '?';
           $('confirm').showModal();
           status('kioskStatus', res.remote_bypass
             ? ('Matched ' + res.name + ' (Remote — geofence skipped)')
@@ -955,13 +956,19 @@
         }
       } catch (e) {
         status('kioskStatus', e.message || 'Please try again');
+      } finally {
+        busy.disabled = false;
+        other.disabled = false;
       }
-    };
+    }
+    $('clockInBtn').onclick = () => startClock('IN');
+    $('clockOutBtn').onclick = () => startClock('OUT');
 
     $('okBtn').onclick = async () => {
       const p = state.pending;
       $('confirm').close();
       if (!p) return;
+      const punch = p.punch || state.punch;
       try {
         let gps = p.gps;
         try { gps = await getGps(); } catch (e) { /* reuse identify fix */ }
@@ -969,7 +976,7 @@
           method: 'POST',
           body: {
             employee_id: p.employee_id,
-            type: state.punch,
+            type: punch,
             device_id: state.settings.deviceId,
             site_code: state.settings.siteCode,
             gps: gps || undefined,
@@ -990,7 +997,7 @@
             path: '/attendance',
             body: {
               employee_id: p.employee_id,
-              type: state.punch,
+              type: punch,
               gps: p.gps,
               similarity: p.similarity,
               liveness_score: p.liveness,
