@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   FlatList,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -11,10 +12,13 @@ import {
 } from 'react-native';
 import { CameraView } from '../components/CameraView';
 import { ConfirmModal } from '../components/ConfirmModal';
-import { api } from '../services/api';
+import { api, Employee, WorkingMode } from '../services/api';
 import { TAP_TARGET, useLayout } from '../theme/responsive';
 
-type Employee = { id: string; code: string; display_name: string; status: string };
+const WORKING_MODE_OPTIONS: Array<{ value: WorkingMode; label: string }> = [
+  { value: 'onsite', label: 'On-site' },
+  { value: 'remote', label: 'Remote' },
+];
 
 export function EnrollScreen() {
   const layout = useLayout();
@@ -24,6 +28,8 @@ export function EnrollScreen() {
   const [samples, setSamples] = useState(0);
   const [message, setMessage] = useState('Select an employee, then capture 3–10 face samples.');
   const [busy, setBusy] = useState(false);
+  const [modeBusyId, setModeBusyId] = useState<string | null>(null);
+  const [modeMenuFor, setModeMenuFor] = useState<Employee | null>(null);
   const [confirm, setConfirm] = useState(false);
   const [resetConfirm, setResetConfirm] = useState(false);
   const maxSamples = 10;
@@ -47,6 +53,30 @@ export function EnrollScreen() {
   useEffect(() => {
     load();
   }, []);
+
+  const setWorkingMode = async (item: Employee, working_mode: WorkingMode) => {
+    const current = item.working_mode || 'onsite';
+    if (current === working_mode || modeBusyId === item.id) {
+      setModeMenuFor(null);
+      return;
+    }
+    try {
+      setModeBusyId(item.id);
+      setModeMenuFor(null);
+      const updated = await api.updateEmployee(item.id, { working_mode });
+      setEmployees((prev) => prev.map((e) => (e.id === item.id ? { ...e, ...updated } : e)));
+      setSelected((prev) => (prev?.id === item.id ? { ...prev, ...updated } : prev));
+      setMessage(
+        `${updated.display_name}: Working Mode set to ${
+          working_mode === 'remote' ? 'Remote' : 'On-site'
+        }`,
+      );
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Unable to update working mode');
+    } finally {
+      setModeBusyId(null);
+    }
+  };
 
   const resetSamples = async () => {
     if (!selected) {
@@ -148,23 +178,38 @@ export function EnrollScreen() {
             keyExtractor={(item) => item.id}
             keyboardShouldPersistTaps="handled"
             ListEmptyComponent={<Text style={styles.empty}>No employees found</Text>}
-            renderItem={({ item }) => (
-              <Pressable
-                onPress={() => {
-                  setSelected(item);
-                  setSamples(0);
-                  setMessage(`Enrolling ${item.display_name} (${item.code})`);
-                }}
-                accessibilityRole="button"
-                accessibilityState={{ selected: selected?.id === item.id }}
-                style={[styles.row, selected?.id === item.id && styles.rowOn]}
-              >
-                <Text style={styles.code}>{item.code}</Text>
-                <Text style={styles.name} numberOfLines={2}>
-                  {item.display_name}
-                </Text>
-              </Pressable>
-            )}
+            renderItem={({ item }) => {
+              const mode = item.working_mode || 'onsite';
+              const modeLabel = mode === 'remote' ? 'Remote' : 'On-site';
+              const modeDisabled = modeBusyId === item.id;
+              return (
+                <Pressable
+                  onPress={() => {
+                    setSelected(item);
+                    setSamples(0);
+                    setMessage(`Enrolling ${item.display_name} (${item.code})`);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: selected?.id === item.id }}
+                  style={[styles.row, selected?.id === item.id && styles.rowOn]}
+                >
+                  <Text style={styles.code}>{item.code}</Text>
+                  <Text style={styles.name} numberOfLines={2}>
+                    {item.display_name}
+                  </Text>
+                  <Pressable
+                    disabled={modeDisabled}
+                    onPress={() => setModeMenuFor(item)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Working Mode, ${modeLabel}`}
+                    style={[styles.modeSelect, modeDisabled && styles.modeSelectBusy]}
+                  >
+                    <Text style={styles.modeSelectText}>{modeLabel}</Text>
+                    <Text style={styles.modeChevron}>▾</Text>
+                  </Pressable>
+                </Pressable>
+              );
+            }}
           />
           {!twoColumn && camera}
           <Pressable
@@ -188,6 +233,39 @@ export function EnrollScreen() {
           </Text>
         </View>
       </View>
+      <Modal
+        visible={!!modeMenuFor}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setModeMenuFor(null)}
+      >
+        <Pressable style={styles.modeMenuBackdrop} onPress={() => setModeMenuFor(null)}>
+          <View style={styles.modeMenuCard}>
+            <Text style={styles.modeMenuTitle}>Working Mode</Text>
+            {modeMenuFor ? (
+              <Text style={styles.modeMenuSubtitle} numberOfLines={1}>
+                {modeMenuFor.display_name}
+              </Text>
+            ) : null}
+            {WORKING_MODE_OPTIONS.map((opt) => {
+              const on = (modeMenuFor?.working_mode || 'onsite') === opt.value;
+              return (
+                <Pressable
+                  key={opt.value}
+                  onPress={() => modeMenuFor && setWorkingMode(modeMenuFor, opt.value)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
+                  style={[styles.modeMenuOption, on && styles.modeMenuOptionOn]}
+                >
+                  <Text style={[styles.modeMenuOptionText, on && styles.modeMenuOptionTextOn]}>
+                    {opt.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </Pressable>
+      </Modal>
       <ConfirmModal
         visible={confirm}
         title="Enrollment samples saved"
@@ -248,8 +326,51 @@ const styles = StyleSheet.create({
     borderBottomColor: '#22344f',
   },
   rowOn: { backgroundColor: '#123348' },
-  code: { color: '#7ee0c5', width: 76, fontWeight: '700' },
-  name: { color: '#f4f7fb', flex: 1 },
+  code: { color: '#7ee0c5', width: 72, fontWeight: '700' },
+  name: { color: '#f4f7fb', flex: 1, minWidth: 0 },
+  modeSelect: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: TAP_TARGET,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#2a3d5c',
+    borderRadius: 10,
+    backgroundColor: 'transparent',
+  },
+  modeSelectBusy: { opacity: 0.6 },
+  modeSelectText: { color: '#f4f7fb', fontSize: 16, fontWeight: '700' },
+  modeChevron: { color: '#9fb0c8', fontSize: 14, fontWeight: '700' },
+  modeMenuBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modeMenuCard: {
+    backgroundColor: '#152238',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#2a3d5c',
+    padding: 14,
+  },
+  modeMenuTitle: { color: '#f4f7fb', fontSize: 18, fontWeight: '800' },
+  modeMenuSubtitle: { color: '#9fb0c8', marginTop: 4, marginBottom: 12 },
+  modeMenuOption: {
+    minHeight: TAP_TARGET,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#2a3d5c',
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+    marginTop: 8,
+    backgroundColor: 'transparent',
+  },
+  modeMenuOptionOn: { backgroundColor: '#1f8a70', borderColor: '#1f8a70' },
+  modeMenuOptionText: { color: '#c5d2e4', fontWeight: '700', fontSize: 16 },
+  modeMenuOptionTextOn: { color: '#fff' },
   empty: { color: '#9fb0c8', paddingVertical: 12 },
   camera: { flex: 1, marginVertical: 10 },
   cameraColumn: { flex: 0.85, marginVertical: 0, minHeight: 0 },

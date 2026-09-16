@@ -87,9 +87,11 @@ export function KioskScreen() {
         });
         dispatch(
           setLastMessage(
-            res.wfh_bypass
-              ? `Matched ${res.name || res.employee_code} (WFH — geofence skipped)`
-              : `Matched ${res.name || res.employee_code}`,
+            res.remote_bypass
+              ? `Matched ${res.name || res.employee_code} (Remote — geofence skipped)`
+              : res.wfh_bypass
+                ? `Matched ${res.name || res.employee_code} (WFH — geofence skipped)`
+                : `Matched ${res.name || res.employee_code}`,
           ),
         );
       } else {

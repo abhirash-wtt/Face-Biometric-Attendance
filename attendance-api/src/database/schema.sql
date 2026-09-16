@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS employees (
   code TEXT UNIQUE NOT NULL,
   display_name TEXT NOT NULL,
   status TEXT CHECK (status IN ('active','inactive')) DEFAULT 'active',
+  working_mode TEXT CHECK (working_mode IN ('onsite','remote')) DEFAULT 'onsite',
   created_at TIMESTAMPTZ DEFAULT now()
 );
 

@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, ILike, Repository } from 'typeorm';
 import { Employee } from './employee.entity';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
+import { UpdateEmployeeDto } from './dto/update-employee.dto';
 
 @Injectable()
 export class EmployeesService {
@@ -17,8 +18,17 @@ export class EmployeesService {
         code: dto.code.toUpperCase(),
         display_name: dto.display_name,
         status: dto.status || 'active',
+        working_mode: dto.working_mode || 'onsite',
       }),
     );
+  }
+
+  async update(id: string, dto: UpdateEmployeeDto) {
+    const emp = await this.get(id);
+    if (dto.display_name !== undefined) emp.display_name = dto.display_name;
+    if (dto.status !== undefined) emp.status = dto.status;
+    if (dto.working_mode !== undefined) emp.working_mode = dto.working_mode;
+    return this.repo.save(emp);
   }
 
   async findAll(q?: string, status?: string) {

@@ -22,6 +22,10 @@ export class Employee {
   @Column({ type: 'text', default: 'active' })
   status: 'active' | 'inactive';
 
+  /** On-site employees must pass geofence; remote may skip it. */
+  @Column({ type: 'text', default: 'onsite' })
+  working_mode: 'onsite' | 'remote';
+
   @CreateDateColumn({ type: 'timestamptz' })
   created_at: Date;
 

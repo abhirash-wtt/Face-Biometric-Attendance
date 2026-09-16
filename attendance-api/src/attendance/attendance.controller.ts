@@ -75,7 +75,7 @@ export class AttendanceController {
       boundEmployeeId,
     });
     const geofenceEmployeeId = boundEmployeeId || (result.ok ? result.match?.employee_id : undefined);
-    const { wfh_bypass } = await this.attendance.assertGeofenceUnlessApprovedWfh(
+    const { wfh_bypass, remote_bypass } = await this.attendance.assertGeofenceUnlessApprovedWfh(
       geofenceEmployeeId,
       siteCode,
       dto.gps?.lat,
@@ -101,6 +101,7 @@ export class AttendanceController {
       device_id: dto.device_id || user.device_id,
       site_code: dto.site_code || user.site_code,
       wfh_bypass,
+      remote_bypass,
     };
   }
 

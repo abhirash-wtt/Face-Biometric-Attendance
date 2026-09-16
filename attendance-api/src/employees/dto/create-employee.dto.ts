@@ -1,4 +1,4 @@
-import { IsOptional, IsString, Matches } from 'class-validator';
+import { IsIn, IsOptional, IsString, Matches } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateEmployeeDto {
@@ -15,4 +15,9 @@ export class CreateEmployeeDto {
   @IsOptional()
   @IsString()
   status?: 'active' | 'inactive';
+
+  @ApiPropertyOptional({ enum: ['onsite', 'remote'], default: 'onsite' })
+  @IsOptional()
+  @IsIn(['onsite', 'remote'])
+  working_mode?: 'onsite' | 'remote';
 }

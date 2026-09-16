@@ -10,8 +10,19 @@ export type IdentifyResponse = {
   liveness: number;
   face_crop_url?: string;
   wfh_bypass?: boolean;
+  remote_bypass?: boolean;
   thresholds?: { similarity: number; liveness: number };
   top?: Array<{ employee_id: string; display_name: string; cosine_sim: number }>;
+};
+
+export type WorkingMode = 'onsite' | 'remote';
+
+export type Employee = {
+  id: string;
+  code: string;
+  display_name: string;
+  status: string;
+  working_mode?: WorkingMode;
 };
 
 export type AttendanceStatusRow = {
@@ -101,9 +112,13 @@ export const api = {
   },
   employees(q?: string) {
     const qs = q ? `?q=${encodeURIComponent(q)}` : '';
-    return request<Array<{ id: string; code: string; display_name: string; status: string }>>(
-      `/employees${qs}`,
-    );
+    return request<Employee[]>(`/employees${qs}`);
+  },
+  updateEmployee(
+    id: string,
+    payload: { working_mode?: WorkingMode; display_name?: string; status?: string },
+  ) {
+    return request<Employee>(`/employees/${id}`, { method: 'PATCH', body: payload });
   },
   identify(payload: {
     device_id: string;

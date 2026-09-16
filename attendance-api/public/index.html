@@ -32,7 +32,7 @@
       overscroll-behavior-y:contain;
       -webkit-tap-highlight-color:transparent;
     }
-    button, .date-field, .emp, .toggle { touch-action:manipulation; }
+    button, .date-field, .emp, .toggle, .mode-select { touch-action:manipulation; }
     :focus-visible { outline:2px solid var(--mint); outline-offset:2px; }
 
     header {
@@ -109,8 +109,24 @@
       padding:10px 8px; border-bottom:1px solid #22344f; cursor:pointer;
     }
     .emp.on { background:#123348; }
-    .emp > span:last-child { overflow-wrap:anywhere; }
+    .emp-name { flex:1 1 auto; min-width:0; overflow-wrap:anywhere; }
     .code { color:var(--mint); flex:0 0 72px; font-weight:700; }
+    /* Match shared input / date-field chrome so Working Mode reads as a normal control. */
+    .mode-select {
+      flex:0 0 auto; width:auto; min-width:128px; max-width:46%;
+      min-height:var(--tap); margin:0; padding:12px 36px 12px 12px;
+      border:1px solid var(--line); border-radius:10px;
+      background:transparent
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%239fb0c8' d='M1 1l5 5 5-5'/%3E%3C/svg%3E")
+        no-repeat right 12px center;
+      color:var(--text); font-size:16px; font-weight:700; font-family:inherit;
+      line-height:1.2; cursor:pointer;
+      appearance:none; -webkit-appearance:none;
+    }
+    .mode-select option { background:var(--card); color:var(--text); }
+    .mode-select:disabled { opacity:.6; cursor:wait; }
+    .mode-select:focus { outline:none; }
+    .mode-select:focus-visible { outline:2px solid var(--mint); outline-offset:2px; }
 
     .roster-toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin:12px 0 14px; }
     .roster-toolbar > .cta { flex:0 1 auto; width:auto; margin:0; padding:14px 18px; }
@@ -900,9 +916,11 @@
           $('confirmTitle').textContent = 'Welcome ' + res.name;
           $('confirmMsg').textContent = 'Similarity ' + Math.round(Number(res.similarity) * 100) + '% · Liveness ' + Math.round(Number(res.liveness) * 100) + '%\nConfirm clock ' + state.punch + '?';
           $('confirm').showModal();
-          status('kioskStatus', res.wfh_bypass
-            ? ('Matched ' + res.name + ' (WFH — geofence skipped)')
-            : ('Matched ' + res.name));
+          status('kioskStatus', res.remote_bypass
+            ? ('Matched ' + res.name + ' (Remote — geofence skipped)')
+            : res.wfh_bypass
+              ? ('Matched ' + res.name + ' (WFH — geofence skipped)')
+              : ('Matched ' + res.name));
         } else {
           status('kioskStatus', identifyFailMessage(res.reason));
           rollPrompt();
@@ -961,14 +979,58 @@
     };
     $('cancelBtn').onclick = () => { $('confirm').close(); state.pending = null; };
 
+    async function setWorkingMode(employeeId, working_mode, selectEl) {
+      const emp = state.employees.find((x) => x.id === employeeId);
+      const current = (emp && emp.working_mode) || 'onsite';
+      if (!emp || current === working_mode) {
+        if (selectEl) selectEl.value = current;
+        return;
+      }
+      if (selectEl) selectEl.disabled = true;
+      try {
+        const updated = await api('/employees/' + employeeId, {
+          method: 'PATCH',
+          body: { working_mode },
+        });
+        Object.assign(emp, updated);
+        if (state.selected && state.selected.id === employeeId) Object.assign(state.selected, updated);
+        status(
+          'enrollStatus',
+          emp.display_name + ': Working Mode set to ' + (working_mode === 'remote' ? 'Remote' : 'On-site'),
+        );
+        loadEmployees().catch(() => {});
+      } catch (e) {
+        status('enrollStatus', e.message || 'Unable to update working mode');
+        if (selectEl) {
+          selectEl.value = current;
+          selectEl.disabled = false;
+        }
+      }
+    }
+
     async function loadEmployees() {
       const q = $('search').value.trim();
       state.employees = await api('/employees' + (q ? ('?q=' + encodeURIComponent(q)) : ''));
-      $('empList').innerHTML = state.employees.map((e) =>
-        '<div class="emp' + (state.selected && state.selected.id === e.id ? ' on' : '') + '" data-id="' + e.id + '"><span class="code">' + e.code + '</span><span>' + e.display_name + '</span></div>'
-      ).join('');
+      $('empList').innerHTML = state.employees.map((e) => {
+        const mode = e.working_mode || 'onsite';
+        return (
+          '<div class="emp' + (state.selected && state.selected.id === e.id ? ' on' : '') + '" data-id="' + e.id + '">' +
+            '<span class="code">' + e.code + '</span>' +
+            '<span class="emp-name">' + e.display_name + '</span>' +
+            '<select class="mode-select" aria-label="Working Mode" data-id="' + e.id + '">' +
+              '<option value="onsite"' + (mode === 'onsite' ? ' selected' : '') + '>On-site</option>' +
+              '<option value="remote"' + (mode === 'remote' ? ' selected' : '') + '>Remote</option>' +
+            '</select>' +
+          '</div>'
+        );
+      }).join('');
+      $('empList').querySelectorAll('.mode-select').forEach((sel) => {
+        sel.onclick = (ev) => ev.stopPropagation();
+        sel.onchange = () => setWorkingMode(sel.dataset.id, sel.value, sel);
+      });
       $('empList').querySelectorAll('.emp').forEach((el) => {
-        el.onclick = () => {
+        el.onclick = (ev) => {
+          if (ev.target.closest('.mode-select')) return;
           state.selected = state.employees.find((x) => x.id === el.dataset.id);
           state.samples = 0;
           status('enrollStatus', 'Enrolling ' + state.selected.display_name + ' (' + state.selected.code + ')');

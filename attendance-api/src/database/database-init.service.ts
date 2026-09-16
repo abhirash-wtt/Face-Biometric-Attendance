@@ -43,6 +43,7 @@ export class DatabaseInitService implements OnModuleInit {
     await this.migrateHqGeofence();
     await this.migrateUserEmployeeLink();
     await this.migrateWfhRegularization();
+    await this.migrateEmployeeWorkingMode();
   }
 
   private async migrateRoles() {
@@ -95,6 +96,38 @@ export class DatabaseInitService implements OnModuleInit {
     await this.ds.query(
       `ALTER TABLE users ADD COLUMN IF NOT EXISTS employee_id UUID REFERENCES employees(id) ON DELETE SET NULL`,
     );
+  }
+
+  private async migrateEmployeeWorkingMode() {
+    await this.ds.query(
+      `ALTER TABLE employees ADD COLUMN IF NOT EXISTS working_mode TEXT DEFAULT 'onsite'`,
+    );
+    await this.ds.query(
+      `UPDATE employees SET working_mode = 'onsite' WHERE working_mode IS NULL OR working_mode NOT IN ('onsite', 'remote')`,
+    );
+    await this.ds.query(`ALTER TABLE employees ALTER COLUMN working_mode SET DEFAULT 'onsite'`);
+    await this.ds.query(`
+      DO $$
+      DECLARE r RECORD;
+      BEGIN
+        FOR r IN
+          SELECT conname FROM pg_constraint
+          WHERE conrelid = 'employees'::regclass AND contype = 'c'
+            AND pg_get_constraintdef(oid) ILIKE '%working_mode%'
+        LOOP
+          EXECUTE format('ALTER TABLE employees DROP CONSTRAINT IF EXISTS %I', r.conname);
+        END LOOP;
+      END $$;
+    `);
+    try {
+      await this.ds.query(
+        `ALTER TABLE employees ADD CONSTRAINT employees_working_mode_check CHECK (working_mode IN ('onsite', 'remote'))`,
+      );
+    } catch (err) {
+      const message = (err as Error).message || '';
+      if (!/already exists/i.test(message)) throw err;
+    }
+    this.logger.log('Employee working_mode column ready');
   }
 
   private async migrateWfhRegularization() {

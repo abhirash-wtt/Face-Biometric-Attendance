@@ -35,8 +35,8 @@ export class AttendanceService {
   ) {}
 
   /**
-   * Geofence gate for clock-in flows. Skipped when the employee has an
-   * approved WFH regularization for the current IST calendar day.
+   * Geofence gate for clock-in flows. Skipped for Remote working mode, or when
+   * the employee has an approved WFH regularization for the current IST day.
    */
   async assertGeofenceUnlessApprovedWfh(
     employeeId: string | undefined,
@@ -44,12 +44,18 @@ export class AttendanceService {
     lat?: number,
     lng?: number,
     accuracyM?: number,
-  ): Promise<{ wfh_bypass: boolean }> {
-    if (employeeId && (await this.regularization.hasApprovedWfh(employeeId, localDateYmd()))) {
-      return { wfh_bypass: true };
+  ): Promise<{ wfh_bypass: boolean; remote_bypass: boolean }> {
+    if (employeeId) {
+      const emp = await this.employees.get(employeeId);
+      if (emp.working_mode === 'remote') {
+        return { wfh_bypass: false, remote_bypass: true };
+      }
+      if (await this.regularization.hasApprovedWfh(employeeId, localDateYmd())) {
+        return { wfh_bypass: true, remote_bypass: false };
+      }
     }
     await this.sites.assertGpsInside(siteCode, lat, lng, accuracyM);
-    return { wfh_bypass: false };
+    return { wfh_bypass: false, remote_bypass: false };
   }
 
   async create(dto: CreateAttendanceDto, opts?: { requireFaceMatch?: boolean }) {
@@ -80,7 +86,7 @@ export class AttendanceService {
     const lat = dto.gps_lat ?? dto.gps?.lat;
     const lng = dto.gps_lng ?? dto.gps?.lng;
     const siteCode = dto.site_code?.toUpperCase();
-    const { wfh_bypass } = await this.assertGeofenceUnlessApprovedWfh(
+    const { wfh_bypass, remote_bypass } = await this.assertGeofenceUnlessApprovedWfh(
       dto.employee_id,
       siteCode,
       lat,
@@ -110,9 +116,8 @@ export class AttendanceService {
 
     const event_time = new Date();
     const shiftNote = dto.type === 'IN' ? await this.shifts.noteForEvent(event_time) : undefined;
-    const notes =
-      [dto.notes, shiftNote, wfh_bypass ? 'Approved WFH' : undefined].filter(Boolean).join('; ') ||
-      undefined;
+    const modeNote = remote_bypass ? 'Remote working mode' : wfh_bypass ? 'Approved WFH' : undefined;
+    const notes = [dto.notes, shiftNote, modeNote].filter(Boolean).join('; ') || undefined;
 
     const log = await this.repo.save(
       this.repo.create({
@@ -139,6 +144,7 @@ export class AttendanceService {
         device_id: log.device_id,
         site_code: log.site_code,
         wfh_bypass,
+        remote_bypass,
       }),
     );
     return log;
