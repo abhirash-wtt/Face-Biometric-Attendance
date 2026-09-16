@@ -41,4 +41,4 @@ Identify accepts multipart `file` **or** JSON `{ image_b64, device_id, site_code
 
 Clock-in is limited to the HQ office (Walking Tree Technologies, Plot 140A M.G. Plaza, Agra), covering basement through 2nd floor. Indoor GPS is often several metres off the roof outline, so the server accepts a reading if it is inside the building rectangle, if the reported accuracy circle still touches that rectangle, or if it is within 40 m of the office pin. `POST /attend/identify` and `POST /attendance` require GPS when `GEOFENCE_ENABLED=true`. Points far from the office return HTTP 422 `Outside office geofence`.
 
-Similarity rule (defaults): accept if `cosine_sim >= 0.95` and `liveness_score >= 0.6`.
+Similarity rule (defaults): accept if `cosine_sim >= 0.97` and `liveness_score >= 0.6`.

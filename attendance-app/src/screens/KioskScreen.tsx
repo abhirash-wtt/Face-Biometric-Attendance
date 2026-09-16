@@ -46,6 +46,7 @@ export function KioskScreen() {
     liveness: number;
     face_crop_url?: string;
     image_b64: string;
+    gps: { lat: number; lng: number; accuracy?: number };
   } | null>(null);
 
   const onReady = useCallback((capture: () => Promise<string>) => {
@@ -59,10 +60,6 @@ export function KioskScreen() {
       const image_b64 = await captureRef.current();
       const settings = await storage.getSettings();
       const gps = await getCurrentGps();
-      if (!gps) {
-        dispatch(setLastMessage('Location is required. Allow GPS and stand inside the office.'));
-        return;
-      }
       const res = await api.identify({
         device_id: settings.deviceId,
         site_code: settings.siteCode,
@@ -70,7 +67,7 @@ export function KioskScreen() {
         image_b64,
         liveness: 0.95,
       });
-      const minSim = res.thresholds?.similarity ?? 0.95;
+      const minSim = res.thresholds?.similarity ?? 0.97;
       const minLive = res.thresholds?.liveness ?? 0.6;
       if (res.ok && res.similarity >= minSim && res.liveness >= minLive && res.employee_id) {
         setPending({
@@ -80,6 +77,7 @@ export function KioskScreen() {
           liveness: res.liveness,
           face_crop_url: res.face_crop_url,
           image_b64,
+          gps,
         });
         dispatch(setLastMessage(`Matched ${res.name}`));
       } else {
@@ -93,10 +91,22 @@ export function KioskScreen() {
         try {
           const image_b64 = await captureRef.current();
           const settings = await storage.getSettings();
+          let gps: { lat: number; lng: number; accuracy?: number } | undefined;
+          try {
+            gps = await getCurrentGps();
+          } catch {
+            gps = undefined;
+          }
           await storage.enqueue({
             id: String(Date.now()),
             path: '/attend/identify',
-            body: { device_id: settings.deviceId, site_code: settings.siteCode, image_b64, liveness: 0.95 },
+            body: {
+              device_id: settings.deviceId,
+              site_code: settings.siteCode,
+              image_b64,
+              liveness: 0.95,
+              gps,
+            },
             createdAt: Date.now(),
           });
         } catch {
@@ -113,7 +123,12 @@ export function KioskScreen() {
   const confirmAttendance = async () => {
     if (!pending) return;
     const settings = await storage.getSettings();
-    const gps = await getCurrentGps();
+    let gps = pending.gps;
+    try {
+      gps = await getCurrentGps();
+    } catch {
+      // Reuse the fix captured during identify when a fresh read fails.
+    }
     const body = {
       employee_id: pending.employee_id,
       type: punchType,

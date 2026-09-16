@@ -493,20 +493,35 @@
         if (!camActive()) ensureCam(false);
       }
     }
+    function gpsErrorMessage(code, secureContext) {
+      if (secureContext) {
+        return 'Location needs a secure connection. Open this kiosk over https:// instead of http://.';
+      }
+      if (code === 1) return 'Location permission denied. Allow location for this site in your browser settings, then retry.';
+      if (code === 2) return 'Location unavailable. Enable GPS and try again near a window.';
+      if (code === 3) return 'Location timed out. Move closer to a window and retry.';
+      return 'Location is required. Allow GPS and stand inside the office.';
+    }
     function getGps() {
-      const opts = { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 };
+      if (insecureOrigin()) {
+        return Promise.reject(new Error(gpsErrorMessage(0, true)));
+      }
+      const opts = { enableHighAccuracy: true, timeout: 20000, maximumAge: 30000 };
       return new Promise((resolve, reject) => {
-        if (!navigator.geolocation) return reject(new Error('Location is required'));
+        if (!navigator.geolocation) return reject(new Error('This browser does not support location.'));
         const samples = [];
         let watchId;
-        const finish = (err) => {
+        let lastErr = null;
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
           if (watchId != null) navigator.geolocation.clearWatch(watchId);
           if (samples.length) {
             samples.sort((a, b) => (a.accuracy || 999) - (b.accuracy || 999));
             return resolve(samples[0]);
           }
-          if (err) return reject(err);
-          reject(new Error('Location is required. Allow GPS and stand inside the office.'));
+          reject(new Error(gpsErrorMessage(lastErr && lastErr.code)));
         };
         const onPos = (p) => {
           samples.push({
@@ -515,9 +530,10 @@
             accuracy: p.coords.accuracy,
           });
         };
-        navigator.geolocation.getCurrentPosition(onPos, () => {}, opts);
-        watchId = navigator.geolocation.watchPosition(onPos, () => {}, opts);
-        setTimeout(() => finish(), 2500);
+        const onErr = (e) => { lastErr = e; };
+        navigator.geolocation.getCurrentPosition(onPos, onErr, opts);
+        watchId = navigator.geolocation.watchPosition(onPos, onErr, opts);
+        setTimeout(finish, 12000);
       });
     }
     async function api(path, opts = {}) {
@@ -582,14 +598,14 @@
         if (!port) {
           link.classList.add('hidden');
           $('camHint').textContent =
-            'Phone browsers only allow the camera over a secure connection. Start the API with ' +
+            'Phone browsers only allow the camera and GPS over a secure connection. Start the API with ' +
             'HTTPS_ENABLED=true (see npm run cert:dev), then reopen this kiosk over https://.';
           return;
         }
         link.href = 'https://' + location.hostname + ':' + port + location.pathname + location.search;
         link.classList.remove('hidden');
         $('camHint').textContent =
-          'Phone browsers only allow the camera over a secure connection. Tap above to reopen ' +
+          'Phone browsers only allow the camera and GPS over a secure connection. Tap above to reopen ' +
           'this kiosk on https://' + location.hostname + ':' + port + '.';
       });
     }
@@ -782,8 +798,7 @@
       try {
         status('kioskStatus', 'Checking liveness…');
         const image_b64 = await captureB64();
-        const gps = await getGps().catch(() => null);
-        if (!gps) return status('kioskStatus', 'Location is required. Allow GPS and stand inside the office.');
+        const gps = await getGps();
         const res = await api('/attend/identify', {
           method: 'POST',
           body: {
@@ -794,7 +809,7 @@
             liveness: 0.95,
           },
         });
-        const minSim = (res.thresholds && res.thresholds.similarity) || 0.95;
+        const minSim = (res.thresholds && res.thresholds.similarity) || 0.97;
         const minLive = (res.thresholds && res.thresholds.liveness) || 0.6;
         if (res.ok && res.similarity >= minSim && res.liveness >= minLive && res.employee_id) {
           state.pending = { ...res, image_b64, gps };
@@ -817,7 +832,8 @@
       if (!p) return;
       try {
         let gps = p.gps;
-        try { gps = await getGps(); } catch {}
+        try { gps = await getGps(); } catch (e) { /* reuse identify fix */ }
+        if (!gps) return status('kioskStatus', 'Location is required. Allow GPS and stand inside the office.');
         await api('/attendance', {
           method: 'POST',
           body: {

@@ -16,10 +16,11 @@ npx @react-native-community/cli@latest init AttendanceNative --version 0.76.6
 npx react-native run-android
 ```
 
-Add camera permission:
+Add camera and location permissions:
 
 - Android `AndroidManifest.xml`: `CAMERA`, `ACCESS_FINE_LOCATION`
 - iOS `Info.plist`: `NSCameraUsageDescription`, `NSLocationWhenInUseUsageDescription`
+- Install native GPS: `npm install react-native-geolocation-service` then rebuild the app
 
 Settings → API URL:
 
