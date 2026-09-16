@@ -60,16 +60,41 @@
     .prompt { color:var(--mint); text-align:center; margin:8px 0 12px; font-size:clamp(14px, 4vw, 16px); }
 
     #cameraPanel { position:relative; }
-    video, canvas {
+    .cam-stage {
+      position:relative;
+      border-radius:16px;
+      overflow:hidden;
+      background:#0b1220;
+    }
+    .cam-stage video, .cam-stage canvas {
       display:block; width:100%; height:clamp(200px, 42dvh, 360px);
-      object-fit:cover; background:#0b1220; border-radius:16px;
+      object-fit:cover; background:#0b1220;
     }
     /* Selfie preview reads as a mirror; the captured frame stays unmirrored. */
     #cam { transform:scaleX(-1); }
+    .face-guide {
+      position:absolute; inset:0; z-index:2;
+      display:flex; align-items:center; justify-content:center;
+      pointer-events:none;
+    }
+    .face-guide-ring {
+      width:min(72%, 280px);
+      aspect-ratio:1;
+      border-radius:50%;
+      border:3px solid rgba(126,224,197,.92);
+      box-shadow:
+        0 0 0 9999px rgba(7,17,31,.55),
+        inset 0 0 0 1px rgba(255,255,255,.12);
+      animation: face-guide-pulse 2.4s ease-in-out infinite;
+    }
+    @keyframes face-guide-pulse {
+      0%, 100% { border-color:rgba(126,224,197,.78); }
+      50% { border-color:rgba(126,224,197,1); }
+    }
     .cam-overlay {
-      position:absolute; inset:0; display:flex; flex-direction:column;
+      position:absolute; inset:0; z-index:3; display:flex; flex-direction:column;
       align-items:center; justify-content:center; gap:10px; padding:16px;
-      background:rgba(7,17,31,.88); border-radius:16px; text-align:center;
+      background:rgba(7,17,31,.88); text-align:center;
     }
     .cam-overlay .cta { width:auto; min-width:min(260px, 80%); margin:0; }
     .cam-secure-link {
@@ -276,7 +301,8 @@
       }
       main:has(#cameraPanel:not(.hidden)) #cameraPanel { flex:1 1 44%; min-width:0; }
       main:has(#cameraPanel:not(.hidden)) > section { flex:1 1 56%; min-width:0; }
-      video, canvas { height:clamp(150px, 62dvh, 300px); }
+      video, canvas,
+      .cam-stage video, .cam-stage canvas { height:clamp(150px, 62dvh, 300px); }
       main:has(#cameraPanel:not(.hidden)) h1 { margin:0 0 6px; }
       .prompt { margin:0 0 8px; }
       main:has(#cameraPanel:not(.hidden)) button.cta { margin-top:10px; }
@@ -299,11 +325,16 @@
   <main>
     <div id="cameraPanel">
       <p class="prompt" id="livenessPrompt">Please blink twice</p>
-      <video id="cam" autoplay playsinline webkit-playsinline muted disablepictureinpicture></video>
-      <div class="cam-overlay hidden" id="camOverlay">
-        <button type="button" class="cta" id="camStartBtn">Tap to enable camera</button>
-        <a class="cta cam-secure-link hidden" id="camSecureLink" href="#">Open the secure (https) kiosk</a>
-        <p class="muted" id="camHint"></p>
+      <div class="cam-stage">
+        <video id="cam" autoplay playsinline webkit-playsinline muted disablepictureinpicture></video>
+        <div class="face-guide" aria-hidden="true">
+          <div class="face-guide-ring"></div>
+        </div>
+        <div class="cam-overlay hidden" id="camOverlay">
+          <button type="button" class="cta" id="camStartBtn">Tap to enable camera</button>
+          <a class="cta cam-secure-link hidden" id="camSecureLink" href="#">Open the secure (https) kiosk</a>
+          <p class="muted" id="camHint"></p>
+        </div>
       </div>
     </div>
     <section id="kiosk">

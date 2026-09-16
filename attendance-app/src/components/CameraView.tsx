@@ -1,9 +1,17 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 
 type Props = {
   onReady?: (capture: () => Promise<string>) => void;
 };
+
+function FaceGuide() {
+  return (
+    <View style={styles.guide} pointerEvents="none" accessibilityElementsHidden>
+      <View style={styles.guideRing} />
+    </View>
+  );
+}
 
 export function CameraView({ onReady }: Props) {
   if (Platform.OS === 'web') {
@@ -76,6 +84,7 @@ function WebCamera({ onReady }: Props) {
         // The preview mirrors like a selfie camera; the captured frame stays unmirrored.
         style: { width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' },
       })}
+      <FaceGuide />
     </View>
   );
 }
@@ -114,6 +123,7 @@ function NativeCamera({ onReady }: Props) {
   return (
     <View style={styles.box}>
       <Camera ref={cameraRef} style={StyleSheet.absoluteFill} device={device} isActive photo />
+      <FaceGuide />
     </View>
   );
 }
@@ -129,4 +139,20 @@ const styles = StyleSheet.create({
   },
   center: { alignItems: 'center', justifyContent: 'center' },
   hint: { color: '#9fb0c8', textAlign: 'center', paddingHorizontal: 16 },
+  guide: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  guideRing: {
+    width: '72%',
+    maxWidth: 280,
+    aspectRatio: 1,
+    borderRadius: 9999,
+    borderWidth: 3,
+    borderColor: 'rgba(126, 224, 197, 0.92)',
+    backgroundColor: 'transparent',
+    // Soft outside dim so the face oval reads clearly over the preview.
+    boxShadow: '0 0 0 9999px rgba(7, 17, 31, 0.55)',
+  },
 });
