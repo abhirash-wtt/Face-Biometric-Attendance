@@ -7,6 +7,7 @@ import { SitesModule } from '../sites/sites.module';
 import { ShiftsModule } from '../shifts/shifts.module';
 import { EmployeesModule } from '../employees/employees.module';
 import { RecognitionModule } from '../recognition/recognition.module';
+import { RegularizationModule } from '../regularization/regularization.module';
 import { User } from '../auth/user.entity';
 
 @Module({
@@ -16,6 +17,7 @@ import { User } from '../auth/user.entity';
     ShiftsModule,
     EmployeesModule,
     RecognitionModule,
+    RegularizationModule,
   ],
   controllers: [AttendanceController],
   providers: [AttendanceService],

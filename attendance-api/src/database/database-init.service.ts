@@ -42,6 +42,7 @@ export class DatabaseInitService implements OnModuleInit {
     await this.migrateRoles();
     await this.migrateHqGeofence();
     await this.migrateUserEmployeeLink();
+    await this.migrateWfhRegularization();
   }
 
   private async migrateRoles() {
@@ -94,6 +95,38 @@ export class DatabaseInitService implements OnModuleInit {
     await this.ds.query(
       `ALTER TABLE users ADD COLUMN IF NOT EXISTS employee_id UUID REFERENCES employees(id) ON DELETE SET NULL`,
     );
+  }
+
+  private async migrateWfhRegularization() {
+    await this.ds.query(`
+      CREATE TABLE IF NOT EXISTS wfh_regularization_requests (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        work_date DATE NOT NULL,
+        reason TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending', 'approved', 'rejected', 'cancelled')),
+        requested_by_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        reviewed_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+        reviewed_at TIMESTAMPTZ,
+        review_note TEXT,
+        created_at TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    await this.ds.query(`
+      CREATE INDEX IF NOT EXISTS wfh_requests_employee_date_idx
+        ON wfh_regularization_requests (employee_id, work_date)
+    `);
+    await this.ds.query(`
+      CREATE INDEX IF NOT EXISTS wfh_requests_status_idx
+        ON wfh_regularization_requests (status, created_at DESC)
+    `);
+    await this.ds.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS wfh_requests_active_uniq
+        ON wfh_regularization_requests (employee_id, work_date)
+        WHERE status IN ('pending', 'approved')
+    `);
+    this.logger.log('WFH regularization table ready');
   }
 
   private readSql(file: string): string {

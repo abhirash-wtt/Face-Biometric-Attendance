@@ -9,6 +9,7 @@ export type IdentifyResponse = {
   similarity: number;
   liveness: number;
   face_crop_url?: string;
+  wfh_bypass?: boolean;
   thresholds?: { similarity: number; liveness: number };
   top?: Array<{ employee_id: string; display_name: string; cosine_sim: number }>;
 };
@@ -21,6 +22,20 @@ export type AttendanceStatusRow = {
   clock_in: string | null;
   clock_out: string | null;
   status: 'Present' | 'Absent';
+};
+
+export type WfhRequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+
+export type WfhRequest = {
+  id: string;
+  employee_id: string;
+  work_date: string;
+  reason: string;
+  status: WfhRequestStatus;
+  review_note?: string | null;
+  reviewed_at?: string | null;
+  created_at: string;
+  employee?: { code: string; display_name: string };
 };
 
 async function request<T>(
@@ -135,6 +150,31 @@ export const api = {
       liveness_threshold: number;
       liveness_prompts: string[];
     }>('/config');
+  },
+  createWfhRequest(payload: { work_date: string; reason: string; employee_id?: string }) {
+    return request<WfhRequest>('/wfh-requests', { method: 'POST', body: payload });
+  },
+  myWfhRequests() {
+    return request<WfhRequest[]>('/wfh-requests/mine');
+  },
+  listWfhRequests(status?: WfhRequestStatus) {
+    const qs = status ? `?status=${encodeURIComponent(status)}` : '';
+    return request<WfhRequest[]>(`/wfh-requests${qs}`);
+  },
+  approveWfhRequest(id: string, review_note?: string) {
+    return request<WfhRequest>(`/wfh-requests/${id}/approve`, {
+      method: 'POST',
+      body: { review_note },
+    });
+  },
+  rejectWfhRequest(id: string, review_note?: string) {
+    return request<WfhRequest>(`/wfh-requests/${id}/reject`, {
+      method: 'POST',
+      body: { review_note },
+    });
+  },
+  cancelWfhRequest(id: string) {
+    return request<WfhRequest>(`/wfh-requests/${id}/cancel`, { method: 'POST', body: {} });
   },
   async flushQueue() {
     const queue = await storage.getQueue();

@@ -68,18 +68,20 @@ export class AttendanceController {
       throw new BadRequestException('Provide multipart file, image_b64, or embedding');
     }
     const siteCode = dto.site_code || user.site_code;
-    await this.attendance.assertIdentifyGeofence(
-      siteCode,
-      dto.gps?.lat,
-      dto.gps?.lng,
-      dto.gps?.accuracy,
-    );
     const boundEmployeeId = boundClockInEmployeeId(user);
     const result = await this.recognition.identify(imageBuf, {
       embedding: dto.embedding,
       clientLiveness: dto.liveness,
       boundEmployeeId,
     });
+    const geofenceEmployeeId = boundEmployeeId || (result.ok ? result.match?.employee_id : undefined);
+    const { wfh_bypass } = await this.attendance.assertGeofenceUnlessApprovedWfh(
+      geofenceEmployeeId,
+      siteCode,
+      dto.gps?.lat,
+      dto.gps?.lng,
+      dto.gps?.accuracy,
+    );
     let face_crop_url: string | undefined;
     if (imageBuf.length) {
       face_crop_url = await this.storage.put(imageBuf);
@@ -98,6 +100,7 @@ export class AttendanceController {
       top: result.top,
       device_id: dto.device_id || user.device_id,
       site_code: dto.site_code || user.site_code,
+      wfh_bypass,
     };
   }
 

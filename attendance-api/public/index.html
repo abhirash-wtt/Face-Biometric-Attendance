@@ -216,6 +216,7 @@
     <button class="on" data-tab="kiosk">Kiosk</button>
     <button data-tab="enroll" id="enrollTabBtn">Enroll</button>
     <button data-tab="attendance" id="attendanceTabBtn">Attendance</button>
+    <button data-tab="wfh" id="wfhTabBtn" class="rbac-hide">Regularize</button>
     <button data-tab="settings">Settings</button>
   </header>
   <main>
@@ -278,6 +279,25 @@
         </table>
       </div>
       <p class="status" id="rosterStatus"></p>
+    </section>
+    <section id="wfh" class="hidden">
+      <h1>WFH Regularization</h1>
+      <p class="muted">Request Work From Home at least one day ahead. After admin approval, geofencing is skipped when clocking in/out on that date.</p>
+      <div id="wfhRequestForm" class="hidden">
+        <p style="color:#7ee0c5;font-weight:700;margin:12px 0 6px">New request</p>
+        <label for="wfhDate">WFH date</label>
+        <input id="wfhDate" type="date" />
+        <label for="wfhReason">Reason</label>
+        <textarea id="wfhReason" rows="3" placeholder="Reason (required)" style="width:100%;border-radius:10px;border:1px solid #2a3d5c;background:#0c182c;color:#f4f7fb;padding:10px;font:inherit"></textarea>
+        <button class="cta" id="wfhSubmitBtn">Submit request</button>
+      </div>
+      <p id="wfhAdminHint" class="muted hidden" style="margin-top:12px">Employees submit requests after logging in with their employee account. As admin, approve or reject pending requests below.</p>
+      <div class="roster-toolbar" style="margin-top:12px">
+        <p style="color:#7ee0c5;font-weight:700;margin:0" id="wfhListTitle">My requests</p>
+        <button class="cta" id="wfhRefreshBtn">Refresh</button>
+      </div>
+      <div class="list" id="wfhList" style="max-height:none"></div>
+      <p class="status" id="wfhStatus"></p>
     </section>
     <section id="settings" class="hidden">
       <h1>Settings</h1>
@@ -409,6 +429,28 @@
       if (role === 'admin') return true;
       return role === 'user' && !!linkedEmployeeId();
     }
+    function isDeviceToken() {
+      const payload = decodeJwt(state.token);
+      return !!(payload && payload.type === 'device');
+    }
+    function canUseWfh() {
+      const role = jwtRole();
+      return !!role && !isDeviceToken();
+    }
+    function tomorrowYmd() {
+      const t = todayYmd();
+      const [y, m, d] = t.split('-').map(Number);
+      const dt = new Date(Date.UTC(y, m - 1, d + 1));
+      return dt.toISOString().slice(0, 10);
+    }
+    function formatWfhDate(ymd) {
+      const raw = String(ymd || '').slice(0, 10);
+      const [y, m, d] = raw.split('-').map(Number);
+      if (!y || !m || !d) return raw || '—';
+      return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-IN', {
+        weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
+      });
+    }
     function setSession(res) {
       state.token = res.access_token || '';
       localStorage.setItem('access_token', state.token);
@@ -472,10 +514,15 @@
       const role = jwtRole();
       const isAdmin = role === 'admin';
       const user = authUser();
+      const wfhOk = canUseWfh();
       $('enrollTabBtn').classList.toggle('rbac-hide', !canEnroll());
       $('attendanceTabBtn').classList.toggle('rbac-hide', !isAdmin);
+      $('wfhTabBtn').classList.toggle('rbac-hide', !wfhOk);
       $('adminBindBlock').classList.toggle('rbac-hide', role === 'user');
       $('bindBtn').classList.toggle('rbac-hide', role === 'user');
+      $('wfhRequestForm').classList.toggle('hidden', role !== 'user');
+      $('wfhAdminHint').classList.toggle('hidden', !isAdmin);
+      $('wfhListTitle').textContent = isAdmin ? 'All requests' : 'My requests';
       if (role && user && user.email) {
         $('roleBadge').textContent = 'Signed in as ' + user.email + ' (' + role + ')';
       } else if (role) {
@@ -484,10 +531,10 @@
         $('roleBadge').textContent = 'Not signed in';
       }
       const enrollOk = canEnroll();
-      if ((state.tab === 'attendance' && !isAdmin) || (state.tab === 'enroll' && !enrollOk)) {
+      if ((state.tab === 'attendance' && !isAdmin) || (state.tab === 'enroll' && !enrollOk) || (state.tab === 'wfh' && !wfhOk)) {
         state.tab = 'kiosk';
         document.querySelectorAll('header button').forEach((x) => x.classList.toggle('on', x.dataset.tab === 'kiosk'));
-        ['kiosk','enroll','attendance','settings'].forEach((id) => $(id).classList.toggle('hidden', id !== 'kiosk'));
+        ['kiosk','enroll','attendance','wfh','settings'].forEach((id) => $(id).classList.toggle('hidden', id !== 'kiosk'));
         $('cameraPanel').classList.remove('hidden');
         $('livenessPrompt').style.visibility = 'visible';
         if (!camActive()) ensureCam(false);
@@ -769,10 +816,11 @@
       b.onclick = () => {
         if (b.dataset.tab === 'attendance' && jwtRole() !== 'admin') return;
         if (b.dataset.tab === 'enroll' && !canEnroll()) return;
+        if (b.dataset.tab === 'wfh' && !canUseWfh()) return;
         state.tab = b.dataset.tab;
         document.querySelectorAll('header button').forEach((x) => x.classList.toggle('on', x === b));
-        ['kiosk','enroll','attendance','settings'].forEach((id) => $(id).classList.toggle('hidden', id !== state.tab));
-        const camHidden = state.tab === 'settings' || state.tab === 'attendance';
+        ['kiosk','enroll','attendance','wfh','settings'].forEach((id) => $(id).classList.toggle('hidden', id !== state.tab));
+        const camHidden = state.tab === 'settings' || state.tab === 'attendance' || state.tab === 'wfh';
         $('cameraPanel').classList.toggle('hidden', camHidden);
         $('livenessPrompt').style.visibility = state.tab === 'kiosk' ? 'visible' : 'hidden';
         // Holding the camera open behind a hidden panel drains phone batteries.
@@ -783,6 +831,11 @@
         if (state.tab === 'attendance') {
           if (!$('rosterDate').value) setRosterDate(todayYmd(), false);
           loadRoster().catch(() => {});
+        }
+        if (state.tab === 'wfh') {
+          if (!$('wfhDate').value) $('wfhDate').value = tomorrowYmd();
+          $('wfhDate').min = tomorrowYmd();
+          loadWfhRequests().catch((e) => status('wfhStatus', e.message));
         }
       };
     });
@@ -798,7 +851,8 @@
       try {
         status('kioskStatus', 'Checking liveness…');
         const image_b64 = await captureB64();
-        const gps = await getGps();
+        let gps = null;
+        try { gps = await getGps(); } catch (e) { gps = null; }
         const res = await api('/attend/identify', {
           method: 'POST',
           body: {
@@ -816,7 +870,9 @@
           $('confirmTitle').textContent = 'Welcome ' + res.name;
           $('confirmMsg').textContent = 'Similarity ' + Math.round(Number(res.similarity) * 100) + '% · Liveness ' + Math.round(Number(res.liveness) * 100) + '%\nConfirm clock ' + state.punch + '?';
           $('confirm').showModal();
-          status('kioskStatus', 'Matched ' + res.name);
+          status('kioskStatus', res.wfh_bypass
+            ? ('Matched ' + res.name + ' (WFH — geofence skipped)')
+            : ('Matched ' + res.name));
         } else {
           status('kioskStatus', identifyFailMessage(res.reason));
           rollPrompt();
@@ -833,7 +889,6 @@
       try {
         let gps = p.gps;
         try { gps = await getGps(); } catch (e) { /* reuse identify fix */ }
-        if (!gps) return status('kioskStatus', 'Location is required. Allow GPS and stand inside the office.');
         await api('/attendance', {
           method: 'POST',
           body: {
@@ -841,7 +896,7 @@
             type: state.punch,
             device_id: state.settings.deviceId,
             site_code: state.settings.siteCode,
-            gps,
+            gps: gps || undefined,
             similarity: p.similarity,
             liveness_score: p.liveness,
             face_crop_url: p.face_crop_url,
@@ -1062,6 +1117,93 @@
       }
     }
     $('rosterRefreshBtn').onclick = () => loadRoster().catch((e) => status('rosterStatus', e.message));
+
+    async function loadWfhRequests() {
+      const isAdmin = jwtRole() === 'admin';
+      const rows = isAdmin
+        ? await api('/wfh-requests')
+        : await api('/wfh-requests/mine');
+      const list = $('wfhList');
+      list.innerHTML = '';
+      if (!rows || !rows.length) {
+        list.innerHTML = '<p class="muted" style="padding:12px">No WFH requests yet</p>';
+        status('wfhStatus', '0 requests');
+        return;
+      }
+      for (const row of rows) {
+        const item = document.createElement('div');
+        item.className = 'emp';
+        item.style.cssText = 'display:block;padding:12px;border-bottom:1px solid #1b2b44';
+        const who = row.employee
+          ? (row.employee.display_name + ' (' + row.employee.code + ')')
+          : '';
+        const actions = document.createElement('div');
+        actions.style.cssText = 'display:flex;gap:8px;margin-top:8px;flex-wrap:wrap';
+        if (row.status === 'pending' && isAdmin) {
+          const approve = document.createElement('button');
+          approve.className = 'cta';
+          approve.style.margin = '0';
+          approve.textContent = 'Approve';
+          approve.onclick = async () => {
+            try {
+              await api('/wfh-requests/' + row.id + '/approve', { method: 'POST', body: {} });
+              status('wfhStatus', 'Request approved');
+              await loadWfhRequests();
+            } catch (e) { status('wfhStatus', e.message); }
+          };
+          const reject = document.createElement('button');
+          reject.className = 'danger';
+          reject.style.margin = '0';
+          reject.textContent = 'Reject';
+          reject.onclick = async () => {
+            try {
+              await api('/wfh-requests/' + row.id + '/reject', { method: 'POST', body: {} });
+              status('wfhStatus', 'Request rejected');
+              await loadWfhRequests();
+            } catch (e) { status('wfhStatus', e.message); }
+          };
+          actions.appendChild(approve);
+          actions.appendChild(reject);
+        } else if (row.status === 'pending' && !isAdmin) {
+          const cancel = document.createElement('button');
+          cancel.className = 'alt';
+          cancel.style.margin = '0';
+          cancel.textContent = 'Cancel';
+          cancel.onclick = async () => {
+            try {
+              await api('/wfh-requests/' + row.id + '/cancel', { method: 'POST', body: {} });
+              status('wfhStatus', 'Request cancelled');
+              await loadWfhRequests();
+            } catch (e) { status('wfhStatus', e.message); }
+          };
+          actions.appendChild(cancel);
+        }
+        item.innerHTML =
+          '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">' +
+          '<div><strong>' + formatWfhDate(row.work_date) + '</strong>' +
+          (who ? '<div class="muted">' + who + '</div>' : '') +
+          '<div style="margin-top:4px">' + (row.reason || '') + '</div></div>' +
+          '<span class="pill">' + row.status + '</span></div>';
+        if (actions.childNodes.length) item.appendChild(actions);
+        list.appendChild(item);
+      }
+      status('wfhStatus', rows.length + ' request' + (rows.length === 1 ? '' : 's'));
+    }
+    $('wfhRefreshBtn').onclick = () => loadWfhRequests().catch((e) => status('wfhStatus', e.message));
+    $('wfhSubmitBtn').onclick = async () => {
+      try {
+        const work_date = $('wfhDate').value;
+        const reason = ($('wfhReason').value || '').trim();
+        if (!work_date) return status('wfhStatus', 'Pick a WFH date');
+        if (reason.length < 3) return status('wfhStatus', 'Enter a reason (at least 3 characters)');
+        await api('/wfh-requests', { method: 'POST', body: { work_date, reason } });
+        $('wfhReason').value = '';
+        status('wfhStatus', 'WFH request submitted');
+        await loadWfhRequests();
+      } catch (e) {
+        status('wfhStatus', e.message);
+      }
+    };
 
     function fillSettings() {
       $('apiBase').value = state.settings.apiBase;

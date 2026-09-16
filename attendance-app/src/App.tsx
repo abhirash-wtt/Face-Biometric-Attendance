@@ -5,25 +5,31 @@ import { Provider } from 'react-redux';
 import { KioskScreen } from './screens/KioskScreen';
 import { EnrollScreen } from './screens/EnrollScreen';
 import { AttendanceScreen } from './screens/AttendanceScreen';
+import { RegularizationScreen } from './screens/RegularizationScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { store } from './state/attendanceSlice';
 import { storage } from './services/storage';
 import { TAP_TARGET, useLayout } from './theme/responsive';
 
-type Tab = 'kiosk' | 'enroll' | 'attendance' | 'settings';
+type Tab = 'kiosk' | 'enroll' | 'attendance' | 'wfh' | 'settings';
 
 function Shell() {
   const [tab, setTab] = useState<Tab>('kiosk');
   const [role, setRole] = useState<'admin' | 'user' | ''>('');
+  const [canWfh, setCanWfh] = useState(false);
   const insets = useSafeAreaInsets();
   const layout = useLayout();
 
   const refreshRole = useCallback(async () => {
     const next = await storage.getRole();
+    const wfh = await storage.canUseRegularization();
     setRole(next);
-    setTab((current) =>
-      next !== 'admin' && (current === 'enroll' || current === 'attendance') ? 'kiosk' : current,
-    );
+    setCanWfh(wfh);
+    setTab((current) => {
+      if (next !== 'admin' && (current === 'enroll' || current === 'attendance')) return 'kiosk';
+      if (!wfh && current === 'wfh') return 'kiosk';
+      return current;
+    });
   }, []);
 
   useEffect(() => {
@@ -36,12 +42,19 @@ function Shell() {
           ['kiosk', 'Kiosk'],
           ['enroll', 'Enroll'],
           ['attendance', 'Attend'],
+          ['wfh', 'Regularize'],
           ['settings', 'Settings'],
         ]
-      : [
-          ['kiosk', 'Kiosk'],
-          ['settings', 'Settings'],
-        ];
+      : canWfh
+        ? [
+            ['kiosk', 'Kiosk'],
+            ['wfh', 'Regularize'],
+            ['settings', 'Settings'],
+          ]
+        : [
+            ['kiosk', 'Kiosk'],
+            ['settings', 'Settings'],
+          ];
 
   return (
     <View style={styles.safe}>
@@ -59,6 +72,7 @@ function Shell() {
         {tab === 'kiosk' && <KioskScreen />}
         {tab === 'enroll' && role === 'admin' && <EnrollScreen />}
         {tab === 'attendance' && role === 'admin' && <AttendanceScreen />}
+        {tab === 'wfh' && canWfh && <RegularizationScreen role={role} />}
         {tab === 'settings' && <SettingsScreen onAuthChange={refreshRole} />}
       </View>
       <View
@@ -87,7 +101,7 @@ function Shell() {
               minimumFontScale={0.8}
               style={[
                 styles.tabText,
-                { fontSize: layout.compact ? 12 : 14 },
+                { fontSize: layout.compact || tabs.length > 4 ? 11 : 14 },
                 tab === id && styles.tabTextOn,
               ]}
             >

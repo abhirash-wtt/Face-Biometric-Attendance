@@ -24,6 +24,8 @@ import { Site } from './sites/site.entity';
 import { Device } from './devices/device.entity';
 import { Shift } from './shifts/shift.entity';
 import { AttendanceLog } from './attendance/attendance-log.entity';
+import { RegularizationModule } from './regularization/regularization.module';
+import { WfhRequest } from './regularization/wfh-request.entity';
 
 @Module({
   imports: [
@@ -37,7 +39,7 @@ import { AttendanceLog } from './attendance/attendance-log.entity';
         username: config.get<string>('database.user'),
         password: config.get<string>('database.password'),
         database: config.get<string>('database.name'),
-        entities: [User, Employee, FaceTemplate, Site, Device, Shift, AttendanceLog],
+        entities: [User, Employee, FaceTemplate, Site, Device, Shift, AttendanceLog, WfhRequest],
         synchronize: false,
         logging: config.get<string>('nodeEnv') === 'local',
       }),
@@ -57,6 +59,7 @@ import { AttendanceLog } from './attendance/attendance-log.entity';
     DevicesModule,
     SitesModule,
     ShiftsModule,
+    RegularizationModule,
   ],
   controllers: [HealthController],
   providers: [RetentionService],

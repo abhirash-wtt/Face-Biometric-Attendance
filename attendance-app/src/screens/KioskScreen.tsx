@@ -46,7 +46,7 @@ export function KioskScreen() {
     liveness: number;
     face_crop_url?: string;
     image_b64: string;
-    gps: { lat: number; lng: number; accuracy?: number };
+    gps?: { lat: number; lng: number; accuracy?: number };
   } | null>(null);
 
   const onReady = useCallback((capture: () => Promise<string>) => {
@@ -59,11 +59,17 @@ export function KioskScreen() {
       dispatch(setLastMessage('Checking liveness…'));
       const image_b64 = await captureRef.current();
       const settings = await storage.getSettings();
-      const gps = await getCurrentGps();
+      let gps: { lat: number; lng: number; accuracy?: number } | undefined;
+      try {
+        gps = await getCurrentGps();
+      } catch {
+        // Approved WFH days may clock in without a GPS fix; server still enforces geofence otherwise.
+        gps = undefined;
+      }
       const res = await api.identify({
         device_id: settings.deviceId,
         site_code: settings.siteCode,
-        gps,
+        gps: gps ?? null,
         image_b64,
         liveness: 0.95,
       });
@@ -79,7 +85,13 @@ export function KioskScreen() {
           image_b64,
           gps,
         });
-        dispatch(setLastMessage(`Matched ${res.name}`));
+        dispatch(
+          setLastMessage(
+            res.wfh_bypass
+              ? `Matched ${res.name || res.employee_code} (WFH — geofence skipped)`
+              : `Matched ${res.name || res.employee_code}`,
+          ),
+        );
       } else {
         dispatch(setLastMessage(identifyFailMessage(res.reason)));
         dispatch(rollLivenessPrompt());

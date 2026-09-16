@@ -14,8 +14,9 @@ import { ShiftsService } from '../shifts/shifts.service';
 import { EmployeesService } from '../employees/employees.service';
 import { StorageService } from '../storage/storage.service';
 import { RecognitionService } from '../recognition/recognition.service';
+import { RegularizationService } from '../regularization/regularization.service';
 import { User } from '../auth/user.entity';
-import { ATTENDANCE_TZ, buildRoster, dayBoundsIst, parseRosterDate } from './roster';
+import { ATTENDANCE_TZ, buildRoster, dayBoundsIst, localDateYmd, parseRosterDate } from './roster';
 
 @Injectable()
 export class AttendanceService {
@@ -30,10 +31,25 @@ export class AttendanceService {
     private readonly storage: StorageService,
     private readonly config: ConfigService,
     private readonly recognition: RecognitionService,
+    private readonly regularization: RegularizationService,
   ) {}
 
-  assertIdentifyGeofence(siteCode?: string, lat?: number, lng?: number, accuracyM?: number) {
-    return this.sites.assertGpsInside(siteCode, lat, lng, accuracyM);
+  /**
+   * Geofence gate for clock-in flows. Skipped when the employee has an
+   * approved WFH regularization for the current IST calendar day.
+   */
+  async assertGeofenceUnlessApprovedWfh(
+    employeeId: string | undefined,
+    siteCode?: string,
+    lat?: number,
+    lng?: number,
+    accuracyM?: number,
+  ): Promise<{ wfh_bypass: boolean }> {
+    if (employeeId && (await this.regularization.hasApprovedWfh(employeeId, localDateYmd()))) {
+      return { wfh_bypass: true };
+    }
+    await this.sites.assertGpsInside(siteCode, lat, lng, accuracyM);
+    return { wfh_bypass: false };
   }
 
   async create(dto: CreateAttendanceDto, opts?: { requireFaceMatch?: boolean }) {
@@ -64,7 +80,13 @@ export class AttendanceService {
     const lat = dto.gps_lat ?? dto.gps?.lat;
     const lng = dto.gps_lng ?? dto.gps?.lng;
     const siteCode = dto.site_code?.toUpperCase();
-    await this.sites.assertGpsInside(siteCode, lat, lng, dto.gps?.accuracy);
+    const { wfh_bypass } = await this.assertGeofenceUnlessApprovedWfh(
+      dto.employee_id,
+      siteCode,
+      lat,
+      lng,
+      dto.gps?.accuracy,
+    );
 
     const cooldown = this.config.get<number>('attendanceCooldownSec') || 60;
     const last = await this.repo.findOne({
@@ -88,7 +110,9 @@ export class AttendanceService {
 
     const event_time = new Date();
     const shiftNote = dto.type === 'IN' ? await this.shifts.noteForEvent(event_time) : undefined;
-    const notes = [dto.notes, shiftNote].filter(Boolean).join('; ') || undefined;
+    const notes =
+      [dto.notes, shiftNote, wfh_bypass ? 'Approved WFH' : undefined].filter(Boolean).join('; ') ||
+      undefined;
 
     const log = await this.repo.save(
       this.repo.create({
@@ -114,6 +138,7 @@ export class AttendanceService {
         type: log.type,
         device_id: log.device_id,
         site_code: log.site_code,
+        wfh_bypass,
       }),
     );
     return log;

@@ -44,8 +44,22 @@ export const storage = {
       return '';
     }
   },
+  /** True for human logins (admin/user accounts), false for kiosk device tokens. */
+  isAccountToken(token: string | null): boolean {
+    if (!token) return false;
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      return payload.type !== 'device';
+    } catch {
+      return false;
+    }
+  },
   async getRole(): Promise<'admin' | 'user' | ''> {
     return this.roleFromToken(await this.getToken());
+  },
+  async canUseRegularization(): Promise<boolean> {
+    const token = await this.getToken();
+    return this.isAccountToken(token) && !!this.roleFromToken(token);
   },
   async getSettings(): Promise<Settings> {
     const raw = await AsyncStorage.getItem(SETTINGS_KEY);
