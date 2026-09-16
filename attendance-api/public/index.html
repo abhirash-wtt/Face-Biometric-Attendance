@@ -153,6 +153,33 @@
     .pill.present { background:#1f8a70; color:#fff; }
     .pill.absent { background:#3a4a63; color:#c5d2e4; }
     .muted { color:var(--muted); font-size:14px; }
+    .section-title { color:var(--mint); font-weight:700; font-size:16px; margin:18px 0 8px; }
+    textarea {
+      width:100%; background:transparent; border:1px solid var(--line); color:var(--text);
+      border-radius:10px; padding:12px; margin:4px 0 10px;
+      font-size:16px; font-family:inherit; line-height:1.4; min-height:96px;
+      resize:vertical;
+    }
+    .wfh-card {
+      background:var(--card); border:1px solid #22344f; border-radius:12px;
+      padding:14px; margin-bottom:12px;
+    }
+    .wfh-card-head { display:flex; gap:12px; align-items:flex-start; justify-content:space-between; }
+    .wfh-card-head > div:first-child { flex:1; min-width:0; }
+    .wfh-date { font-size:16px; font-weight:800; margin:0 0 4px; line-height:1.3; }
+    .wfh-who { color:var(--mint); font-size:14px; font-weight:700; margin:0 0 6px; }
+    .wfh-reason { color:#c5d2e4; font-size:15px; margin:0; line-height:1.4; overflow-wrap:anywhere; }
+    .wfh-note { color:var(--muted); font-size:14px; font-style:italic; margin:8px 0 0; }
+    .wfh-actions { display:flex; gap:10px; margin-top:12px; flex-wrap:wrap; }
+    .wfh-actions > button {
+      flex:1 1 120px; width:auto; margin:0; min-height:var(--tap); font-size:16px;
+    }
+    #wfhList { max-height:none; margin:4px 0 0; }
+    #wfhMeta, #wfhAdminHint { color:var(--muted); font-size:14px; margin:0 0 12px; line-height:1.45; }
+    .pill.pending { background:var(--accent); color:#fff; text-transform:capitalize; }
+    .pill.approved { background:var(--ok); color:#fff; text-transform:capitalize; }
+    .pill.rejected { background:#a33b3b; color:#fff; text-transform:capitalize; }
+    .pill.cancelled { background:#3a4a63; color:#c5d2e4; text-transform:capitalize; }
 
     dialog {
       border:0; border-radius:16px; background:#152238; color:var(--text);
@@ -281,22 +308,22 @@
       <p class="status" id="rosterStatus"></p>
     </section>
     <section id="wfh" class="hidden">
-      <h1>WFH Regularization</h1>
-      <p class="muted">Request Work From Home at least one day ahead. After admin approval, geofencing is skipped when clocking in/out on that date.</p>
+      <h1>Regularize</h1>
+      <p id="wfhMeta">Request Work From Home at least one day ahead. After admin approval, geofencing is skipped when clocking in/out on that date.</p>
       <div id="wfhRequestForm" class="hidden">
-        <p style="color:#7ee0c5;font-weight:700;margin:12px 0 6px">New request</p>
+        <p class="section-title" style="margin-top:4px">New request</p>
         <label for="wfhDate">WFH date</label>
         <input id="wfhDate" type="date" />
         <label for="wfhReason">Reason</label>
-        <textarea id="wfhReason" rows="3" placeholder="Reason (required)" style="width:100%;border-radius:10px;border:1px solid #2a3d5c;background:#0c182c;color:#f4f7fb;padding:10px;font:inherit"></textarea>
+        <textarea id="wfhReason" rows="3" placeholder="Reason (required)"></textarea>
         <button class="cta" id="wfhSubmitBtn">Submit request</button>
       </div>
-      <p id="wfhAdminHint" class="muted hidden" style="margin-top:12px">Employees submit requests after logging in with their employee account. As admin, approve or reject pending requests below.</p>
-      <div class="roster-toolbar" style="margin-top:12px">
-        <p style="color:#7ee0c5;font-weight:700;margin:0" id="wfhListTitle">My requests</p>
+      <p id="wfhAdminHint" class="hidden">Employees submit requests after logging in with their employee account. As admin, approve or reject pending requests below.</p>
+      <div class="roster-toolbar">
+        <p class="section-title" id="wfhListTitle" style="margin:0;flex:1">My requests</p>
         <button class="cta" id="wfhRefreshBtn">Refresh</button>
       </div>
-      <div class="list" id="wfhList" style="max-height:none"></div>
+      <div id="wfhList"></div>
       <p class="status" id="wfhStatus"></p>
     </section>
     <section id="settings" class="hidden">
@@ -1126,23 +1153,32 @@
       const list = $('wfhList');
       list.innerHTML = '';
       if (!rows || !rows.length) {
-        list.innerHTML = '<p class="muted" style="padding:12px">No WFH requests yet</p>';
+        list.innerHTML = '<p class="muted" style="padding:8px 0;font-size:15px">No WFH requests yet</p>';
         status('wfhStatus', '0 requests');
         return;
       }
       for (const row of rows) {
         const item = document.createElement('div');
-        item.className = 'emp';
-        item.style.cssText = 'display:block;padding:12px;border-bottom:1px solid #1b2b44';
+        item.className = 'wfh-card';
         const who = row.employee
-          ? (row.employee.display_name + ' (' + row.employee.code + ')')
+          ? (esc(row.employee.display_name) + ' (' + esc(row.employee.code) + ')')
           : '';
-        const actions = document.createElement('div');
-        actions.style.cssText = 'display:flex;gap:8px;margin-top:8px;flex-wrap:wrap';
+        const statusClass = String(row.status || '').toLowerCase();
+        item.innerHTML =
+          '<div class="wfh-card-head">' +
+            '<div>' +
+              '<p class="wfh-date">' + esc(formatWfhDate(row.work_date)) + '</p>' +
+              (who ? '<p class="wfh-who">' + who + '</p>' : '') +
+              '<p class="wfh-reason">' + esc(row.reason || '') + '</p>' +
+              (row.review_note ? '<p class="wfh-note">Note: ' + esc(row.review_note) + '</p>' : '') +
+            '</div>' +
+            '<span class="pill ' + statusClass + '">' + esc(row.status) + '</span>' +
+          '</div>';
         if (row.status === 'pending' && isAdmin) {
+          const actions = document.createElement('div');
+          actions.className = 'wfh-actions';
           const approve = document.createElement('button');
           approve.className = 'cta';
-          approve.style.margin = '0';
           approve.textContent = 'Approve';
           approve.onclick = async () => {
             try {
@@ -1153,7 +1189,6 @@
           };
           const reject = document.createElement('button');
           reject.className = 'danger';
-          reject.style.margin = '0';
           reject.textContent = 'Reject';
           reject.onclick = async () => {
             try {
@@ -1164,10 +1199,12 @@
           };
           actions.appendChild(approve);
           actions.appendChild(reject);
+          item.appendChild(actions);
         } else if (row.status === 'pending' && !isAdmin) {
+          const actions = document.createElement('div');
+          actions.className = 'wfh-actions';
           const cancel = document.createElement('button');
           cancel.className = 'alt';
-          cancel.style.margin = '0';
           cancel.textContent = 'Cancel';
           cancel.onclick = async () => {
             try {
@@ -1177,14 +1214,8 @@
             } catch (e) { status('wfhStatus', e.message); }
           };
           actions.appendChild(cancel);
+          item.appendChild(actions);
         }
-        item.innerHTML =
-          '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">' +
-          '<div><strong>' + formatWfhDate(row.work_date) + '</strong>' +
-          (who ? '<div class="muted">' + who + '</div>' : '') +
-          '<div style="margin-top:4px">' + (row.reason || '') + '</div></div>' +
-          '<span class="pill">' + row.status + '</span></div>';
-        if (actions.childNodes.length) item.appendChild(actions);
         list.appendChild(item);
       }
       status('wfhStatus', rows.length + ' request' + (rows.length === 1 ? '' : 's'));
