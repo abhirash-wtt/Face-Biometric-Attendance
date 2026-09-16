@@ -101,7 +101,7 @@ function Shell() {
               minimumFontScale={0.8}
               style={[
                 styles.tabText,
-                { fontSize: layout.compact || tabs.length > 4 ? 11 : 14 },
+                { fontSize: layout.compact || tabs.length > 4 ? 12 : 15 },
                 tab === id && styles.tabTextOn,
               ]}
             >
