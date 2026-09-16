@@ -20,6 +20,8 @@ Copy `attendance-api/.env.example` to `.env` per environment (`local` / `dev` / 
 | `ONNX_MODEL_PATH` | ./models/arcface_mobile.onnx | ArcFace model |
 | `SIMILARITY_THRESHOLD` | 0.95 | Cosine accept threshold (minimum 95%) |
 | `LIVENESS_THRESHOLD` | 0.6 | Liveness accept threshold |
+| `IDENTIFY_TOP_K` | 5 | Candidates returned for 1:N identify |
+| `MAX_FACE_SAMPLES` | 10 | Max enrolled face photo samples per employee |
 | `GEOFENCE_ENABLED` | true | Require GPS; clock-in must be at the office (all floors) |
 | `GEOFENCE_RADIUS_M` | 45 | Indoor envelope around the office pin (basement–2nd floor) |
 | `GEOFENCE_BUFFER_M` | 12 | Extra meters around the building rectangle |

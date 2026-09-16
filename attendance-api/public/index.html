@@ -84,6 +84,7 @@
     }
     button.cta { background:var(--accent); width:100%; margin-top:12px; }
     button.alt { background:var(--ok); width:100%; margin-top:8px; }
+    button.danger { background:#8b3030; width:100%; margin-top:8px; color:#fff; }
     button.toggle { flex:1 1 120px; background:transparent; border:1px solid var(--line); color:var(--muted); }
     button.toggle.on { background:var(--ok); border-color:var(--ok); color:#fff; }
     button:disabled { opacity:.6; cursor:not-allowed; }
@@ -245,7 +246,8 @@
       </div>
       <div class="list" id="empList"></div>
       <button class="cta" id="sampleBtn">Capture sample</button>
-      <p class="status" id="enrollStatus">Select an employee. Confirm your face is visible above, then capture 3–5 samples.</p>
+      <button class="cta" id="resetSamplesBtn">Reset face samples</button>
+      <p class="status" id="enrollStatus">Select an employee. Confirm your face is visible above, then capture 3–10 samples.</p>
     </section>
     <section id="attendance" class="hidden">
       <h1>Attendance</h1>
@@ -309,7 +311,7 @@
         <label for="password2">Confirm password</label>
         <input id="password2" type="password" autocomplete="new-password" enterkeyhint="go" />
       </div>
-      <p class="muted hidden" id="registerHint">Creates your employee account. After that, open Enroll and capture 3–5 face samples so you can clock in.</p>
+      <p class="muted hidden" id="registerHint">Creates your employee account. After that, open Enroll and capture 3–10 face samples so you can clock in.</p>
       <button class="cta" id="loginBtn">Login</button>
       <button class="cta hidden" id="registerBtn">Create account</button>
       <button class="alt" id="logoutBtn">Logout</button>
@@ -324,6 +326,14 @@
     <div class="row">
       <button class="toggle" id="cancelBtn">Cancel</button>
       <button class="cta" id="okBtn" style="margin:0">Confirm</button>
+    </div>
+  </dialog>
+  <dialog id="resetEnroll">
+    <h2>Reset face samples?</h2>
+    <p id="resetEnrollMsg"></p>
+    <div class="row">
+      <button class="toggle" id="resetEnrollCancel">Cancel</button>
+      <button class="danger" id="resetEnrollOk" style="margin:0">Reset</button>
     </div>
   </dialog>
   <script>
@@ -737,7 +747,7 @@
         display_name: user.display_name || user.email || 'your face',
       };
       state.samples = state.samples || 0;
-      status('enrollStatus', 'Confirm your face is visible above, then capture 3–5 samples' + (state.selected.code ? ' (' + state.selected.code + ')' : '') + '.');
+      status('enrollStatus', 'Confirm your face is visible above, then capture 3–10 samples' + (state.selected.code ? ' (' + state.selected.code + ')' : '') + '.');
     }
     document.querySelectorAll('header button').forEach((b) => {
       b.onclick = () => {
@@ -874,10 +884,38 @@
     };
     $('sampleBtn').onclick = async () => {
       if (!state.selected) return status('enrollStatus', 'Select an employee first');
+      const maxSamples = 10;
+      if ((state.samples || 0) >= maxSamples) {
+        return status('enrollStatus', 'Maximum of ' + maxSamples + ' face samples reached for this user');
+      }
       try {
-        await api('/enroll', { method: 'POST', body: { employee_id: state.selected.id, image_b64: await captureB64(), liveness_score: 0.95 } });
-        state.samples += 1;
-        status('enrollStatus', 'Saved sample ' + state.samples + ' for ' + state.selected.display_name);
+        const res = await api('/enroll', { method: 'POST', body: { employee_id: state.selected.id, image_b64: await captureB64(), liveness_score: 0.95 } });
+        state.samples = res.total_templates || ((state.samples || 0) + 1);
+        const max = res.max_templates || maxSamples;
+        status('enrollStatus', 'Saved sample ' + state.samples + ' of ' + max + ' for ' + state.selected.display_name);
+      } catch (e) { status('enrollStatus', e.message); }
+    };
+    $('resetSamplesBtn').onclick = () => {
+      if (!state.selected) return status('enrollStatus', 'Select an employee first');
+      $('resetEnrollMsg').textContent =
+        'This will delete all enrolled face samples for ' + state.selected.display_name +
+        '. They will need to capture new samples before clock-in works again.';
+      $('resetEnroll').showModal();
+    };
+    $('resetEnrollCancel').onclick = () => $('resetEnroll').close();
+    $('resetEnrollOk').onclick = async () => {
+      const emp = state.selected;
+      $('resetEnroll').close();
+      if (!emp) return status('enrollStatus', 'Select an employee first');
+      try {
+        const res = await api('/enroll/' + emp.id, { method: 'DELETE' });
+        state.samples = 0;
+        status(
+          'enrollStatus',
+          res.templates_removed
+            ? 'Reset ' + res.templates_removed + ' sample(s) for ' + emp.display_name + '. Capture new face samples.'
+            : 'No samples to reset for ' + emp.display_name + '. Capture new face samples.',
+        );
       } catch (e) { status('enrollStatus', e.message); }
     };
 
@@ -1072,7 +1110,7 @@
         if (canEnroll()) {
           const enrollTab = document.querySelector('header button[data-tab="enroll"]');
           if (enrollTab) enrollTab.click();
-          status('enrollStatus', 'Account created. Capture 3–5 samples of your face.');
+          status('enrollStatus', 'Account created. Capture 3–10 samples of your face.');
         }
       } catch (e) { status('settingsStatus', e.message); }
     };

@@ -38,7 +38,7 @@ npm run start:dev
 API: http://localhost:3000  
 OpenAPI: http://localhost:3000/docs  
 Kiosk UI (Kiosk / Enroll / Attendance / Settings): http://localhost:3000/  
-From **Settings**, use **Register** to create your own employee account (name, email, password). After that, capture 3–5 face samples on **Enroll**, then clock IN/OUT on **Kiosk**.  
+From **Settings**, use **Register** to create your own employee account (name, email, password). After that, capture 3–10 face samples on **Enroll**, then clock IN/OUT on **Kiosk**.  
 Health: http://localhost:3000/health
 
 ### 2a. HTTPS for phones (required for the camera)

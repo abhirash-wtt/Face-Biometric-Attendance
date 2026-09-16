@@ -109,10 +109,25 @@ export const api = {
     );
   },
   enroll(employeeId: string, imageB64: string, liveness?: number) {
-    return request('/enroll', {
+    return request<{
+      employee_id: string;
+      employee_code: string;
+      samples_added: number;
+      total_templates: number;
+      max_templates: number;
+    }>('/enroll', {
       method: 'POST',
       body: { employee_id: employeeId, image_b64: imageB64, liveness_score: liveness },
     });
+  },
+  resetEnroll(employeeId: string) {
+    return request<{
+      employee_id: string;
+      employee_code: string;
+      templates_removed: number;
+      total_templates: number;
+      max_templates: number;
+    }>(`/enroll/${employeeId}`, { method: 'DELETE' });
   },
   config() {
     return request<{

@@ -61,6 +61,13 @@ export class RecognitionService {
     return { liveness_score };
   }
 
+  async clearEnrollments(employeeId: string, employeeCode: string) {
+    if (this.compreface.enabled()) {
+      await this.compreface.deleteSubject(employeeCode);
+    }
+    await this.ds.query('DELETE FROM face_templates WHERE employee_id = $1', [employeeId]);
+  }
+
   async identify(
     imageBuf: Buffer,
     opts?: { embedding?: number[]; clientLiveness?: number; boundEmployeeId?: string },

@@ -48,6 +48,7 @@ export const configuration = () => ({
     })(),
     livenessThreshold: Number(process.env.LIVENESS_THRESHOLD) || 0.6,
     topK: Number(process.env.IDENTIFY_TOP_K) || 5,
+    maxFaceSamples: Number(process.env.MAX_FACE_SAMPLES) || 10,
     comprefaceUrl: process.env.COMPREFACE_URL || 'http://localhost:8000',
     comprefaceApiKey: process.env.COMPREFACE_API_KEY || '',
   },

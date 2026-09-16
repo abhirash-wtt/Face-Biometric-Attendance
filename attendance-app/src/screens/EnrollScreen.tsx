@@ -22,9 +22,11 @@ export function EnrollScreen() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selected, setSelected] = useState<Employee | null>(null);
   const [samples, setSamples] = useState(0);
-  const [message, setMessage] = useState('Select an employee, then capture 3–5 face samples.');
+  const [message, setMessage] = useState('Select an employee, then capture 3–10 face samples.');
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
+  const [resetConfirm, setResetConfirm] = useState(false);
+  const maxSamples = 10;
   const captureRef = React.useRef<() => Promise<string>>(async () => {
     throw new Error('Camera not ready');
   });
@@ -46,18 +48,44 @@ export function EnrollScreen() {
     load();
   }, []);
 
-  const captureSample = async () => {
+  const resetSamples = async () => {
     if (!selected) {
       setMessage('Select an employee first');
       return;
     }
     try {
       setBusy(true);
+      const res = await api.resetEnroll(selected.id);
+      setSamples(0);
+      setMessage(
+        res.templates_removed
+          ? `Reset ${res.templates_removed} sample(s) for ${selected.display_name}. Capture new face samples.`
+          : `No samples to reset for ${selected.display_name}. Capture new face samples.`,
+      );
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Reset failed');
+    } finally {
+      setBusy(false);
+      setResetConfirm(false);
+    }
+  };
+
+  const captureSample = async () => {
+    if (!selected) {
+      setMessage('Select an employee first');
+      return;
+    }
+    if (samples >= maxSamples) {
+      setMessage(`Maximum of ${maxSamples} face samples reached for this user`);
+      return;
+    }
+    try {
+      setBusy(true);
       const image_b64 = await captureRef.current();
-      await api.enroll(selected.id, image_b64, 0.95);
-      const next = samples + 1;
+      const res = await api.enroll(selected.id, image_b64, 0.95);
+      const next = res.total_templates;
       setSamples(next);
-      setMessage(`Saved sample ${next} for ${selected.display_name}`);
+      setMessage(`Saved sample ${next} of ${res.max_templates} for ${selected.display_name}`);
       if (next >= 3) setConfirm(true);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Enroll failed');
@@ -140,12 +168,20 @@ export function EnrollScreen() {
           />
           {!twoColumn && camera}
           <Pressable
-            disabled={busy}
+            disabled={busy || !selected}
             onPress={captureSample}
             accessibilityRole="button"
-            style={[styles.cta, busy && styles.ctaBusy]}
+            style={[styles.cta, (busy || !selected) && styles.ctaBusy]}
           >
             <Text style={styles.ctaText}>{busy ? 'Saving…' : 'Capture sample'}</Text>
+          </Pressable>
+          <Pressable
+            disabled={busy || !selected}
+            onPress={() => setResetConfirm(true)}
+            accessibilityRole="button"
+            style={[styles.cta, styles.ctaSpaced, (busy || !selected) && styles.ctaBusy]}
+          >
+            <Text style={styles.ctaText}>Reset face samples</Text>
           </Pressable>
           <Text style={styles.status} numberOfLines={2}>
             {message}
@@ -159,6 +195,14 @@ export function EnrollScreen() {
         confirmLabel="Done"
         onConfirm={() => setConfirm(false)}
         onCancel={() => setConfirm(false)}
+      />
+      <ConfirmModal
+        visible={resetConfirm}
+        title="Reset face samples?"
+        message={`This will delete all enrolled face samples for ${selected?.display_name || 'this user'}. They will need to capture new samples before clock-in works again.`}
+        confirmLabel="Reset"
+        onConfirm={resetSamples}
+        onCancel={() => setResetConfirm(false)}
       />
     </KeyboardAvoidingView>
   );
@@ -219,5 +263,6 @@ const styles = StyleSheet.create({
   },
   ctaBusy: { opacity: 0.6 },
   ctaText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+  ctaSpaced: { marginTop: 8 },
   status: { color: '#c5d2e4', marginTop: 10, textAlign: 'center' },
 });

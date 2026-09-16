@@ -19,6 +19,7 @@ Kiosks: device token from `POST /devices/register`.
 | POST | `/employees` | admin | Create employee |
 | GET | `/employees` | admin | List/search |
 | POST | `/enroll` | admin, or user (own `employee_id` only) | Multipart images or `image_b64` → face templates |
+| DELETE | `/enroll/:employeeId` | admin, or user (own `employee_id` only) | Delete all face templates for an employee (reset enrollment) |
 | POST | `/attend/identify` | admin, user (incl. kiosk device) | Match face; employee logins are 1:1 against that employee only |
 | POST | `/attend/verify` | admin, user (incl. kiosk device) | 1:1 verify (must be the linked employee for user logins) |
 | POST | `/attendance` | admin, user (incl. kiosk device) | Create IN/OUT log (employee logins cannot clock in as someone else) |
