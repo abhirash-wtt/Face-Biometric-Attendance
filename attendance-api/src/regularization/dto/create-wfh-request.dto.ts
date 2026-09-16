@@ -4,7 +4,7 @@ import { IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-valid
 export class CreateWfhRequestDto {
   @ApiProperty({
     example: '2026-09-18',
-    description: 'WFH date (YYYY-MM-DD, Asia/Kolkata). Must be at least one day ahead.',
+    description: 'WFH date (YYYY-MM-DD, Asia/Kolkata). Same-day requests are allowed; past dates are not.',
   })
   @IsString()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'work_date must be YYYY-MM-DD' })

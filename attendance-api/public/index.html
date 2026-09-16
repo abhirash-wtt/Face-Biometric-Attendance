@@ -143,6 +143,9 @@
     .calendar-grid button.day { min-height:var(--tap); font-size:16px; }
     .calendar-grid span { color:var(--muted); font-size:13px; cursor:default; font-weight:700; }
     .calendar-grid button.day.on { background:var(--ok); color:#fff; }
+    .calendar-grid button.day:disabled {
+      opacity:.35; cursor:not-allowed; color:var(--muted);
+    }
 
     #rosterMeta { color:var(--muted); font-size:14px; margin:0 0 4px; line-height:1.4; }
     .roster-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
@@ -309,11 +312,18 @@
     </section>
     <section id="wfh" class="hidden">
       <h1>Regularize</h1>
-      <p id="wfhMeta">Request Work From Home at least one day ahead. After admin approval, geofencing is skipped when clocking in/out on that date.</p>
+      <p id="wfhMeta">Request Work From Home for today or a future date. After admin approval, geofencing is skipped when clocking in/out on that date.</p>
       <div id="wfhRequestForm" class="hidden">
         <p class="section-title" style="margin-top:4px">New request</p>
-        <label for="wfhDate">WFH date</label>
-        <input id="wfhDate" type="date" />
+        <div class="date-picker" style="margin:4px 0 10px">
+          <label for="wfhDateBtn">WFH date</label>
+          <button type="button" class="date-field" id="wfhDateBtn" aria-haspopup="dialog" aria-expanded="false">
+            <span class="cal-icon" aria-hidden="true">📅</span>
+            <span id="wfhDateLabel">Select date</span>
+          </button>
+          <input id="wfhDate" type="hidden" />
+          <div id="wfhCalendar" class="calendar hidden" role="dialog" aria-label="Choose WFH date"></div>
+        </div>
         <label for="wfhReason">Reason</label>
         <textarea id="wfhReason" rows="3" placeholder="Reason (required)"></textarea>
         <button class="cta" id="wfhSubmitBtn">Submit request</button>
@@ -463,12 +473,6 @@
     function canUseWfh() {
       const role = jwtRole();
       return !!role && !isDeviceToken();
-    }
-    function tomorrowYmd() {
-      const t = todayYmd();
-      const [y, m, d] = t.split('-').map(Number);
-      const dt = new Date(Date.UTC(y, m - 1, d + 1));
-      return dt.toISOString().slice(0, 10);
     }
     function formatWfhDate(ymd) {
       const raw = String(ymd || '').slice(0, 10);
@@ -860,8 +864,7 @@
           loadRoster().catch(() => {});
         }
         if (state.tab === 'wfh') {
-          if (!$('wfhDate').value) $('wfhDate').value = tomorrowYmd();
-          $('wfhDate').min = tomorrowYmd();
+          setWfhDate($('wfhDate').value || todayYmd());
           loadWfhRequests().catch((e) => status('wfhStatus', e.message));
         }
       };
@@ -1058,9 +1061,37 @@
       $('rosterDateLabel').textContent = formatDateLabel(ymd);
       if (reload) loadRoster().catch((e) => status('rosterStatus', e.message));
     }
+    function setWfhDate(ymd) {
+      const earliest = todayYmd();
+      const next = ymd && ymd >= earliest ? ymd : earliest;
+      $('wfhDate').value = next;
+      $('wfhDateLabel').textContent = formatDateLabel(next);
+    }
     let calMonth = new Date();
+    let calTarget = 'roster';
+    function calEls() {
+      if (calTarget === 'wfh') {
+        return {
+          valueEl: $('wfhDate'),
+          labelEl: $('wfhDateLabel'),
+          btnEl: $('wfhDateBtn'),
+          calEl: $('wfhCalendar'),
+          minDate: todayYmd(),
+          onSelect: (ymd) => setWfhDate(ymd),
+        };
+      }
+      return {
+        valueEl: $('rosterDate'),
+        labelEl: $('rosterDateLabel'),
+        btnEl: $('rosterDateBtn'),
+        calEl: $('rosterCalendar'),
+        minDate: null,
+        onSelect: (ymd) => setRosterDate(ymd, true),
+      };
+    }
     function renderCalendar() {
-      const ymd = $('rosterDate').value || todayYmd();
+      const cfg = calEls();
+      const ymd = cfg.valueEl.value || (cfg.minDate || todayYmd());
       const year = calMonth.getFullYear();
       const month = calMonth.getMonth();
       const first = new Date(year, month, 1);
@@ -1071,55 +1102,75 @@
       for (let i = 0; i < startWeekday; i++) cells.push('<span></span>');
       for (let d = 1; d <= daysInMonth; d++) {
         const value = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+        const disabled = cfg.minDate && value < cfg.minDate;
         cells.push(
-          '<button type="button" class="day' + (value === ymd ? ' on' : '') + '" data-ymd="' + value + '">' + d + '</button>',
+          '<button type="button" class="day' + (value === ymd ? ' on' : '') + '" data-ymd="' + value + '"' +
+          (disabled ? ' disabled' : '') + '>' + d + '</button>',
         );
       }
-      $('rosterCalendar').innerHTML =
-        '<div class="calendar-head"><button type="button" id="calPrev" aria-label="Previous month">‹</button><strong>' +
+      cfg.calEl.innerHTML =
+        '<div class="calendar-head"><button type="button" data-cal-nav="prev" aria-label="Previous month">‹</button><strong>' +
         title +
-        '</strong><button type="button" id="calNext" aria-label="Next month">›</button></div><div class="calendar-grid">' +
+        '</strong><button type="button" data-cal-nav="next" aria-label="Next month">›</button></div><div class="calendar-grid">' +
         cells.join('') +
         '</div>';
-      $('calPrev').onclick = (e) => {
+      cfg.calEl.querySelector('[data-cal-nav="prev"]').onclick = (e) => {
         e.stopPropagation();
         calMonth = new Date(year, month - 1, 1);
         renderCalendar();
       };
-      $('calNext').onclick = (e) => {
+      cfg.calEl.querySelector('[data-cal-nav="next"]').onclick = (e) => {
         e.stopPropagation();
         calMonth = new Date(year, month + 1, 1);
         renderCalendar();
       };
-      $('rosterCalendar').querySelectorAll('button.day').forEach((btn) => {
+      cfg.calEl.querySelectorAll('button.day:not(:disabled)').forEach((btn) => {
         btn.onclick = (e) => {
           e.stopPropagation();
-          closeCalendar();
-          setRosterDate(btn.dataset.ymd, true);
+          closeAllCalendars();
+          cfg.onSelect(btn.dataset.ymd);
         };
       });
     }
-    function openCalendar() {
-      const ymd = $('rosterDate').value || todayYmd();
+    function openCalendar(target) {
+      closeAllCalendars();
+      calTarget = target || 'roster';
+      const cfg = calEls();
+      const ymd = cfg.valueEl.value || (cfg.minDate || todayYmd());
       const parts = ymd.split('-').map(Number);
       calMonth = new Date(parts[0], (parts[1] || 1) - 1, 1);
       renderCalendar();
-      $('rosterCalendar').classList.remove('hidden');
-      $('rosterDateBtn').setAttribute('aria-expanded', 'true');
+      cfg.calEl.classList.remove('hidden');
+      cfg.btnEl.setAttribute('aria-expanded', 'true');
+    }
+    function closeAllCalendars() {
+      ['rosterCalendar', 'wfhCalendar'].forEach((id) => {
+        const el = $(id);
+        if (el) el.classList.add('hidden');
+      });
+      ['rosterDateBtn', 'wfhDateBtn'].forEach((id) => {
+        const el = $(id);
+        if (el) el.setAttribute('aria-expanded', 'false');
+      });
     }
     function closeCalendar() {
-      $('rosterCalendar').classList.add('hidden');
-      $('rosterDateBtn').setAttribute('aria-expanded', 'false');
+      closeAllCalendars();
     }
     $('rosterDateBtn').onclick = (e) => {
       e.stopPropagation();
-      if ($('rosterCalendar').classList.contains('hidden')) openCalendar();
-      else closeCalendar();
+      if ($('rosterCalendar').classList.contains('hidden')) openCalendar('roster');
+      else closeAllCalendars();
     };
     $('rosterCalendar').onclick = (e) => e.stopPropagation();
-    document.addEventListener('click', closeCalendar);
+    $('wfhDateBtn').onclick = (e) => {
+      e.stopPropagation();
+      if ($('wfhCalendar').classList.contains('hidden')) openCalendar('wfh');
+      else closeAllCalendars();
+    };
+    $('wfhCalendar').onclick = (e) => e.stopPropagation();
+    document.addEventListener('click', closeAllCalendars);
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') closeCalendar();
+      if (e.key === 'Escape') closeAllCalendars();
     });
 
     async function loadRoster() {

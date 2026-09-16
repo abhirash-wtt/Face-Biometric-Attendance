@@ -75,7 +75,7 @@ CREATE INDEX IF NOT EXISTS attendance_logs_employee_time_idx
 CREATE INDEX IF NOT EXISTS attendance_logs_event_time_idx
   ON attendance_logs (event_time DESC);
 
--- WFH REGULARIZATION (request ≥1 day ahead; approved days skip geofence on clock IN/OUT)
+-- WFH REGULARIZATION (same-day allowed; approved days skip geofence on clock IN/OUT)
 CREATE TABLE IF NOT EXISTS wfh_regularization_requests (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE CASCADE,

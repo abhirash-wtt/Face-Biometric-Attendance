@@ -23,12 +23,6 @@ function todayIst(): string {
   }).format(new Date());
 }
 
-function addDaysYmd(ymd: string, days: number): string {
-  const [y, m, d] = ymd.split('-').map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d + days));
-  return dt.toISOString().slice(0, 10);
-}
-
 function formatDateLabel(ymd: string) {
   const raw = String(ymd || '').slice(0, 10);
   const [y, m, d] = raw.split('-').map(Number);
@@ -177,7 +171,7 @@ function StatusPill({ status }: { status: string }) {
 
 export function RegularizationScreen({ role }: { role: 'admin' | 'user' | '' }) {
   const layout = useLayout();
-  const earliest = addDaysYmd(todayIst(), 1);
+  const earliest = todayIst();
   const [workDate, setWorkDate] = useState(earliest);
   const [reason, setReason] = useState('');
   const [rows, setRows] = useState<WfhRequest[]>([]);
@@ -249,7 +243,7 @@ export function RegularizationScreen({ role }: { role: 'admin' | 'user' | '' }) 
     >
       <Text style={styles.title}>Regularize</Text>
       <Text style={styles.meta}>
-        Request Work From Home at least one day ahead. After admin approval, geofencing is skipped
+        Request Work From Home for today or a future date. After admin approval, geofencing is skipped
         when clocking in/out on that date.
       </Text>
 

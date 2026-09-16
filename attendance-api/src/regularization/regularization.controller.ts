@@ -19,7 +19,7 @@ export class RegularizationController {
 
   @Post()
   @Roles('user')
-  @ApiOperation({ summary: 'Request WFH regularization (at least one day in advance)' })
+  @ApiOperation({ summary: 'Request WFH regularization (same-day allowed)' })
   create(@Body() dto: CreateWfhRequestDto, @CurrentUser() user: JwtUser) {
     return this.regularization.create(dto, user);
   }

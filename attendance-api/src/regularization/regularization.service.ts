@@ -13,12 +13,6 @@ import { EmployeesService } from '../employees/employees.service';
 import { localDateYmd } from '../attendance/roster';
 import { JwtUser } from '../auth/jwt.strategy';
 
-function addDaysYmd(ymd: string, days: number): string {
-  const [y, m, d] = ymd.split('-').map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d + days));
-  return dt.toISOString().slice(0, 10);
-}
-
 @Injectable()
 export class RegularizationService {
   constructor(
@@ -39,11 +33,8 @@ export class RegularizationService {
     await this.employees.get(employeeId);
 
     const today = localDateYmd();
-    const earliest = addDaysYmd(today, 1);
-    if (dto.work_date < earliest) {
-      throw new BadRequestException(
-        `WFH must be requested at least one day in advance (earliest: ${earliest})`,
-      );
+    if (dto.work_date < today) {
+      throw new BadRequestException(`WFH date cannot be in the past (earliest: ${today})`);
     }
 
     const existing = await this.repo.findOne({
