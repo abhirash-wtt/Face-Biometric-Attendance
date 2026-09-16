@@ -70,7 +70,7 @@ export function KioskScreen() {
         image_b64,
         liveness: 0.95,
       });
-      const minSim = res.thresholds?.similarity ?? 0.97;
+      const minSim = res.thresholds?.similarity ?? 0.95;
       const minLive = res.thresholds?.liveness ?? 0.6;
       if (res.ok && res.similarity >= minSim && res.liveness >= minLive && res.employee_id) {
         setPending({
@@ -193,7 +193,7 @@ export function KioskScreen() {
         title={pending ? `Welcome ${pending?.name}` : ''}
         message={
           pending
-            ? `Similarity ${pending.similarity.toFixed(2)} · Liveness ${pending.liveness.toFixed(2)}\nConfirm clock ${punchType}?`
+            ? `Similarity ${Math.round(pending.similarity * 100)}% · Liveness ${Math.round(pending.liveness * 100)}%\nConfirm clock ${punchType}?`
             : ''
         }
         confirmLabel={`Confirm ${punchType}`}

@@ -111,27 +111,27 @@
     .emp > span:last-child { overflow-wrap:anywhere; }
     .code { color:var(--mint); flex:0 0 72px; font-weight:700; }
 
-    .roster-toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin:8px 0 12px; }
-    .roster-toolbar > .cta { flex:0 1 auto; width:auto; margin:0; padding:12px 18px; }
+    .roster-toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin:12px 0 14px; }
+    .roster-toolbar > .cta { flex:0 1 auto; width:auto; margin:0; padding:14px 18px; }
     .date-picker { flex:1 1 200px; position:relative; }
     .date-field {
       width:100%; display:flex; align-items:center; justify-content:flex-start; gap:10px;
       background:transparent; border:1px solid var(--line); color:var(--text);
       border-radius:10px; padding:12px; margin:4px 0 0; min-height:var(--tap);
-      font-size:15px; font-weight:700; cursor:pointer; text-align:left;
+      font-size:16px; font-weight:700; cursor:pointer; text-align:left;
     }
     .date-field > span:last-child { overflow-wrap:anywhere; }
     .cal-icon { color:var(--mint); font-size:16px; line-height:1; }
     .calendar {
       position:absolute; z-index:60; top:calc(100% + 6px); left:0;
       width:max(280px, 100%); max-width:calc(100vw - 2 * var(--gutter));
-      background:#152238; border:1px solid var(--line); border-radius:14px; padding:12px;
+      background:#152238; border:1px solid var(--line); border-radius:14px; padding:14px;
       box-shadow:0 16px 40px rgba(0,0,0,.45);
     }
     .calendar-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
-    .calendar-head strong { font-size:14px; }
+    .calendar-head strong { font-size:16px; }
     .calendar-head button {
-      width:auto; margin:0; padding:8px 14px; min-height:40px; background:#102038;
+      width:auto; margin:0; padding:8px 14px; min-height:var(--tap); background:#102038;
       color:var(--mint); border:0; border-radius:8px; font-size:16px; font-weight:800; cursor:pointer;
     }
     .calendar-grid { display:grid; grid-template-columns:repeat(7, 1fr); gap:4px; }
@@ -139,18 +139,19 @@
       width:100%; margin:0; padding:8px 0; border:0; border-radius:8px;
       background:transparent; color:var(--text); font-weight:700; cursor:pointer;
     }
-    .calendar-grid button.day { min-height:40px; font-size:15px; }
-    .calendar-grid span { color:var(--muted); font-size:11px; cursor:default; font-weight:700; }
+    .calendar-grid button.day { min-height:var(--tap); font-size:16px; }
+    .calendar-grid span { color:var(--muted); font-size:13px; cursor:default; font-weight:700; }
     .calendar-grid button.day.on { background:var(--ok); color:#fff; }
 
+    #rosterMeta { color:var(--muted); font-size:14px; margin:0 0 4px; line-height:1.4; }
     .roster-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
-    table.roster { width:100%; border-collapse:collapse; font-size:14px; }
-    table.roster th, table.roster td { text-align:left; padding:10px 8px; border-bottom:1px solid #22344f; vertical-align:top; }
-    table.roster th { color:var(--muted); font-weight:700; font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
-    .pill { display:inline-block; border-radius:999px; padding:4px 10px; font-weight:800; font-size:12px; }
+    table.roster { width:100%; border-collapse:collapse; font-size:16px; }
+    table.roster th, table.roster td { text-align:left; padding:14px 10px; border-bottom:1px solid #22344f; vertical-align:top; }
+    table.roster th { color:var(--muted); font-weight:700; font-size:13px; text-transform:uppercase; letter-spacing:.04em; }
+    .pill { display:inline-block; border-radius:999px; padding:6px 12px; font-weight:800; font-size:13px; }
     .pill.present { background:#1f8a70; color:#fff; }
     .pill.absent { background:#3a4a63; color:#c5d2e4; }
-    .muted { color:var(--muted); font-size:12px; }
+    .muted { color:var(--muted); font-size:14px; }
 
     dialog {
       border:0; border-radius:16px; background:#152238; color:var(--text);
@@ -172,33 +173,35 @@
       table.roster, table.roster tbody, table.roster tr, table.roster td { display:block; width:100%; }
       table.roster tr {
         border:1px solid #22344f; border-radius:12px; background:var(--card);
-        padding:6px 12px; margin-bottom:10px;
+        padding:10px 14px; margin-bottom:12px;
       }
       table.roster td {
         display:flex; gap:12px; align-items:baseline; justify-content:space-between;
-        padding:8px 0; border-bottom:1px solid #1b2b44; text-align:right;
+        padding:10px 0; border-bottom:1px solid #1b2b44; text-align:right;
       }
       table.roster tr td:last-child { border-bottom:0; }
       table.roster td::before {
         content:attr(data-label); flex:0 0 auto;
-        color:var(--muted); font-size:11px; font-weight:700;
+        color:var(--muted); font-size:13px; font-weight:700;
         text-transform:uppercase; letter-spacing:.04em; text-align:left;
       }
-      table.roster td[data-label="Employee"] { display:block; text-align:left; font-size:15px; }
-      table.roster td[data-label="Employee"]::before { display:block; margin-bottom:2px; }
+      table.roster td[data-label="Employee"] { display:block; text-align:left; font-size:16px; }
+      table.roster td[data-label="Employee"]::before { display:block; margin-bottom:4px; }
       table.roster td:empty, table.roster td[colspan]::before { display:none; }
     }
 
     /* Landscape phones are short but wide, so the camera moves beside the controls
        instead of pushing the action button below the fold. */
     @media (orientation: landscape) and (max-height: 560px) {
-      main { display:flex; flex-direction:row; gap:16px; align-items:flex-start; max-width:960px; }
-      #cameraPanel { flex:1 1 44%; min-width:0; }
-      main > section { flex:1 1 56%; min-width:0; }
+      main:has(#cameraPanel:not(.hidden)) {
+        display:flex; flex-direction:row; gap:16px; align-items:flex-start; max-width:960px;
+      }
+      main:has(#cameraPanel:not(.hidden)) #cameraPanel { flex:1 1 44%; min-width:0; }
+      main:has(#cameraPanel:not(.hidden)) > section { flex:1 1 56%; min-width:0; }
       video, canvas { height:clamp(150px, 62dvh, 300px); }
-      h1 { margin:0 0 6px; }
+      main:has(#cameraPanel:not(.hidden)) h1 { margin:0 0 6px; }
       .prompt { margin:0 0 8px; }
-      button.cta { margin-top:10px; }
+      main:has(#cameraPanel:not(.hidden)) button.cta { margin-top:10px; }
       .list { max-height:min(30dvh, 132px); margin:8px 0; }
     }
 
@@ -246,7 +249,7 @@
     </section>
     <section id="attendance" class="hidden">
       <h1>Attendance</h1>
-      <p class="muted" id="rosterMeta">Clock-in, clock-out, and current status for every employee.</p>
+      <p id="rosterMeta">Clock-in, clock-out, and current status for every employee.</p>
       <div class="roster-toolbar">
         <div class="date-picker">
           <label for="rosterDateBtn">Date</label>
@@ -781,12 +784,12 @@
             liveness: 0.95,
           },
         });
-        const minSim = (res.thresholds && res.thresholds.similarity) || 0.97;
+        const minSim = (res.thresholds && res.thresholds.similarity) || 0.95;
         const minLive = (res.thresholds && res.thresholds.liveness) || 0.6;
         if (res.ok && res.similarity >= minSim && res.liveness >= minLive && res.employee_id) {
           state.pending = { ...res, image_b64, gps };
           $('confirmTitle').textContent = 'Welcome ' + res.name;
-          $('confirmMsg').textContent = 'Similarity ' + Number(res.similarity).toFixed(2) + ' · Liveness ' + Number(res.liveness).toFixed(2) + '\nConfirm clock ' + state.punch + '?';
+          $('confirmMsg').textContent = 'Similarity ' + Math.round(Number(res.similarity) * 100) + '% · Liveness ' + Math.round(Number(res.liveness) * 100) + '%\nConfirm clock ' + state.punch + '?';
           $('confirm').showModal();
           status('kioskStatus', 'Matched ' + res.name);
         } else {
