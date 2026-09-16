@@ -89,7 +89,8 @@
     button.toggle.on { background:var(--ok); border-color:var(--ok); color:#fff; }
     button:disabled { opacity:.6; cursor:not-allowed; }
     .clock-actions { margin-top:12px; }
-    .clock-actions .cta { flex:1 1 140px; width:auto; margin:0; }
+    .clock-actions .cta,
+    .clock-actions .alt { flex:1 1 140px; width:auto; margin:0; }
 
     input {
       width:100%; background:transparent; border:1px solid var(--line); color:var(--text);
@@ -308,8 +309,8 @@
     <section id="kiosk">
       <h1>Face Attendance</h1>
       <div class="row clock-actions">
-        <button class="cta" id="clockInBtn">Clock In</button>
-        <button class="cta" id="clockOutBtn">Clock Out</button>
+        <button class="alt" id="clockInBtn">Clock In</button>
+        <button class="alt" id="clockOutBtn">Clock Out</button>
       </div>
       <p class="status" id="kioskStatus"></p>
     </section>

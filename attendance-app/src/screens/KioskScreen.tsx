@@ -246,7 +246,7 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', gap: 10, marginTop: 12 },
   cta: {
     minHeight: TAP_TARGET + 4,
-    backgroundColor: '#2d6cdf',
+    backgroundColor: '#1f8a70',
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
