@@ -32,7 +32,7 @@
       overscroll-behavior-y:contain;
       -webkit-tap-highlight-color:transparent;
     }
-    button, .date-field, .emp, .toggle, .mode-select { touch-action:manipulation; }
+    button, .date-field, .emp, .toggle, .mode-dd-trigger { touch-action:manipulation; }
     :focus-visible { outline:2px solid var(--mint); outline-offset:2px; }
 
     header {
@@ -111,22 +111,50 @@
     .emp.on { background:#123348; }
     .emp-name { flex:1 1 auto; min-width:0; overflow-wrap:anywhere; }
     .code { color:var(--mint); flex:0 0 72px; font-weight:700; }
-    /* Match shared input / date-field chrome so Working Mode reads as a normal control. */
-    .mode-select {
-      flex:0 0 auto; width:auto; min-width:128px; max-width:46%;
-      min-height:var(--tap); margin:0; padding:12px 36px 12px 12px;
-      border:1px solid var(--line); border-radius:10px;
-      background:transparent
-        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%239fb0c8' d='M1 1l5 5 5-5'/%3E%3C/svg%3E")
-        no-repeat right 12px center;
+    /* Custom Working Mode dropdown — native <select> menus cannot use border-radius. */
+    .mode-dd { position:relative; flex:0 0 auto; min-width:128px; max-width:46%; }
+    .mode-dd-trigger {
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      width:100%; min-height:var(--tap); margin:0; padding:12px;
+      border:1px solid var(--line); border-radius:10px; background:transparent;
       color:var(--text); font-size:16px; font-weight:700; font-family:inherit;
-      line-height:1.2; cursor:pointer;
-      appearance:none; -webkit-appearance:none;
+      line-height:1.2; cursor:pointer; text-align:left;
     }
-    .mode-select option { background:var(--card); color:var(--text); }
-    .mode-select:disabled { opacity:.6; cursor:wait; }
-    .mode-select:focus { outline:none; }
-    .mode-select:focus-visible { outline:2px solid var(--mint); outline-offset:2px; }
+    .mode-dd-trigger::after {
+      content:""; flex:0 0 auto; width:12px; height:8px;
+      background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%239fb0c8' d='M1 1l5 5 5-5'/%3E%3C/svg%3E") center / contain no-repeat;
+    }
+    .mode-dd.open .mode-dd-trigger {
+      border-color:var(--mint);
+      box-shadow:0 0 0 2px rgba(126,224,197,.22);
+    }
+    .mode-dd-trigger:disabled { opacity:.6; cursor:wait; }
+    .mode-dd-menu {
+      position:fixed; z-index:70;
+      min-width:128px; width:max-content; max-width:min(220px, 70vw);
+      padding:8px; margin:0; list-style:none;
+      background:#152238; border:1px solid var(--line); border-radius:14px;
+      box-shadow:0 16px 40px rgba(0,0,0,.45);
+      overflow:hidden;
+    }
+    .mode-dd-menu.hidden { display:none !important; }
+    .mode-dd-option {
+      display:block; width:100%; margin:0; padding:12px;
+      min-height:var(--tap); border:0; border-radius:10px;
+      background:transparent; color:var(--text);
+      font-size:16px; font-weight:700; font-family:inherit;
+      text-align:left; cursor:pointer;
+    }
+    .mode-dd-option + .mode-dd-option { margin-top:4px; }
+    .mode-dd-option:hover, .mode-dd-option:focus-visible {
+      background:#1b2f4a; outline:none;
+    }
+    .mode-dd-option.on {
+      background:var(--ok); color:#fff;
+    }
+    .mode-dd-option.on:hover, .mode-dd-option.on:focus-visible {
+      background:var(--ok);
+    }
 
     .roster-toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin:12px 0 14px; }
     .roster-toolbar > .cta { flex:0 1 auto; width:auto; margin:0; padding:14px 18px; }
@@ -979,14 +1007,45 @@
     };
     $('cancelBtn').onclick = () => { $('confirm').close(); state.pending = null; };
 
-    async function setWorkingMode(employeeId, working_mode, selectEl) {
+    function closeWorkingModeMenus(except) {
+      $('empList').querySelectorAll('.mode-dd.open').forEach((dd) => {
+        if (except && dd === except) return;
+        dd.classList.remove('open');
+        const menu = dd.querySelector('.mode-dd-menu');
+        const trigger = dd.querySelector('.mode-dd-trigger');
+        if (menu) menu.classList.add('hidden');
+        if (trigger) trigger.setAttribute('aria-expanded', 'false');
+      });
+    }
+
+    function positionWorkingModeMenu(trigger, menu) {
+      const rect = trigger.getBoundingClientRect();
+      const gap = 6;
+      menu.style.minWidth = Math.max(rect.width, 128) + 'px';
+      menu.style.left = 'auto';
+      menu.style.right = Math.max(8, window.innerWidth - rect.right) + 'px';
+      menu.style.top = (rect.bottom + gap) + 'px';
+      menu.classList.remove('hidden');
+      const menuRect = menu.getBoundingClientRect();
+      if (menuRect.bottom > window.innerHeight - 8) {
+        menu.style.top = Math.max(8, rect.top - menuRect.height - gap) + 'px';
+      }
+      if (menuRect.left < 8) {
+        menu.style.right = 'auto';
+        menu.style.left = '8px';
+      }
+    }
+
+    function modeLabel(mode) {
+      return mode === 'remote' ? 'Remote' : 'On-site';
+    }
+
+    async function setWorkingMode(employeeId, working_mode, triggerBtn) {
       const emp = state.employees.find((x) => x.id === employeeId);
       const current = (emp && emp.working_mode) || 'onsite';
-      if (!emp || current === working_mode) {
-        if (selectEl) selectEl.value = current;
-        return;
-      }
-      if (selectEl) selectEl.disabled = true;
+      closeWorkingModeMenus();
+      if (!emp || current === working_mode) return;
+      if (triggerBtn) triggerBtn.disabled = true;
       try {
         const updated = await api('/employees/' + employeeId, {
           method: 'PATCH',
@@ -996,15 +1055,12 @@
         if (state.selected && state.selected.id === employeeId) Object.assign(state.selected, updated);
         status(
           'enrollStatus',
-          emp.display_name + ': Working Mode set to ' + (working_mode === 'remote' ? 'Remote' : 'On-site'),
+          emp.display_name + ': Working Mode set to ' + modeLabel(working_mode),
         );
         loadEmployees().catch(() => {});
       } catch (e) {
         status('enrollStatus', e.message || 'Unable to update working mode');
-        if (selectEl) {
-          selectEl.value = current;
-          selectEl.disabled = false;
-        }
+        if (triggerBtn) triggerBtn.disabled = false;
       }
     }
 
@@ -1017,20 +1073,43 @@
           '<div class="emp' + (state.selected && state.selected.id === e.id ? ' on' : '') + '" data-id="' + e.id + '">' +
             '<span class="code">' + e.code + '</span>' +
             '<span class="emp-name">' + e.display_name + '</span>' +
-            '<select class="mode-select" aria-label="Working Mode" data-id="' + e.id + '">' +
-              '<option value="onsite"' + (mode === 'onsite' ? ' selected' : '') + '>On-site</option>' +
-              '<option value="remote"' + (mode === 'remote' ? ' selected' : '') + '>Remote</option>' +
-            '</select>' +
+            '<div class="mode-dd" data-id="' + e.id + '">' +
+              '<button type="button" class="mode-dd-trigger" aria-label="Working Mode" aria-haspopup="listbox" aria-expanded="false">' +
+                modeLabel(mode) +
+              '</button>' +
+              '<div class="mode-dd-menu hidden" role="listbox" aria-label="Working Mode">' +
+                '<button type="button" class="mode-dd-option' + (mode === 'onsite' ? ' on' : '') + '" role="option" data-mode="onsite" aria-selected="' + (mode === 'onsite') + '">On-site</button>' +
+                '<button type="button" class="mode-dd-option' + (mode === 'remote' ? ' on' : '') + '" role="option" data-mode="remote" aria-selected="' + (mode === 'remote') + '">Remote</button>' +
+              '</div>' +
+            '</div>' +
           '</div>'
         );
       }).join('');
-      $('empList').querySelectorAll('.mode-select').forEach((sel) => {
-        sel.onclick = (ev) => ev.stopPropagation();
-        sel.onchange = () => setWorkingMode(sel.dataset.id, sel.value, sel);
+      $('empList').querySelectorAll('.mode-dd').forEach((dd) => {
+        const trigger = dd.querySelector('.mode-dd-trigger');
+        const menu = dd.querySelector('.mode-dd-menu');
+        trigger.onclick = (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          const willOpen = !dd.classList.contains('open');
+          closeWorkingModeMenus(willOpen ? dd : null);
+          if (!willOpen) return;
+          dd.classList.add('open');
+          trigger.setAttribute('aria-expanded', 'true');
+          positionWorkingModeMenu(trigger, menu);
+        };
+        menu.querySelectorAll('.mode-dd-option').forEach((opt) => {
+          opt.onclick = (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            setWorkingMode(dd.dataset.id, opt.dataset.mode, trigger);
+          };
+        });
       });
       $('empList').querySelectorAll('.emp').forEach((el) => {
         el.onclick = (ev) => {
-          if (ev.target.closest('.mode-select')) return;
+          if (ev.target.closest('.mode-dd')) return;
+          closeWorkingModeMenus();
           state.selected = state.employees.find((x) => x.id === el.dataset.id);
           state.samples = 0;
           status('enrollStatus', 'Enrolling ' + state.selected.display_name + ' (' + state.selected.code + ')');
@@ -1038,6 +1117,14 @@
         };
       });
     }
+    document.addEventListener('click', (ev) => {
+      if (!ev.target.closest || !ev.target.closest('.mode-dd')) closeWorkingModeMenus();
+    });
+    document.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape') closeWorkingModeMenus();
+    });
+    window.addEventListener('resize', () => closeWorkingModeMenus());
+    $('empList').addEventListener('scroll', () => closeWorkingModeMenus(), { passive: true });
     $('searchBtn').onclick = () => loadEmployees().catch((e) => status('enrollStatus', e.message));
     $('search').onkeydown = (e) => {
       if (e.key !== 'Enter') return;
