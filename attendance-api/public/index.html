@@ -661,21 +661,30 @@
       if (insecureOrigin()) {
         return Promise.reject(new Error(gpsErrorMessage(0, true)));
       }
-      const opts = { enableHighAccuracy: true, timeout: 20000, maximumAge: 30000 };
+      // Cap wait at 5s; finish early once accuracy is good enough for geofence (~50m).
+      const GPS_MAX_WAIT_MS = 5000;
+      const GPS_GOOD_ACCURACY_M = 50;
+      const GPS_EARLY_MIN_MS = 350;
+      const opts = { enableHighAccuracy: true, timeout: 8000, maximumAge: 20000 };
       return new Promise((resolve, reject) => {
         if (!navigator.geolocation) return reject(new Error('This browser does not support location.'));
         const samples = [];
         let watchId;
         let lastErr = null;
         let settled = false;
+        let maxTimer = null;
+        const startedAt = Date.now();
+        const bestOf = () => {
+          if (!samples.length) return null;
+          return samples.slice().sort((a, b) => (a.accuracy || 999) - (b.accuracy || 999))[0];
+        };
         const finish = () => {
           if (settled) return;
           settled = true;
+          if (maxTimer != null) clearTimeout(maxTimer);
           if (watchId != null) navigator.geolocation.clearWatch(watchId);
-          if (samples.length) {
-            samples.sort((a, b) => (a.accuracy || 999) - (b.accuracy || 999));
-            return resolve(samples[0]);
-          }
+          const best = bestOf();
+          if (best) return resolve(best);
           reject(new Error(gpsErrorMessage(lastErr && lastErr.code)));
         };
         const onPos = (p) => {
@@ -684,11 +693,16 @@
             lng: p.coords.longitude,
             accuracy: p.coords.accuracy,
           });
+          const best = bestOf();
+          const elapsed = Date.now() - startedAt;
+          if (best && best.accuracy != null && best.accuracy <= GPS_GOOD_ACCURACY_M && elapsed >= GPS_EARLY_MIN_MS) {
+            finish();
+          }
         };
         const onErr = (e) => { lastErr = e; };
         navigator.geolocation.getCurrentPosition(onPos, onErr, opts);
         watchId = navigator.geolocation.watchPosition(onPos, onErr, opts);
-        setTimeout(finish, 12000);
+        maxTimer = setTimeout(finish, GPS_MAX_WAIT_MS);
       });
     }
     async function api(path, opts = {}) {
@@ -869,21 +883,24 @@
       };
     }
     async function waitForFrame(v, ms) {
-      const deadline = Date.now() + (ms || 2500);
+      const deadline = Date.now() + (ms || 1200);
       while (Date.now() < deadline) {
         if (v.readyState >= 2 && (v.videoWidth > 0 || (v.srcObject && v.srcObject.active))) return;
-        await new Promise((r) => setTimeout(r, 50));
+        await new Promise((r) => setTimeout(r, 40));
       }
     }
     async function captureB64() {
       const v = $('cam');
       if (!camActive()) await startCam();
-      await waitForFrame(v, 2500);
+      await waitForFrame(v, 1200);
       try { if (v.paused) await v.play(); } catch {}
       const size = frameSize(v);
+      // Downscale before upload — server only needs ~112–160px for match/liveness.
+      const maxEdge = 640;
+      const scale = Math.min(1, maxEdge / Math.max(size.width, size.height));
       const c = document.createElement('canvas');
-      c.width = size.width;
-      c.height = size.height;
+      c.width = Math.max(1, Math.round(size.width * scale));
+      c.height = Math.max(1, Math.round(size.height * scale));
       const ctx = c.getContext('2d');
       ctx.drawImage(v, 0, 0, c.width, c.height);
       const pixels = ctx.getImageData(0, 0, c.width, c.height).data;
@@ -893,7 +910,7 @@
       if (count > 0 && sum / count / 3 < 8) {
         throw new Error('Captured frame is too dark. Allow the camera in Chrome, keep this tab visible, then try again.');
       }
-      return c.toDataURL('image/jpeg', 0.85).replace(/^data:image\/\w+;base64,/, '');
+      return c.toDataURL('image/jpeg', 0.75).replace(/^data:image\/\w+;base64,/, '');
     }
 
     function prepareEnrollTab() {
@@ -954,9 +971,10 @@
       other.disabled = true;
       try {
         status('kioskStatus', 'Checking liveness…');
+        // Capture and GPS run together so wall-clock time is max(capture, gps), not sum.
+        const gpsPromise = getGps().catch(() => null);
         const image_b64 = await captureB64();
-        let gps = null;
-        try { gps = await getGps(); } catch (e) { gps = null; }
+        const gps = await gpsPromise;
         const res = await api('/attend/identify', {
           method: 'POST',
           body: {
@@ -1002,8 +1020,8 @@
       if (!p) return;
       const punch = p.punch || state.punch;
       try {
-        let gps = p.gps;
-        try { gps = await getGps(); } catch (e) { /* reuse identify fix */ }
+        // Reuse the GPS fix from identify — avoid a second multi-second GPS wait.
+        const gps = p.gps || undefined;
         await api('/attendance', {
           method: 'POST',
           body: {
@@ -1011,7 +1029,7 @@
             type: punch,
             device_id: state.settings.deviceId,
             site_code: state.settings.siteCode,
-            gps: gps || undefined,
+            gps,
             similarity: p.similarity,
             liveness_score: p.liveness,
             face_crop_url: p.face_crop_url,

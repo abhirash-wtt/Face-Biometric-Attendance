@@ -30,13 +30,18 @@ function WebCamera({ onReady }: Props) {
       videoHeight: number;
     } | null;
     if (!video) throw new Error('Camera not ready');
+    const srcW = video.videoWidth || 480;
+    const srcH = video.videoHeight || 480;
+    // Downscale before upload — server only needs ~112–160px for match/liveness.
+    const maxEdge = 640;
+    const scale = Math.min(1, maxEdge / Math.max(srcW, srcH));
     const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth || 480;
-    canvas.height = video.videoHeight || 480;
+    canvas.width = Math.max(1, Math.round(srcW * scale));
+    canvas.height = Math.max(1, Math.round(srcH * scale));
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Capture failed');
     ctx.drawImage(video as CanvasImageSource, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL('image/jpeg', 0.85).replace(/^data:image\/\w+;base64,/, '');
+    return canvas.toDataURL('image/jpeg', 0.75).replace(/^data:image\/\w+;base64,/, '');
   }, []);
 
   React.useEffect(() => {

@@ -82,23 +82,29 @@ export class RecognitionService {
   }> {
     this.metrics.identifyTotal += 1;
     const th = this.thresholds();
-    const liveness =
-      imageBuf && imageBuf.length > 32
-        ? await this.liveness.score(imageBuf, opts?.clientLiveness)
-        : Math.max(0, Math.min(1, opts?.clientLiveness ?? 1));
     let embedding = opts?.embedding;
+    let liveness: number;
+
     if (!embedding || embedding.length === 0) {
       if (!imageBuf || imageBuf.length < 32) {
         return {
           ok: false,
           reason: 'missing_image',
           embedding: [],
-          liveness,
+          liveness: Math.max(0, Math.min(1, opts?.clientLiveness ?? 1)),
           similarity: 0,
           top: [],
         };
       }
-      embedding = await this.embeddings.embed(imageBuf);
+      // Run embed + liveness together — both only need a downscaled Sharp pass.
+      const scored = await this.embedAndLiveness(imageBuf, opts?.clientLiveness);
+      embedding = scored.embedding;
+      liveness = scored.liveness_score;
+    } else {
+      liveness =
+        imageBuf && imageBuf.length > 32
+          ? await this.liveness.score(imageBuf, opts?.clientLiveness)
+          : Math.max(0, Math.min(1, opts?.clientLiveness ?? 1));
     }
 
     if (opts?.boundEmployeeId) {

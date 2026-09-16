@@ -18,7 +18,6 @@ import { Response } from 'express';
 import { AttendanceService } from './attendance.service';
 import { CreateAttendanceDto, IdentifyDto, VerifyDto } from './dto/attendance.dto';
 import { RecognitionService } from '../recognition/recognition.service';
-import { StorageService } from '../storage/storage.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -41,7 +40,6 @@ export class AttendanceController {
   constructor(
     private readonly attendance: AttendanceService,
     private readonly recognition: RecognitionService,
-    private readonly storage: StorageService,
     private readonly config: ConfigService,
   ) {}
 
@@ -82,10 +80,7 @@ export class AttendanceController {
       dto.gps?.lng,
       dto.gps?.accuracy,
     );
-    let face_crop_url: string | undefined;
-    if (imageBuf.length) {
-      face_crop_url = await this.storage.put(imageBuf);
-    }
+    // Evidence is persisted on confirmed /attendance from image_b64; skip blocking upload here.
     const th = this.recognition.thresholds();
     return {
       ok: result.ok,
@@ -96,7 +91,7 @@ export class AttendanceController {
       similarity: result.similarity,
       liveness: result.liveness,
       thresholds: th,
-      face_crop_url,
+      face_crop_url: undefined,
       top: result.top,
       device_id: dto.device_id || user.device_id,
       site_code: dto.site_code || user.site_code,

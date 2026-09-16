@@ -56,15 +56,11 @@ export function KioskScreen() {
     try {
       dispatch(setBusy(true));
       dispatch(setLastMessage('Checking liveness…'));
+      // Capture and GPS run together so wall-clock time is max(capture, gps), not sum.
+      const gpsPromise = getCurrentGps().catch(() => undefined);
       const image_b64 = await captureRef.current();
       const settings = await storage.getSettings();
-      let gps: { lat: number; lng: number; accuracy?: number } | undefined;
-      try {
-        gps = await getCurrentGps();
-      } catch {
-        // Approved WFH days may clock in without a GPS fix; server still enforces geofence otherwise.
-        gps = undefined;
-      }
+      const gps = await gpsPromise;
       const res = await api.identify({
         device_id: settings.deviceId,
         site_code: settings.siteCode,
@@ -103,14 +99,10 @@ export function KioskScreen() {
       if (/network|fetch|failed/i.test(message)) {
         dispatch(setLastMessage('Offline — capture queued'));
         try {
+          const gpsPromise = getCurrentGps().catch(() => undefined);
           const image_b64 = await captureRef.current();
           const settings = await storage.getSettings();
-          let gps: { lat: number; lng: number; accuracy?: number } | undefined;
-          try {
-            gps = await getCurrentGps();
-          } catch {
-            gps = undefined;
-          }
+          const gps = await gpsPromise;
           await storage.enqueue({
             id: String(Date.now()),
             path: '/attend/identify',
@@ -137,12 +129,8 @@ export function KioskScreen() {
   const confirmAttendance = async () => {
     if (!pending) return;
     const settings = await storage.getSettings();
-    let gps = pending.gps;
-    try {
-      gps = await getCurrentGps();
-    } catch {
-      // Reuse the fix captured during identify when a fresh read fails.
-    }
+    // Reuse the GPS fix from identify — avoid a second multi-second GPS wait.
+    const gps = pending.gps;
     const body = {
       employee_id: pending.employee_id,
       type: pending.type,

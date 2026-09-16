@@ -2,8 +2,11 @@ import { PermissionsAndroid, Platform } from 'react-native';
 
 export type Gps = { lat: number; lng: number; accuracy?: number };
 
-const GPS_SAMPLE_MS = 12000;
-const gpsOptions = { enableHighAccuracy: true, timeout: 20000, maximumAge: 30000 };
+/** Cap total GPS wait; early-exit when accuracy is good enough for geofence. */
+const GPS_MAX_WAIT_MS = 5000;
+const GPS_GOOD_ACCURACY_M = 50;
+const GPS_EARLY_MIN_MS = 350;
+const gpsOptions = { enableHighAccuracy: true, timeout: 8000, maximumAge: 20000 };
 
 function fromCoords(coords: { latitude: number; longitude: number; accuracy?: number }): Gps {
   return { lat: coords.latitude, lng: coords.longitude, accuracy: coords.accuracy };
@@ -63,10 +66,13 @@ function collectGps(geo: GeoApi): Promise<Gps> {
     let lastError: GeoError | null = null;
     let settled = false;
     let watchId: number | null = null;
+    const startedAt = Date.now();
+    let maxTimer: ReturnType<typeof setTimeout> | null = null;
 
     const finish = () => {
       if (settled) return;
       settled = true;
+      if (maxTimer != null) clearTimeout(maxTimer);
       if (watchId != null) geo.clearWatch(watchId);
       const best = bestSample(samples);
       if (best) return resolve(best);
@@ -75,6 +81,16 @@ function collectGps(geo: GeoApi): Promise<Gps> {
 
     const onPos = (pos: GeoPosition) => {
       samples.push(fromCoords(pos.coords));
+      const best = bestSample(samples);
+      const elapsed = Date.now() - startedAt;
+      if (
+        best &&
+        best.accuracy != null &&
+        best.accuracy <= GPS_GOOD_ACCURACY_M &&
+        elapsed >= GPS_EARLY_MIN_MS
+      ) {
+        finish();
+      }
     };
     const onErr = (err: GeoError) => {
       lastError = err;
@@ -82,7 +98,7 @@ function collectGps(geo: GeoApi): Promise<Gps> {
 
     geo.getCurrentPosition(onPos, onErr, gpsOptions);
     watchId = geo.watchPosition(onPos, onErr, gpsOptions);
-    setTimeout(finish, GPS_SAMPLE_MS);
+    maxTimer = setTimeout(finish, GPS_MAX_WAIT_MS);
   });
 }
 
