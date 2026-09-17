@@ -476,7 +476,6 @@
           <input id="rosterDate" type="hidden" />
           <div id="rosterCalendar" class="calendar hidden" role="dialog" aria-label="Choose date"></div>
         </div>
-        <button class="cta" id="rosterRefreshBtn">Refresh</button>
       </div>
       <div class="roster-wrap">
         <table class="roster">
@@ -514,7 +513,6 @@
       <p id="wfhAdminHint" class="hidden">Employees submit requests after logging in with their employee account. As admin, approve or reject pending requests below.</p>
       <div class="roster-toolbar">
         <p class="section-title" id="wfhListTitle" style="margin:0;flex:1">My requests</p>
-        <button class="cta" id="wfhRefreshBtn">Refresh</button>
       </div>
       <div id="wfhList"></div>
       <p class="status" id="wfhStatus"></p>
@@ -1590,7 +1588,6 @@
         status('rosterStatus', e.message || 'Unable to load attendance');
       }
     }
-    $('rosterRefreshBtn').onclick = () => loadRoster().catch((e) => status('rosterStatus', e.message));
 
     async function loadWfhRequests() {
       const isAdmin = jwtRole() === 'admin';
@@ -1667,7 +1664,6 @@
       }
       status('wfhStatus', rows.length + ' request' + (rows.length === 1 ? '' : 's'));
     }
-    $('wfhRefreshBtn').onclick = () => loadWfhRequests().catch((e) => status('wfhStatus', e.message));
     $('wfhSubmitBtn').onclick = async () => {
       try {
         const work_date = $('wfhDate').value;

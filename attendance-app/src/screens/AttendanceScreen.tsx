@@ -221,9 +221,6 @@ export function AttendanceScreen() {
             load(next);
           }}
         />
-        <Pressable onPress={() => load(date)} accessibilityRole="button" style={styles.refresh}>
-          <Text style={styles.refreshText}>{busy ? '…' : 'Refresh'}</Text>
-        </Pressable>
       </View>
 
       {!layout.stackRows && (
@@ -356,20 +353,6 @@ const styles = StyleSheet.create({
   calDayOn: { backgroundColor: THEME.cyan },
   calDayText: { color: THEME.textSecondary, fontWeight: '700' },
   calDayTextOn: { color: '#fff', fontWeight: '800' },
-  refresh: {
-    minHeight: TAP_TARGET,
-    backgroundColor: THEME.cyan,
-    borderRadius: 12,
-    paddingHorizontal: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: THEME.cyan,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  refreshText: { color: '#fff', fontWeight: '800', fontSize: 14 },
   head: { flexDirection: 'row', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: THEME.border },
   headText: { color: THEME.textMuted, fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
   listContent: { paddingBottom: 16 },

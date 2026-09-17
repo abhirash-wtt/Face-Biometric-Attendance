@@ -291,9 +291,6 @@ export function RegularizationScreen({ role }: { role: 'admin' | 'user' | '' }) 
       )}
       <View style={styles.toolbar}>
         <Text style={styles.listTitle}>{isAdmin ? 'Pending & All Requests' : 'My Requests'}</Text>
-        <Pressable onPress={load} accessibilityRole="button" style={styles.refresh}>
-          <Text style={styles.refreshText}>{busy ? '…' : 'Refresh'}</Text>
-        </Pressable>
       </View>
       <FlatList
         data={rows}
@@ -467,17 +464,6 @@ const styles = StyleSheet.create({
   },
   btnDisabled: { opacity: 0.55 },
   btnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
-  refresh: {
-    minHeight: 38,
-    backgroundColor: 'rgba(6, 182, 212, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(6, 182, 212, 0.3)',
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  refreshText: { color: THEME.cyan, fontWeight: '800', fontSize: 13 },
   listContent: { paddingBottom: 16 },
   card: {
     backgroundColor: THEME.card,
