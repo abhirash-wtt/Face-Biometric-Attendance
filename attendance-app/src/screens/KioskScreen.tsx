@@ -27,6 +27,9 @@ const promptCopy: Record<string, string> = {
 function identifyFailMessage(reason?: string) {
   if (reason === 'identity_mismatch') return 'Face does not match this login';
   if (reason === 'no_templates') return 'No face enrolled for this login';
+  if (reason === 're_enroll_required') return 'Biometric model updated. Please re-enroll face';
+  if (reason === 'low_similarity') return 'Face not recognized';
+  if (reason === 'low_liveness') return 'Liveness check failed';
   if (reason === 'employee_not_found') return 'This employee account is not active';
   return 'Please try again';
 }

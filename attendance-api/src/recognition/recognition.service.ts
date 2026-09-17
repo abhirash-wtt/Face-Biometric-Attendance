@@ -149,9 +149,25 @@ export class RecognitionService {
     else this.metrics.identifyRejected += 1;
 
     let reason: string | undefined;
-    if (!best) reason = 'no_templates';
-    else if (liveness < th.liveness) reason = 'low_liveness';
-    else if (similarity < th.similarity) reason = 'low_similarity';
+    if (!best) {
+      reason = 'no_templates';
+    } else if (liveness < th.liveness) {
+      reason = 'low_liveness';
+    } else if (similarity < th.similarity) {
+      if (this.embeddings.isModelActive()) {
+        const tmpls = await this.ds.query(
+          `SELECT embedding FROM face_templates WHERE employee_id = $1 LIMIT 5`,
+          [best.employee_id],
+        );
+        if (tmpls.length > 0 && tmpls.every((t: { embedding: string }) => isLegacyTemplate(t.embedding))) {
+          reason = 're_enroll_required';
+        } else {
+          reason = 'low_similarity';
+        }
+      } else {
+        reason = 'low_similarity';
+      }
+    }
 
     this.logger.log(
       JSON.stringify({
@@ -232,9 +248,25 @@ export class RecognitionService {
     else this.metrics.identifyRejected += 1;
 
     let reason: string | undefined;
-    if (!best) reason = 'no_templates';
-    else if (liveness < th.liveness) reason = 'low_liveness';
-    else if (similarity < th.similarity) reason = 'identity_mismatch';
+    if (!best) {
+      reason = 'no_templates';
+    } else if (this.embeddings.isModelActive()) {
+      const tmpls = await this.ds.query(
+        `SELECT embedding FROM face_templates WHERE employee_id = $1 LIMIT 5`,
+        [employeeId],
+      );
+      if (tmpls.length > 0 && tmpls.every((t: { embedding: string }) => isLegacyTemplate(t.embedding))) {
+        reason = 're_enroll_required';
+      } else if (liveness < th.liveness) {
+        reason = 'low_liveness';
+      } else if (similarity < th.similarity) {
+        reason = 'identity_mismatch';
+      }
+    } else if (liveness < th.liveness) {
+      reason = 'low_liveness';
+    } else if (similarity < th.similarity) {
+      reason = 'identity_mismatch';
+    }
 
     this.logger.log(
       JSON.stringify({
@@ -309,5 +341,19 @@ export class RecognitionService {
       });
     }
     return out;
+  }
+}
+
+function isLegacyTemplate(embeddingStr: string): boolean {
+  try {
+    const raw = parsePgVector(embeddingStr);
+    if (raw.length !== 512) return false;
+    let trailingZeros = 0;
+    for (let i = 448; i < 512; i++) {
+      if (raw[i] === 0) trailingZeros++;
+    }
+    return trailingZeros >= 60;
+  } catch {
+    return false;
   }
 }
