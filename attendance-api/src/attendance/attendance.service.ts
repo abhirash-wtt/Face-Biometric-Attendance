@@ -101,10 +101,10 @@ export class AttendanceService {
     });
     if (last && last.type === dto.type) {
       const delta = (Date.now() - new Date(last.event_time).getTime()) / 1000;
-      if (delta < cooldown) {
-        throw new UnprocessableEntityException(
-          `Duplicate ${dto.type} within cooldown (${cooldown}s)`,
-        );
+      const today = localDateYmd();
+      const lastDay = localDateYmd(new Date(last.event_time));
+      if (delta < cooldown || lastDay === today) {
+        throw new UnprocessableEntityException('Duplicate entry detected.');
       }
     }
 

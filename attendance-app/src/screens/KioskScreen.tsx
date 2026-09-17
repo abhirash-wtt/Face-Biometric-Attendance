@@ -115,7 +115,11 @@ export function KioskScreen() {
           dispatch(rollLivenessPrompt());
         } catch (err) {
           const message = err instanceof Error ? err.message : 'Please try again';
-          if (/geofence|location is required|outside office|not linked|does not match|Face verification required|only clock in|No face enrolled/i.test(message)) {
+          if (/duplicate/i.test(message)) {
+            dispatch(setLastMessage('Duplicate entry detected.'));
+            dispatch(rollLivenessPrompt());
+            return;
+          } else if (/geofence|location is required|outside office|not linked|does not match|Face verification required|only clock in|No face enrolled/i.test(message)) {
             dispatch(setLastMessage(message));
             setFailure({
               title: /geofence|location|outside/i.test(message) ? 'Location Verification Failed' : 'Attendance Failed',
@@ -134,6 +138,7 @@ export function KioskScreen() {
                 err instanceof Error ? `Saved offline: ${err.message}` : 'Saved offline',
               ),
             );
+            return;
           }
         }
 
@@ -184,13 +189,19 @@ export function KioskScreen() {
           message: 'Could not connect to the attendance service. Your capture has been queued offline and will be verified once connection is restored.',
         });
       } else {
-        dispatch(setLastMessage(message));
-        setFailure({
-          title: /geofence|location|outside/i.test(message)
-            ? 'Location Verification Failed'
-            : 'Face Verification Failed',
-          message,
-        });
+        const isDuplicate = /duplicate/i.test(message);
+        if (isDuplicate) {
+          dispatch(setLastMessage('Duplicate entry detected.'));
+          dispatch(rollLivenessPrompt());
+        } else {
+          dispatch(setLastMessage(message));
+          setFailure({
+            title: /geofence|location|outside/i.test(message)
+              ? 'Location Verification Failed'
+              : 'Face Verification Failed',
+            message,
+          });
+        }
       }
     } finally {
       dispatch(setBusy(false));

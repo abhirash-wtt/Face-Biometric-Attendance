@@ -578,7 +578,7 @@
     <h2 id="failureTitle">Face Verification Failed</h2>
     <p id="failureMsg" style="white-space:pre-line; margin-bottom:12px;"></p>
     <div class="failure-metrics hidden" id="failureMetrics"></div>
-    <p class="failure-guidance">Please ensure good lighting, look straight into the camera without accessories, and try again.</p>
+    <p class="failure-guidance" id="failureGuidance">Please ensure good lighting, look straight into the camera without accessories, and try again.</p>
     <div class="row">
       <button class="danger" id="failureDismissBtn" style="margin:0; width:100%;">Try Again</button>
     </div>
@@ -1125,7 +1125,11 @@
             status('kioskStatus', 'Welcome ' + empName);
           } catch (attErr) {
             const attMsg = attErr.message || '';
-            if (/geofence|location is required|outside office|not linked|does not match|Face verification required|only clock in|No face enrolled/i.test(attMsg)) {
+            if (/duplicate/i.test(attMsg)) {
+              status('kioskStatus', 'Duplicate entry detected.');
+              rollPrompt();
+              return;
+            } else if (/geofence|location is required|outside office|not linked|does not match|Face verification required|only clock in|No face enrolled/i.test(attMsg)) {
               status('kioskStatus', attMsg);
               showFailureModal({
                 title: /geofence|location|outside/i.test(attMsg) ? 'Location Verification Failed' : 'Attendance Failed',
@@ -1148,6 +1152,7 @@
               });
               localStorage.setItem('offline_queue', JSON.stringify(state.queue));
               status('kioskStatus', 'Saved offline: ' + attMsg);
+              return;
             }
           }
 
@@ -1190,11 +1195,16 @@
         }
       } catch (e) {
         const errorMsg = e.message || 'Please try again';
-        status('kioskStatus', errorMsg);
-        showFailureModal({
-          title: /geofence|location|outside/i.test(errorMsg) ? 'Location Verification Failed' : 'Face Verification Failed',
-          message: errorMsg,
-        });
+        if (/duplicate/i.test(errorMsg)) {
+          status('kioskStatus', 'Duplicate entry detected.');
+          rollPrompt();
+        } else {
+          status('kioskStatus', errorMsg);
+          showFailureModal({
+            title: /geofence|location|outside/i.test(errorMsg) ? 'Location Verification Failed' : 'Face Verification Failed',
+            message: errorMsg,
+          });
+        }
       } finally {
         busy.disabled = false;
         other.disabled = false;
@@ -1219,6 +1229,19 @@
         metricsContainer.innerHTML = '';
         metricsContainer.classList.add('hidden');
       }
+      const guidanceEl = $('failureGuidance');
+      if (guidanceEl) {
+        if (options.guidance === false || /duplicate/i.test(options.title || '')) {
+          guidanceEl.classList.add('hidden');
+        } else if (typeof options.guidance === 'string') {
+          guidanceEl.textContent = options.guidance;
+          guidanceEl.classList.remove('hidden');
+        } else {
+          guidanceEl.textContent = 'Please ensure good lighting, look straight into the camera without accessories, and try again.';
+          guidanceEl.classList.remove('hidden');
+        }
+      }
+      $('failureDismissBtn').textContent = options.btnText || 'Try Again';
       $('failureModal').showModal();
     }
     $('failureDismissBtn').onclick = () => {
