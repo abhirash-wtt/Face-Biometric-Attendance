@@ -76,11 +76,13 @@ CREATE INDEX IF NOT EXISTS attendance_logs_employee_time_idx
 CREATE INDEX IF NOT EXISTS attendance_logs_event_time_idx
   ON attendance_logs (event_time DESC);
 
--- WFH REGULARIZATION (same-day allowed; approved days skip geofence on clock IN/OUT)
+-- REGULARIZATION (WFH skips geofence; mark_present sets roster Present with blank clock times)
 CREATE TABLE IF NOT EXISTS wfh_regularization_requests (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
   work_date DATE NOT NULL,
+  request_type TEXT NOT NULL DEFAULT 'wfh'
+    CHECK (request_type IN ('wfh', 'mark_present')),
   reason TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending'
     CHECK (status IN ('pending', 'approved', 'rejected', 'cancelled')),
@@ -96,5 +98,5 @@ CREATE INDEX IF NOT EXISTS wfh_requests_employee_date_idx
 CREATE INDEX IF NOT EXISTS wfh_requests_status_idx
   ON wfh_regularization_requests (status, created_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS wfh_requests_active_uniq
-  ON wfh_regularization_requests (employee_id, work_date)
+  ON wfh_regularization_requests (employee_id, work_date, request_type)
   WHERE status IN ('pending', 'approved');

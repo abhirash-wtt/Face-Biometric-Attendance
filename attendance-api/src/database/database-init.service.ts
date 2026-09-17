@@ -43,6 +43,7 @@ export class DatabaseInitService implements OnModuleInit {
     await this.migrateHqGeofence();
     await this.migrateUserEmployeeLink();
     await this.migrateWfhRegularization();
+    await this.migrateRegularizationRequestType();
     await this.migrateEmployeeWorkingMode();
   }
 
@@ -160,6 +161,49 @@ export class DatabaseInitService implements OnModuleInit {
         WHERE status IN ('pending', 'approved')
     `);
     this.logger.log('WFH regularization table ready');
+  }
+
+  private async migrateRegularizationRequestType() {
+    await this.ds.query(
+      `ALTER TABLE wfh_regularization_requests ADD COLUMN IF NOT EXISTS request_type TEXT DEFAULT 'wfh'`,
+    );
+    await this.ds.query(
+      `UPDATE wfh_regularization_requests SET request_type = 'wfh' WHERE request_type IS NULL OR request_type NOT IN ('wfh', 'mark_present')`,
+    );
+    await this.ds.query(
+      `ALTER TABLE wfh_regularization_requests ALTER COLUMN request_type SET DEFAULT 'wfh'`,
+    );
+    await this.ds.query(
+      `ALTER TABLE wfh_regularization_requests ALTER COLUMN request_type SET NOT NULL`,
+    );
+    await this.ds.query(`
+      DO $$
+      DECLARE r RECORD;
+      BEGIN
+        FOR r IN
+          SELECT conname FROM pg_constraint
+          WHERE conrelid = 'wfh_regularization_requests'::regclass AND contype = 'c'
+            AND pg_get_constraintdef(oid) ILIKE '%request_type%'
+        LOOP
+          EXECUTE format('ALTER TABLE wfh_regularization_requests DROP CONSTRAINT IF EXISTS %I', r.conname);
+        END LOOP;
+      END $$;
+    `);
+    try {
+      await this.ds.query(
+        `ALTER TABLE wfh_regularization_requests ADD CONSTRAINT wfh_requests_type_check CHECK (request_type IN ('wfh', 'mark_present'))`,
+      );
+    } catch (err) {
+      const message = (err as Error).message || '';
+      if (!/already exists/i.test(message)) throw err;
+    }
+    await this.ds.query(`DROP INDEX IF EXISTS wfh_requests_active_uniq`);
+    await this.ds.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS wfh_requests_active_uniq
+        ON wfh_regularization_requests (employee_id, work_date, request_type)
+        WHERE status IN ('pending', 'approved')
+    `);
+    this.logger.log('Regularization request_type column ready');
   }
 
   private readSql(file: string): string {

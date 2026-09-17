@@ -216,6 +216,7 @@ export class AttendanceService {
       .getMany();
     const employees = await this.employees.findAll();
     const users = await this.users.find();
+    const markedPresentIds = new Set(await this.regularization.listApprovedPresentEmployeeIds(day));
     const emailByEmployee = new Map(
       users
         .filter((u) => u.employee_id)
@@ -232,6 +233,7 @@ export class AttendanceService {
           email: emailByEmployee.get(e.id) || null,
         })),
         logs,
+        markedPresentIds,
       ),
     };
   }

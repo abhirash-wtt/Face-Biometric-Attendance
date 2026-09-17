@@ -10,6 +10,7 @@ import { Employee } from '../employees/employee.entity';
 import { User } from '../auth/user.entity';
 
 export type WfhRequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+export type RegularizationRequestType = 'wfh' | 'mark_present';
 
 @Entity('wfh_regularization_requests')
 export class WfhRequest {
@@ -23,9 +24,13 @@ export class WfhRequest {
   @JoinColumn({ name: 'employee_id' })
   employee?: Employee;
 
-  /** Calendar date (Asia/Kolkata) the WFH applies to, stored as YYYY-MM-DD. */
+  /** Calendar date (Asia/Kolkata) the request applies to, stored as YYYY-MM-DD. */
   @Column({ type: 'date' })
   work_date: string;
+
+  /** `wfh` skips geofence on clock-in/out; `mark_present` marks the roster Present with blank punch times. */
+  @Column({ type: 'text', default: 'wfh' })
+  request_type: RegularizationRequestType;
 
   @Column({ type: 'text' })
   reason: string;

@@ -65,6 +65,32 @@ describe('attendance roster', () => {
     expect(row.clock_out).toBe('2026-09-15T12:30:00.000Z');
   });
 
+  it('marks approved missed-punch regularization as Present with blank clock times', () => {
+    const [row] = buildRoster(
+      [emp],
+      [
+        { employee_id: 'e1', type: 'IN', event_time: '2026-09-15T03:30:00.000Z' },
+        { employee_id: 'e1', type: 'OUT', event_time: '2026-09-15T12:30:00.000Z' },
+      ],
+      new Set(['e1']),
+    );
+    expect(row.status).toBe('Present');
+    expect(row.clock_in).toBeNull();
+    expect(row.clock_out).toBeNull();
+  });
+
+  it('keeps other employees punch-based when only one is regularized Present', () => {
+    const other = { id: 'e2', code: 'EMP002', display_name: 'Priya', email: null };
+    const rows = buildRoster(
+      [emp, other],
+      [{ employee_id: 'e2', type: 'IN', event_time: '2026-09-15T03:30:00.000Z' }],
+      new Set(['e1']),
+    );
+    expect(rows[0]).toMatchObject({ status: 'Present', clock_in: null, clock_out: null });
+    expect(rows[1].status).toBe('Present');
+    expect(rows[1].clock_in).toBe('2026-09-15T03:30:00.000Z');
+  });
+
   it('defaults an invalid date query to today in Asia/Kolkata', () => {
     const now = new Date('2026-09-15T20:00:00.000Z');
     expect(parseRosterDate(undefined, now)).toBe('2026-09-16');

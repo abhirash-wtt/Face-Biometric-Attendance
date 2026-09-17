@@ -49,8 +49,12 @@ function iso(value: Date | string): string {
   return new Date(value).toISOString();
 }
 
-/** Present when the last punch of the day is IN; otherwise Absent. */
-export function buildRoster(employees: RosterEmployee[], logs: RosterLog[]): RosterRow[] {
+/** Present when the last punch of the day is IN, or when admin approved a mark-present request. */
+export function buildRoster(
+  employees: RosterEmployee[],
+  logs: RosterLog[],
+  markedPresentIds?: Set<string>,
+): RosterRow[] {
   const byEmp = new Map<string, RosterLog[]>();
   for (const log of logs) {
     if (!log.employee_id) continue;
@@ -66,16 +70,17 @@ export function buildRoster(employees: RosterEmployee[], logs: RosterLog[]): Ros
     const empLogs = byEmp.get(emp.id) || [];
     const firstIn = empLogs.find((l) => l.type === 'IN');
     const last = empLogs[empLogs.length - 1];
-    const present = last?.type === 'IN';
+    const punchedPresent = last?.type === 'IN';
     const lastOut = [...empLogs].reverse().find((l) => l.type === 'OUT');
+    const markedPresent = markedPresentIds?.has(emp.id) === true;
     return {
       employee_id: emp.id,
       employee_code: emp.code,
       display_name: emp.display_name,
       email: emp.email || null,
-      clock_in: firstIn ? iso(firstIn.event_time) : null,
-      clock_out: lastOut ? iso(lastOut.event_time) : null,
-      status: present ? 'Present' : 'Absent',
+      clock_in: markedPresent ? null : firstIn ? iso(firstIn.event_time) : null,
+      clock_out: markedPresent ? null : lastOut ? iso(lastOut.event_time) : null,
+      status: markedPresent || punchedPresent ? 'Present' : 'Absent',
     };
   });
 }

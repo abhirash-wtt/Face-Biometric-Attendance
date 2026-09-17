@@ -19,28 +19,30 @@ export class RegularizationController {
 
   @Post()
   @Roles('user')
-  @ApiOperation({ summary: 'Request WFH regularization (same-day allowed)' })
+  @ApiOperation({
+    summary: 'Submit a regularization request (WFH or mark Present after missed punches)',
+  })
   create(@Body() dto: CreateWfhRequestDto, @CurrentUser() user: JwtUser) {
     return this.regularization.create(dto, user);
   }
 
   @Get('mine')
   @Roles('user')
-  @ApiOperation({ summary: 'List my WFH regularization requests' })
+  @ApiOperation({ summary: 'List my regularization requests' })
   mine(@CurrentUser() user: JwtUser) {
     return this.regularization.listMine(user);
   }
 
   @Get()
   @Roles('admin')
-  @ApiOperation({ summary: 'List WFH requests (admin). Optional status filter.' })
+  @ApiOperation({ summary: 'List regularization requests (admin). Optional status filter.' })
   list(@Query('status') status?: WfhRequestStatus) {
     return this.regularization.listAdmin(status);
   }
 
   @Post(':id/approve')
   @Roles('admin')
-  @ApiOperation({ summary: 'Approve a pending WFH request' })
+  @ApiOperation({ summary: 'Approve a pending regularization request' })
   approve(
     @Param('id') id: string,
     @Body() dto: ReviewWfhRequestDto,
@@ -51,7 +53,7 @@ export class RegularizationController {
 
   @Post(':id/reject')
   @Roles('admin')
-  @ApiOperation({ summary: 'Reject a pending WFH request' })
+  @ApiOperation({ summary: 'Reject a pending regularization request' })
   reject(
     @Param('id') id: string,
     @Body() dto: ReviewWfhRequestDto,
@@ -62,7 +64,7 @@ export class RegularizationController {
 
   @Post(':id/cancel')
   @Roles('user')
-  @ApiOperation({ summary: 'Cancel a pending WFH request (own request or admin)' })
+  @ApiOperation({ summary: 'Cancel a pending regularization request (own request or admin)' })
   cancel(@Param('id') id: string, @CurrentUser() user: JwtUser) {
     return this.regularization.cancel(id, user);
   }

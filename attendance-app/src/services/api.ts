@@ -36,11 +36,13 @@ export type AttendanceStatusRow = {
 };
 
 export type WfhRequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+export type RegularizationRequestType = 'wfh' | 'mark_present';
 
 export type WfhRequest = {
   id: string;
   employee_id: string;
   work_date: string;
+  request_type?: RegularizationRequestType;
   reason: string;
   status: WfhRequestStatus;
   review_note?: string | null;
@@ -166,7 +168,12 @@ export const api = {
       liveness_prompts: string[];
     }>('/config');
   },
-  createWfhRequest(payload: { work_date: string; reason: string; employee_id?: string }) {
+  createWfhRequest(payload: {
+    work_date: string;
+    reason: string;
+    request_type?: RegularizationRequestType;
+    employee_id?: string;
+  }) {
     return request<WfhRequest>('/wfh-requests', { method: 'POST', body: payload });
   },
   myWfhRequests() {

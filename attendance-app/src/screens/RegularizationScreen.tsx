@@ -9,7 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { api, WfhRequest } from '../services/api';
+import { api, RegularizationRequestType, WfhRequest } from '../services/api';
 import { TAP_TARGET, useLayout } from '../theme/responsive';
 import { THEME } from '../theme/colors';
 
@@ -45,10 +45,12 @@ function DatePickerField({
   value,
   onChange,
   minDate,
+  maxDate,
 }: {
   value: string;
   onChange: (next: string) => void;
   minDate?: string;
+  maxDate?: string;
 }) {
   const layout = useLayout();
   const [open, setOpen] = useState(false);
@@ -122,7 +124,8 @@ function DatePickerField({
               {cells.map((day, idx) => {
                 if (!day) return <View key={`empty-${idx}`} style={styles.calDay} />;
                 const ymd = toYmd(viewYear, viewMonth, day);
-                const disabled = !!minDate && ymd < minDate;
+                const disabled =
+                  (!!minDate && ymd < minDate) || (!!maxDate && ymd > maxDate);
                 const on = ymd === selected;
                 return (
                   <Pressable
@@ -170,15 +173,21 @@ function StatusPill({ status }: { status: string }) {
   );
 }
 
+function typeLabel(type?: RegularizationRequestType) {
+  return type === 'mark_present' ? 'Mark Present' : 'Work From Home';
+}
+
 export function RegularizationScreen({ role }: { role: 'admin' | 'user' | '' }) {
   const layout = useLayout();
-  const earliest = todayIst();
-  const [workDate, setWorkDate] = useState(earliest);
+  const today = todayIst();
+  const [requestType, setRequestType] = useState<RegularizationRequestType>('wfh');
+  const [workDate, setWorkDate] = useState(today);
   const [reason, setReason] = useState('');
   const [rows, setRows] = useState<WfhRequest[]>([]);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const isAdmin = role === 'admin';
+  const isPresentRequest = requestType === 'mark_present';
 
   const load = useCallback(async () => {
     try {
@@ -187,7 +196,7 @@ export function RegularizationScreen({ role }: { role: 'admin' | 'user' | '' }) 
       setRows(data || []);
       setMessage(`${(data || []).length} request${(data || []).length === 1 ? '' : 's'}`);
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Unable to load WFH requests');
+      setMessage(err instanceof Error ? err.message : 'Unable to load requests');
     } finally {
       setBusy(false);
     }
@@ -204,9 +213,13 @@ export function RegularizationScreen({ role }: { role: 'admin' | 'user' | '' }) 
         return;
       }
       setBusy(true);
-      await api.createWfhRequest({ work_date: workDate, reason: reason.trim() });
+      await api.createWfhRequest({
+        work_date: workDate,
+        reason: reason.trim(),
+        request_type: requestType,
+      });
       setReason('');
-      setMessage('WFH request submitted');
+      setMessage(isPresentRequest ? 'Present request submitted' : 'WFH request submitted');
       await load();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Submit failed');
@@ -254,6 +267,13 @@ export function RegularizationScreen({ role }: { role: 'admin' | 'user' | '' }) 
     }
   };
 
+  const selectType = (next: RegularizationRequestType) => {
+    setRequestType(next);
+    const now = todayIst();
+    if (next === 'wfh' && workDate < now) setWorkDate(now);
+    if (next === 'mark_present' && workDate > now) setWorkDate(now);
+  };
+
   const renderForm = !isAdmin;
 
   return (
@@ -262,18 +282,54 @@ export function RegularizationScreen({ role }: { role: 'admin' | 'user' | '' }) 
     >
       <Text style={styles.title}>Regularize</Text>
       <Text style={styles.meta}>
-        Request Work From Home for today or a future date. Geofencing is skipped on approved dates.
+        Request Work From Home, or ask admin to mark you Present if you forgot to clock in or out.
+        Approved Present requests leave Clock In and Clock Out blank.
       </Text>
       {renderForm && (
         <View style={styles.formCard}>
-          <Text style={styles.sectionTitle}>New WFH Request</Text>
-          <Text style={styles.label}>WFH Date</Text>
-          <DatePickerField value={workDate} onChange={setWorkDate} minDate={earliest} />
+          <Text style={styles.sectionTitle}>New Request</Text>
+          <Text style={styles.label}>Request Type</Text>
+          <View style={styles.typeRow}>
+            <Pressable
+              onPress={() => selectType('wfh')}
+              accessibilityRole="button"
+              style={[styles.typeBtn, !isPresentRequest && styles.typeBtnOn]}
+            >
+              <Text style={[styles.typeBtnText, !isPresentRequest && styles.typeBtnTextOn]}>
+                Work From Home
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => selectType('mark_present')}
+              accessibilityRole="button"
+              style={[styles.typeBtn, isPresentRequest && styles.typeBtnOn]}
+            >
+              <Text style={[styles.typeBtnText, isPresentRequest && styles.typeBtnTextOn]}>
+                Mark Present
+              </Text>
+            </Pressable>
+          </View>
+          <Text style={styles.hint}>
+            {isPresentRequest
+              ? 'Use this if you forgot Clock In and/or Clock Out. Admin approval marks you Present without filling punch times.'
+              : 'Approved WFH dates skip geofencing when you clock in or out.'}
+          </Text>
+          <Text style={styles.label}>{isPresentRequest ? 'Attendance Date' : 'WFH Date'}</Text>
+          <DatePickerField
+            value={workDate}
+            onChange={setWorkDate}
+            minDate={isPresentRequest ? undefined : today}
+            maxDate={isPresentRequest ? today : undefined}
+          />
           <Text style={styles.label}>Reason</Text>
           <TextInput
             value={reason}
             onChangeText={setReason}
-            placeholder="Describe reason (required)"
+            placeholder={
+              isPresentRequest
+                ? 'Why you missed clock in/out (required)'
+                : 'Describe reason (required)'
+            }
             placeholderTextColor={THEME.textSubtle}
             multiline
             numberOfLines={3}
@@ -296,7 +352,7 @@ export function RegularizationScreen({ role }: { role: 'admin' | 'user' | '' }) 
         data={rows}
         keyExtractor={(item) => item.id}
         refreshControl={<RefreshControl refreshing={busy} onRefresh={load} tintColor={THEME.cyan} />}
-        ListEmptyComponent={<Text style={styles.empty}>No WFH requests yet</Text>}
+        ListEmptyComponent={<Text style={styles.empty}>No requests yet</Text>}
         contentContainerStyle={styles.listContent}
         renderItem={({ item }) => {
           const who = item.employee
@@ -307,6 +363,7 @@ export function RegularizationScreen({ role }: { role: 'admin' | 'user' | '' }) 
             <View style={styles.card}>
               <View style={styles.cardHead}>
                 <View style={styles.cardWho}>
+                  <Text style={styles.kind}>{typeLabel(item.request_type)}</Text>
                   <Text style={styles.dateTitle}>{formatDateLabel(item.work_date)}</Text>
                   {!!who && <Text style={styles.name}>{who}</Text>}
                   <Text style={styles.reasonText}>{item.reason}</Text>
@@ -368,6 +425,22 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   sectionTitle: { color: THEME.cyan, fontSize: 16, fontWeight: '800', marginBottom: 12 },
+  typeRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+  typeBtn: {
+    flex: 1,
+    minHeight: TAP_TARGET,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+  },
+  typeBtnOn: { backgroundColor: THEME.cyan, borderColor: THEME.cyan },
+  typeBtnText: { color: THEME.textMuted, fontSize: 12, fontWeight: '800', textAlign: 'center' },
+  typeBtnTextOn: { color: '#fff' },
+  hint: { color: THEME.textMuted, fontSize: 12, lineHeight: 17, marginBottom: 12 },
   label: { color: THEME.textMuted, fontSize: 12, fontWeight: '800', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 },
   toolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   listTitle: { color: '#fff', fontSize: 16, fontWeight: '800' },
@@ -475,6 +548,14 @@ const styles = StyleSheet.create({
   },
   cardHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   cardWho: { flex: 1 },
+  kind: {
+    color: THEME.cyan,
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
   dateTitle: { color: '#fff', fontWeight: '800', fontSize: 16 },
   name: { color: THEME.cyan, fontSize: 13, fontWeight: '700', marginTop: 4 },
   reasonText: { color: THEME.textSecondary, fontSize: 14, marginTop: 6, lineHeight: 20 },

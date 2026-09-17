@@ -34,7 +34,10 @@ describe('AttendanceService - clock-out replacement & duplicate handling', () =>
     storage = { put: jest.fn() };
     config = { get: jest.fn().mockReturnValue(60) };
     recognition = { verify: jest.fn() };
-    regularization = { hasApprovedWfh: jest.fn().mockResolvedValue(false) };
+    regularization = {
+      hasApprovedWfh: jest.fn().mockResolvedValue(false),
+      listApprovedPresentEmployeeIds: jest.fn().mockResolvedValue([]),
+    };
 
     service = new AttendanceService(
       repo,
