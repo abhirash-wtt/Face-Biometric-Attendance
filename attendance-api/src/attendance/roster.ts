@@ -74,7 +74,7 @@ export function buildRoster(employees: RosterEmployee[], logs: RosterLog[]): Ros
       display_name: emp.display_name,
       email: emp.email || null,
       clock_in: firstIn ? iso(firstIn.event_time) : null,
-      clock_out: !present && lastOut ? iso(lastOut.event_time) : null,
+      clock_out: lastOut ? iso(lastOut.event_time) : null,
       status: present ? 'Present' : 'Absent',
     };
   });

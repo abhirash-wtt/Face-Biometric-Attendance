@@ -94,17 +94,73 @@ export class AttendanceService {
       dto.gps?.accuracy,
     );
 
-    const cooldown = this.config.get<number>('attendanceCooldownSec') || 60;
-    const last = await this.repo.findOne({
-      where: { employee_id: dto.employee_id },
-      order: { event_time: 'DESC' },
-    });
-    if (last && last.type === dto.type) {
-      const delta = (Date.now() - new Date(last.event_time).getTime()) / 1000;
-      const today = localDateYmd();
-      const lastDay = localDateYmd(new Date(last.event_time));
-      if (delta < cooldown || lastDay === today) {
+    const today = localDateYmd();
+    const { from, to } = dayBoundsIst(today);
+
+    if (dto.type === 'OUT') {
+      const existingOut = await this.repo
+        .createQueryBuilder('a')
+        .where('a.employee_id = :empId AND a.type = :type AND a.event_time >= :from AND a.event_time <= :to', {
+          empId: dto.employee_id,
+          type: 'OUT',
+          from,
+          to,
+        })
+        .orderBy('a.event_time', 'DESC')
+        .getOne();
+
+      if (existingOut) {
+        let face_crop_url = dto.face_crop_url;
+        if (dto.image_b64 && !face_crop_url) {
+          const buf = Buffer.from(dto.image_b64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+          face_crop_url = await this.storage.put(buf);
+        }
+
+        const event_time = new Date();
+        const modeNote = remote_bypass ? 'Remote working mode' : wfh_bypass ? 'Approved WFH' : undefined;
+        const notes = [dto.notes, modeNote].filter(Boolean).join('; ') || undefined;
+
+        existingOut.event_time = event_time;
+        if (dto.device_id) existingOut.device_id = dto.device_id;
+        if (siteCode) existingOut.site_code = siteCode;
+        if (lat !== undefined) existingOut.gps_lat = lat;
+        if (lng !== undefined) existingOut.gps_lng = lng;
+        if (similarity !== undefined) existingOut.similarity = similarity;
+        if (liveness_score !== undefined) existingOut.liveness_score = liveness_score;
+        if (face_crop_url) existingOut.face_crop_url = face_crop_url;
+        if (notes) existingOut.notes = notes;
+
+        await this.repo.save(existingOut);
+
+        this.logger.log(
+          JSON.stringify({
+            event: 'attendance_replaced_out',
+            id: existingOut.id,
+            employee_id: existingOut.employee_id,
+            type: existingOut.type,
+            device_id: existingOut.device_id,
+            site_code: existingOut.site_code,
+            wfh_bypass,
+            remote_bypass,
+          }),
+        );
+
         throw new UnprocessableEntityException('Duplicate entry detected.');
+      }
+    }
+
+    if (dto.type === 'IN') {
+      const cooldown = this.config.get<number>('attendanceCooldownSec') || 60;
+      const last = await this.repo.findOne({
+        where: { employee_id: dto.employee_id },
+        order: { event_time: 'DESC' },
+      });
+      if (last && last.type === 'IN') {
+        const delta = (Date.now() - new Date(last.event_time).getTime()) / 1000;
+        const lastDay = localDateYmd(new Date(last.event_time));
+        if (delta < cooldown || lastDay === today) {
+          throw new UnprocessableEntityException('Duplicate entry detected.');
+        }
       }
     }
 
