@@ -111,15 +111,7 @@ export function KioskScreen() {
         };
         try {
           await api.attendance(body);
-          dispatch(
-            setLastMessage(
-              res.remote_bypass
-                ? `Matched ${empName} (Remote — geofence skipped)`
-                : res.wfh_bypass
-                  ? `Matched ${empName} (WFH — geofence skipped)`
-                  : `Matched ${empName} — Clock ${type} recorded`,
-            ),
-          );
+          dispatch(setLastMessage(`Welcome ${empName}`));
           dispatch(rollLivenessPrompt());
         } catch (err) {
           const message = err instanceof Error ? err.message : 'Please try again';

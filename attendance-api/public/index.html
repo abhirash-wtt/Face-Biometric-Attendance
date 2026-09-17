@@ -1122,11 +1122,7 @@
                 image_b64,
               },
             });
-            status('kioskStatus', res.remote_bypass
-              ? ('Matched ' + empName + ' (Remote — geofence skipped)')
-              : res.wfh_bypass
-                ? ('Matched ' + empName + ' (WFH — geofence skipped)')
-                : ('Matched ' + empName + ' — Clock ' + punch + ' recorded'));
+            status('kioskStatus', 'Welcome ' + empName);
           } catch (attErr) {
             const attMsg = attErr.message || '';
             if (/geofence|location is required|outside office|not linked|does not match|Face verification required|only clock in|No face enrolled/i.test(attMsg)) {
