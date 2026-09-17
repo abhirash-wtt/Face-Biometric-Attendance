@@ -34,6 +34,47 @@ function identifyFailMessage(reason?: string) {
   return 'Please try again';
 }
 
+function buildFailureMessage(res: {
+  reason?: string;
+  similarity?: number;
+  liveness?: number;
+  thresholds?: { similarity: number; liveness: number };
+}): string {
+  const reason = res.reason;
+  let reasonText = 'Face verification was unsuccessful.';
+  if (reason === 'low_similarity') {
+    reasonText = 'Face not recognized. Your face did not match any active employee profile.';
+  } else if (reason === 'identity_mismatch') {
+    reasonText = 'Face does not match the employee profile linked to this login.';
+  } else if (reason === 'no_templates') {
+    reasonText = 'No biometric face templates were found for this account. Please enroll your face first.';
+  } else if (reason === 'low_liveness') {
+    reasonText = 'Liveness check failed. Please look straight into the camera and follow the movement prompt.';
+  } else if (reason === 're_enroll_required') {
+    reasonText = 'Biometric model updated. Please re-enroll your face in the Enroll tab.';
+  } else if (reason === 'employee_not_found') {
+    reasonText = 'This employee account is not active. Please contact an administrator.';
+  } else if (reason === 'missing_image') {
+    reasonText = 'No face detected in camera. Please position your face inside the guide frame.';
+  }
+
+  const lines: string[] = [reasonText];
+  const sim = res.similarity;
+  const reqSim = res.thresholds?.similarity ?? 0.9;
+  const live = res.liveness;
+  const reqLive = res.thresholds?.liveness ?? 0.6;
+
+  if (typeof sim === 'number' && sim > 0) {
+    lines.push(`Similarity: ${Math.round(sim * 100)}% (Required: ≥${Math.round(reqSim * 100)}%)`);
+  }
+  if (typeof live === 'number' && live > 0) {
+    lines.push(`Liveness: ${Math.round(live * 100)}% (Required: ≥${Math.round(reqLive * 100)}%)`);
+  }
+  lines.push('\nPlease ensure good lighting, look straight into the camera without accessories, and try again.');
+
+  return lines.join('\n');
+}
+
 export function KioskScreen() {
   const dispatch = useDispatch<AppDispatch>();
   const layout = useLayout();
@@ -50,6 +91,10 @@ export function KioskScreen() {
     image_b64: string;
     gps?: { lat: number; lng: number; accuracy?: number };
     type: PunchType;
+  } | null>(null);
+  const [failure, setFailure] = useState<{
+    title: string;
+    message: string;
   } | null>(null);
 
   const onReady = useCallback((capture: () => Promise<string>) => {
@@ -75,6 +120,7 @@ export function KioskScreen() {
       const minSim = res.thresholds?.similarity ?? 0.9;
       const minLive = res.thresholds?.liveness ?? 0.6;
       if (res.ok && res.similarity >= minSim && res.liveness >= minLive && res.employee_id) {
+        setFailure(null);
         setPending({
           employee_id: res.employee_id,
           name: res.name || res.employee_code || 'Employee',
@@ -95,12 +141,20 @@ export function KioskScreen() {
           ),
         );
       } else {
-        dispatch(setLastMessage(identifyFailMessage(res.reason)));
+        const failMsg = identifyFailMessage(res.reason);
+        const detailedMsg = buildFailureMessage(res);
+        dispatch(setLastMessage(failMsg));
         dispatch(rollLivenessPrompt());
+        setPending(null);
+        setFailure({
+          title: 'Face Verification Failed',
+          message: detailedMsg,
+        });
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Please try again';
-      if (/network|fetch|failed/i.test(message)) {
+      const isNetworkOffline = /network request failed|failed to fetch|networkerror|econnrefused/i.test(message);
+      if (isNetworkOffline) {
         dispatch(setLastMessage('Offline — capture queued'));
         try {
           const gpsPromise = getCurrentGps().catch(() => undefined);
@@ -122,8 +176,18 @@ export function KioskScreen() {
         } catch {
           dispatch(setLastMessage('Please try again'));
         }
+        setFailure({
+          title: 'Connection Offline',
+          message: 'Could not connect to the attendance service. Your capture has been queued offline and will be verified once connection is restored.',
+        });
       } else {
         dispatch(setLastMessage(message));
+        setFailure({
+          title: /geofence|location|outside/i.test(message)
+            ? 'Location Verification Failed'
+            : 'Face Verification Failed',
+          message,
+        });
       }
     } finally {
       dispatch(setBusy(false));
@@ -209,16 +273,28 @@ export function KioskScreen() {
       </View>
       {!!lastMessage && <Text style={styles.status}>{lastMessage}</Text>}
       <ConfirmModal
-        visible={!!pending}
-        title={pending ? `Welcome ${pending?.name}` : ''}
+        visible={!!pending || !!failure}
+        title={pending ? `Welcome ${pending.name}` : failure?.title || 'Face Verification Failed'}
         message={
           pending
             ? `Similarity ${Math.round(pending.similarity * 100)}% · Liveness ${Math.round(pending.liveness * 100)}%\nConfirm clock ${pending.type}?`
-            : ''
+            : failure?.message || ''
         }
-        confirmLabel={`Confirm ${pending?.type || ''}`}
-        onConfirm={confirmAttendance}
-        onCancel={() => setPending(null)}
+        confirmLabel={pending ? `Confirm ${pending.type}` : 'Try Again'}
+        cancelLabel={pending ? 'Cancel' : 'Dismiss'}
+        variant={failure ? 'danger' : 'default'}
+        showCancel={!!pending}
+        onConfirm={() => {
+          if (pending) {
+            confirmAttendance();
+          } else {
+            setFailure(null);
+          }
+        }}
+        onCancel={() => {
+          setPending(null);
+          setFailure(null);
+        }}
       />
     </ScrollView>
   );

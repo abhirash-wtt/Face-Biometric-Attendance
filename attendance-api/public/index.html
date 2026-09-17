@@ -370,6 +370,33 @@
     dialog p { color:#cbd5e1; font-size:15px; line-height:1.5; }
     dialog::backdrop { background:rgba(4, 10, 22, 0.8); backdrop-filter:blur(4px); }
 
+    .modal-fail-badge {
+      width:44px; height:44px; border-radius:50%;
+      background:rgba(244, 63, 94, 0.15); border:1.5px solid rgba(244, 63, 94, 0.35);
+      color:var(--danger); display:flex; align-items:center; justify-content:center;
+      font-size:20px; font-weight:900; margin-bottom:14px;
+      box-shadow:0 0 16px rgba(244, 63, 94, 0.25);
+    }
+    .failure-metrics {
+      display:flex; flex-direction:column; gap:8px; margin:12px 0 14px;
+    }
+    .metric-pill {
+      display:flex; justify-content:space-between; align-items:center;
+      background:rgba(255, 255, 255, 0.04); border:1px solid rgba(255, 255, 255, 0.08);
+      border-radius:10px; padding:8px 12px; font-size:13px; color:var(--muted);
+    }
+    .metric-pill.fail {
+      border-color:rgba(244, 63, 94, 0.3); background:rgba(244, 63, 94, 0.08); color:#fca5a5;
+    }
+    .metric-pill.fail strong { color:var(--danger); }
+    .metric-pill.ok {
+      border-color:rgba(16, 185, 129, 0.3); background:rgba(16, 185, 129, 0.08); color:#86efac;
+    }
+    .metric-pill.ok strong { color:var(--ok); }
+    .failure-guidance {
+      font-size:13px; color:var(--muted); margin:0 0 16px; line-height:1.45;
+    }
+
     .hidden { display:none !important; }
     .rbac-hide { display:none !important; }
     .role-badge {
@@ -540,6 +567,16 @@
     <div class="row">
       <button class="toggle" id="resetEnrollCancel">Cancel</button>
       <button class="danger" id="resetEnrollOk" style="margin:0">Reset</button>
+    </div>
+  </dialog>
+  <dialog id="failureModal">
+    <div class="modal-fail-badge">✕</div>
+    <h2 id="failureTitle">Face Verification Failed</h2>
+    <p id="failureMsg" style="white-space:pre-line; margin-bottom:12px;"></p>
+    <div class="failure-metrics hidden" id="failureMetrics"></div>
+    <p class="failure-guidance">Please ensure good lighting, look straight into the camera without accessories, and try again.</p>
+    <div class="row">
+      <button class="danger" id="failureDismissBtn" style="margin:0; width:100%;">Try Again</button>
     </div>
   </dialog>
   <script>
@@ -1076,11 +1113,58 @@
               ? ('Matched ' + res.name + ' (WFH — geofence skipped)')
               : ('Matched ' + res.name));
         } else {
-          status('kioskStatus', identifyFailMessage(res.reason));
+          const failMsg = identifyFailMessage(res.reason);
+          status('kioskStatus', failMsg);
           rollPrompt();
+
+          const metrics = [];
+          if (typeof res.similarity === 'number' && res.similarity > 0) {
+            metrics.push({
+              label: 'Similarity',
+              val: Math.round(Number(res.similarity) * 100) + '%',
+              req: Math.round(Number(minSim) * 100) + '%',
+              ok: res.similarity >= minSim,
+            });
+          }
+          if (typeof res.liveness === 'number' && res.liveness > 0) {
+            metrics.push({
+              label: 'Liveness',
+              val: Math.round(Number(res.liveness) * 100) + '%',
+              req: Math.round(Number(minLive) * 100) + '%',
+              ok: res.liveness >= minLive,
+            });
+          }
+
+          let detailText = failMsg;
+          if (res.reason === 'low_similarity') {
+            detailText = 'Face not recognized. Your face did not match any active employee profile.';
+          } else if (res.reason === 'identity_mismatch') {
+            detailText = 'Face does not match the employee profile linked to this login.';
+          } else if (res.reason === 'no_templates') {
+            detailText = 'No biometric face templates were found for this account. Please enroll your face first.';
+          } else if (res.reason === 'low_liveness') {
+            detailText = 'Liveness check failed. Please look straight into the camera and follow the movement prompt.';
+          } else if (res.reason === 're_enroll_required') {
+            detailText = 'Biometric model updated. Please re-enroll your face in the Enroll tab.';
+          } else if (res.reason === 'employee_not_found') {
+            detailText = 'This employee account is not active. Please contact an administrator.';
+          } else if (res.reason === 'missing_image') {
+            detailText = 'No face detected in camera. Please position your face inside the guide frame.';
+          }
+
+          showFailureModal({
+            title: 'Face Verification Failed',
+            message: detailText,
+            metrics,
+          });
         }
       } catch (e) {
-        status('kioskStatus', e.message || 'Please try again');
+        const errorMsg = e.message || 'Please try again';
+        status('kioskStatus', errorMsg);
+        showFailureModal({
+          title: /geofence|location|outside/i.test(errorMsg) ? 'Location Verification Failed' : 'Face Verification Failed',
+          message: errorMsg,
+        });
       } finally {
         busy.disabled = false;
         other.disabled = false;
@@ -1088,6 +1172,29 @@
     }
     $('clockInBtn').onclick = () => startClock('IN');
     $('clockOutBtn').onclick = () => startClock('OUT');
+
+    function showFailureModal(options) {
+      $('failureTitle').textContent = options.title || 'Face Verification Failed';
+      $('failureMsg').textContent = options.message || 'Face verification was unsuccessful.';
+      const metricsContainer = $('failureMetrics');
+      if (options.metrics && options.metrics.length > 0) {
+        metricsContainer.innerHTML = options.metrics.map(m => `
+          <div class="metric-pill ${m.ok ? 'ok' : 'fail'}">
+            <span>${m.label}</span>
+            <span><strong>${m.val}</strong> ${m.req ? `(Req: ≥${m.req})` : ''}</span>
+          </div>
+        `).join('');
+        metricsContainer.classList.remove('hidden');
+      } else {
+        metricsContainer.innerHTML = '';
+        metricsContainer.classList.add('hidden');
+      }
+      $('failureModal').showModal();
+    }
+    $('failureDismissBtn').onclick = () => {
+      $('failureModal').close();
+      rollPrompt();
+    };
 
     $('okBtn').onclick = async () => {
       const p = state.pending;

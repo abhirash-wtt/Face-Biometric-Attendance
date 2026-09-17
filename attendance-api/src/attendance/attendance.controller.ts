@@ -72,7 +72,23 @@ export class AttendanceController {
       clientLiveness: dto.liveness,
       boundEmployeeId,
     });
-    const geofenceEmployeeId = boundEmployeeId || (result.ok ? result.match?.employee_id : undefined);
+    const th = this.recognition.thresholds();
+    if (!result.ok) {
+      return {
+        ok: false,
+        reason: result.reason,
+        similarity: result.similarity,
+        liveness: result.liveness,
+        thresholds: th,
+        face_crop_url: undefined,
+        top: result.top,
+        device_id: dto.device_id || user.device_id,
+        site_code: dto.site_code || user.site_code,
+        wfh_bypass: false,
+        remote_bypass: false,
+      };
+    }
+    const geofenceEmployeeId = boundEmployeeId || result.match?.employee_id;
     const { wfh_bypass, remote_bypass } = await this.attendance.assertGeofenceUnlessApprovedWfh(
       geofenceEmployeeId,
       siteCode,
@@ -80,8 +96,6 @@ export class AttendanceController {
       dto.gps?.lng,
       dto.gps?.accuracy,
     );
-    // Evidence is persisted on confirmed /attendance from image_b64; skip blocking upload here.
-    const th = this.recognition.thresholds();
     return {
       ok: result.ok,
       reason: result.reason,

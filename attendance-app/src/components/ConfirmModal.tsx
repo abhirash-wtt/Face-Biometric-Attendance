@@ -8,6 +8,9 @@ type Props = {
   title: string;
   message: string;
   confirmLabel?: string;
+  cancelLabel?: string;
+  variant?: 'default' | 'danger';
+  showCancel?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 };
@@ -17,9 +20,14 @@ export function ConfirmModal({
   title,
   message,
   confirmLabel = 'Confirm',
+  cancelLabel = 'Cancel',
+  variant = 'default',
+  showCancel = true,
   onConfirm,
   onCancel,
 }: Props) {
+  const isDanger = variant === 'danger';
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <View style={styles.backdrop}>
@@ -29,14 +37,29 @@ export function ConfirmModal({
             showsVerticalScrollIndicator={false}
             bounces={false}
           >
+            {isDanger && (
+              <View style={styles.failBadge}>
+                <Text style={styles.failBadgeText}>✕</Text>
+              </View>
+            )}
             <Text style={styles.title}>{title}</Text>
             <Text style={styles.message}>{message}</Text>
           </ScrollView>
           <View style={styles.row}>
-            <Pressable style={styles.cancel} onPress={onCancel} accessibilityRole="button">
-              <Text style={styles.cancelText}>Cancel</Text>
-            </Pressable>
-            <Pressable style={styles.ok} onPress={onConfirm} accessibilityRole="button">
+            {showCancel && (
+              <Pressable style={styles.cancel} onPress={onCancel} accessibilityRole="button">
+                <Text style={styles.cancelText}>{cancelLabel}</Text>
+              </Pressable>
+            )}
+            <Pressable
+              style={[
+                styles.ok,
+                isDanger && styles.okDanger,
+                !showCancel && styles.okFullWidth,
+              ]}
+              onPress={onConfirm}
+              accessibilityRole="button"
+            >
               <Text style={styles.okText} numberOfLines={1}>
                 {confirmLabel}
               </Text>
@@ -72,6 +95,22 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   cardBody: { paddingBottom: 16 },
+  failBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(244, 63, 94, 0.15)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(244, 63, 94, 0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  failBadgeText: {
+    color: THEME.rose,
+    fontSize: 20,
+    fontWeight: '900',
+  },
   title: { color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 8, letterSpacing: -0.2 },
   message: { color: THEME.textSecondary, fontSize: 15, lineHeight: 22 },
   row: { flexDirection: 'row', gap: 12 },
@@ -100,6 +139,13 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.35,
     shadowRadius: 8,
     elevation: 4,
+  },
+  okDanger: {
+    backgroundColor: THEME.rose,
+    shadowColor: THEME.rose,
+  },
+  okFullWidth: {
+    flex: 1,
   },
   okText: { color: '#fff', fontWeight: '800', fontSize: 15 },
 });
