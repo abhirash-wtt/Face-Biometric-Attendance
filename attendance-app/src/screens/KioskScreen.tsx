@@ -69,7 +69,7 @@ export function KioskScreen() {
         image_b64,
         liveness: 0.95,
       });
-      const minSim = res.thresholds?.similarity ?? 0.8;
+      const minSim = res.thresholds?.similarity ?? 0.9;
       const minLive = res.thresholds?.liveness ?? 0.6;
       if (res.ok && res.similarity >= minSim && res.liveness >= minLive && res.employee_id) {
         setPending({

@@ -18,7 +18,7 @@ Copy `attendance-api/.env.example` to `.env` per environment (`local` / `dev` / 
 | `MINIO_*` | minio/minio123 | Object storage for face crops |
 | `RECOGNITION_PROVIDER` | internal | `internal` (ONNX) or `compreface` |
 | `ONNX_MODEL_PATH` | ./models/arcface_mobile.onnx | ArcFace model |
-| `SIMILARITY_THRESHOLD` | 0.80 | Cosine accept threshold (minimum 80%) |
+| `SIMILARITY_THRESHOLD` | 0.90 | Cosine accept threshold (minimum 90%) |
 | `LIVENESS_THRESHOLD` | 0.6 | Liveness accept threshold |
 | `IDENTIFY_TOP_K` | 5 | Candidates returned for 1:N identify |
 | `MAX_FACE_SAMPLES` | 10 | Max enrolled face photo samples per employee |

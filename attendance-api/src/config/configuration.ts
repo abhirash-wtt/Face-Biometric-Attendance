@@ -43,7 +43,7 @@ export const configuration = () => ({
     onnxModelPath: process.env.ONNX_MODEL_PATH || './models/arcface_mobile.onnx',
     similarityThreshold: (() => {
       const parsed = Number(process.env.SIMILARITY_THRESHOLD);
-      const value = Number.isFinite(parsed) ? parsed : 0.8;
+      const value = Number.isFinite(parsed) ? parsed : 0.9;
       return Math.max(0.0, Math.min(1.0, value));
     })(),
     livenessThreshold: Number(process.env.LIVENESS_THRESHOLD) || 0.6,

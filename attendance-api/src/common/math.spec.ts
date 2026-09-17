@@ -2,14 +2,14 @@ import { cosineSimilarity, isPointInPolygon, isWithinGeofence, isWithinSiteGeofe
 import { HQ_OFFICE } from '../sites/hq-office';
 
 describe('threshold and geo helpers', () => {
-  it('accepts cosine_sim >= 0.8', () => {
+  it('accepts cosine_sim >= 0.9', () => {
     const a = [1, 0, 0];
     const b = [1, 0, 0];
-    expect(cosineSimilarity(a, b)).toBeGreaterThanOrEqual(0.8);
+    expect(cosineSimilarity(a, b)).toBeGreaterThanOrEqual(0.9);
   });
 
   it('rejects orthogonal vectors', () => {
-    expect(cosineSimilarity([1, 0], [0, 1])).toBeLessThan(0.8);
+    expect(cosineSimilarity([1, 0], [0, 1])).toBeLessThan(0.9);
   });
 
   it('geofence accepts a point inside radius', () => {
