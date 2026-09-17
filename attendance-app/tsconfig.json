@@ -3,6 +3,8 @@
   "compilerOptions": {
     "jsx": "react-native",
     "strict": true,
+    "lib": ["dom", "esnext"],
+    "types": [],
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"]

@@ -1,5 +1,6 @@
 import React, { useCallback, useRef } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
+import { THEME } from '../theme/colors';
 
 type Props = {
   onReady?: (capture: () => Promise<string>) => void;
@@ -8,7 +9,12 @@ type Props = {
 function FaceGuide() {
   return (
     <View style={styles.guide} pointerEvents="none" accessibilityElementsHidden>
-      <View style={styles.guideRing} />
+      <View style={styles.guideRing}>
+        <View style={[styles.corner, styles.cornerTL]} />
+        <View style={[styles.corner, styles.cornerTR]} />
+        <View style={[styles.corner, styles.cornerBL]} />
+        <View style={[styles.corner, styles.cornerBR]} />
+      </View>
     </View>
   );
 }
@@ -32,7 +38,6 @@ function WebCamera({ onReady }: Props) {
     if (!video) throw new Error('Camera not ready');
     const srcW = video.videoWidth || 480;
     const srcH = video.videoHeight || 480;
-    // Downscale before upload — server only needs ~112–160px for match/liveness.
     const maxEdge = 640;
     const scale = Math.min(1, maxEdge / Math.max(srcW, srcH));
     const canvas = document.createElement('canvas');
@@ -48,7 +53,6 @@ function WebCamera({ onReady }: Props) {
     let cancelled = false;
     (async () => {
       try {
-        // Phone browsers reject exact dimensions far more often than desktops, so stay on "ideal".
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: { ideal: 'user' },
@@ -86,7 +90,6 @@ function WebCamera({ onReady }: Props) {
         autoPlay: true,
         playsInline: true,
         muted: true,
-        // The preview mirrors like a selfie camera; the captured frame stays unmirrored.
         style: { width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' },
       })}
       <FaceGuide />
@@ -137,27 +140,40 @@ const styles = StyleSheet.create({
   box: {
     flex: 1,
     width: '100%',
-    minHeight: 160,
-    backgroundColor: '#0b1220',
+    minHeight: 180,
+    backgroundColor: '#080D1A',
     overflow: 'hidden',
-    borderRadius: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: THEME.border,
   },
   center: { alignItems: 'center', justifyContent: 'center' },
-  hint: { color: '#9fb0c8', textAlign: 'center', paddingHorizontal: 16 },
+  hint: { color: THEME.textMuted, textAlign: 'center', paddingHorizontal: 16, fontSize: 15, fontWeight: '600' },
   guide: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
   },
   guideRing: {
-    width: '72%',
-    maxWidth: 280,
+    width: '70%',
+    maxWidth: 270,
     aspectRatio: 1,
     borderRadius: 9999,
-    borderWidth: 3,
-    borderColor: 'rgba(126, 224, 197, 0.92)',
+    borderWidth: 2,
+    borderColor: 'rgba(6, 182, 212, 0.75)',
     backgroundColor: 'transparent',
-    // Soft outside dim so the face oval reads clearly over the preview.
-    boxShadow: '0 0 0 9999px rgba(7, 17, 31, 0.55)',
+    boxShadow: '0 0 0 9999px rgba(7, 12, 24, 0.55)',
+    position: 'relative',
   },
+  corner: {
+    position: 'absolute',
+    width: 16,
+    height: 16,
+    borderColor: THEME.cyan,
+  },
+  cornerTL: { top: -2, left: -2, borderTopWidth: 3, borderLeftWidth: 3, borderTopLeftRadius: 6 },
+  cornerTR: { top: -2, right: -2, borderTopWidth: 3, borderRightWidth: 3, borderTopRightRadius: 6 },
+  cornerBL: { bottom: -2, left: -2, borderBottomWidth: 3, borderLeftWidth: 3, borderBottomLeftRadius: 6 },
+  cornerBR: { bottom: -2, right: -2, borderBottomWidth: 3, borderRightWidth: 3, borderBottomRightRadius: 6 },
 });
+

@@ -34,7 +34,7 @@ export class RecognitionService {
 
   thresholds() {
     return {
-      similarity: this.config.get<number>('recognition.similarityThreshold') || 0.97,
+      similarity: this.config.get<number>('recognition.similarityThreshold') ?? 0.8,
       liveness: this.config.get<number>('recognition.livenessThreshold') || 0.6,
       topK: this.config.get<number>('recognition.topK') || 5,
     };

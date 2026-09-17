@@ -13,6 +13,7 @@ import {
 import { api } from '../services/api';
 import { storage, Settings } from '../services/storage';
 import { TAP_TARGET, useLayout } from '../theme/responsive';
+import { THEME } from '../theme/colors';
 
 export function SettingsScreen({ onAuthChange }: { onAuthChange?: () => void }) {
   const layout = useLayout();
@@ -34,7 +35,7 @@ export function SettingsScreen({ onAuthChange }: { onAuthChange?: () => void }) 
 
   const save = async () => {
     await storage.setSettings(settings);
-    setMessage('Settings saved');
+    setMessage('Settings saved successfully');
   };
 
   const login = async () => {
@@ -63,7 +64,7 @@ export function SettingsScreen({ onAuthChange }: { onAuthChange?: () => void }) 
       const nextRole = storage.roleFromToken(res.access_token);
       setRole(nextRole);
       onAuthChange?.();
-      setMessage(`Device bound: ${res.device.device_id}`);
+      setMessage(`Device registered: ${res.device.device_id}`);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Bind failed');
     }
@@ -102,57 +103,78 @@ export function SettingsScreen({ onAuthChange }: { onAuthChange?: () => void }) 
         keyboardDismissMode="on-drag"
       >
         <Text style={styles.title}>Settings</Text>
-        <Text style={styles.section}>{role ? `Signed in as ${role}` : 'Not signed in'}</Text>
-        <Field
-          label="API URL"
-          value={settings.apiBase}
-          onChange={(apiBase) => setSettings({ ...settings, apiBase })}
-          keyboardType="url"
-        />
-        <Field
-          label="Device ID"
-          value={settings.deviceId}
-          onChange={(deviceId) => setSettings({ ...settings, deviceId })}
-        />
-        <Field
-          label="Site code"
-          value={settings.siteCode}
-          onChange={(siteCode) => setSettings({ ...settings, siteCode })}
-        />
-        {showBind && (
+        <View style={styles.roleHeader}>
+          <Text style={styles.roleText}>{role ? `Signed in as ${role.toUpperCase()}` : 'Not signed in'}</Text>
+        </View>
+
+        {/* Card 1: Device & API Configuration */}
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Device & API Configuration</Text>
           <Field
-            label="Device bind secret"
-            value={settings.bootstrapSecret}
-            onChange={(bootstrapSecret) => setSettings({ ...settings, bootstrapSecret })}
+            label="API URL"
+            value={settings.apiBase}
+            onChange={(apiBase) => setSettings({ ...settings, apiBase })}
+            keyboardType="url"
           />
-        )}
-        <Pressable onPress={save} accessibilityRole="button" style={styles.btn}>
-          <Text style={styles.btnText}>Save</Text>
-        </Pressable>
-        <Text style={styles.section}>Login</Text>
-        <Field label="Email" value={email} onChange={setEmail} keyboardType="email-address" />
-        <Field
-          label="Password"
-          value={password}
-          onChange={setPassword}
-          secure
-          returnKeyType="go"
-          onSubmit={login}
-        />
-        <Pressable onPress={login} accessibilityRole="button" style={styles.btn}>
-          <Text style={styles.btnText}>Login</Text>
-        </Pressable>
-        <Pressable onPress={logout} accessibilityRole="button" style={styles.btnAlt}>
-          <Text style={styles.btnText}>Logout</Text>
-        </Pressable>
-        {showBind && (
-          <Pressable onPress={bind} accessibilityRole="button" style={styles.btnAlt}>
-            <Text style={styles.btnText}>Register this device</Text>
+          <Field
+            label="Device ID"
+            value={settings.deviceId}
+            onChange={(deviceId) => setSettings({ ...settings, deviceId })}
+          />
+          <Field
+            label="Site Code"
+            value={settings.siteCode}
+            onChange={(siteCode) => setSettings({ ...settings, siteCode })}
+          />
+          {showBind && (
+            <Field
+              label="Device Bind Secret"
+              value={settings.bootstrapSecret}
+              onChange={(bootstrapSecret) => setSettings({ ...settings, bootstrapSecret })}
+            />
+          )}
+          <Pressable onPress={save} accessibilityRole="button" style={styles.btnPrimary}>
+            <Text style={styles.btnText}>Save Settings</Text>
           </Pressable>
-        )}
-        <Pressable onPress={flush} accessibilityRole="button" style={styles.btnAlt}>
-          <Text style={styles.btnText}>Sync offline queue</Text>
-        </Pressable>
+        </View>
+
+        {/* Card 2: User Account & Authentication */}
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>User Account & Auth</Text>
+          <Field label="Email Address" value={email} onChange={setEmail} keyboardType="email-address" />
+          <Field
+            label="Password"
+            value={password}
+            onChange={setPassword}
+            secure
+            returnKeyType="go"
+            onSubmit={login}
+          />
+          <View style={styles.btnRow}>
+            <Pressable onPress={login} accessibilityRole="button" style={[styles.btnPrimary, styles.flexBtn]}>
+              <Text style={styles.btnText}>Login</Text>
+            </Pressable>
+            {!!role && (
+              <Pressable onPress={logout} accessibilityRole="button" style={[styles.btnDanger, styles.flexBtn]}>
+                <Text style={styles.btnText}>Logout</Text>
+              </Pressable>
+            )}
+          </View>
+          {showBind && (
+            <Pressable onPress={bind} accessibilityRole="button" style={styles.btnSecondary}>
+              <Text style={styles.btnSecondaryText}>Register This Device</Text>
+            </Pressable>
+          )}
+        </View>
+
+        {/* Card 3: System Sync Operations */}
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Offline Queue Operations</Text>
+          <Pressable onPress={flush} accessibilityRole="button" style={styles.btnSecondary}>
+            <Text style={styles.btnSecondaryText}>Sync Offline Queue</Text>
+          </Pressable>
+        </View>
+
         {!!message && <Text style={styles.status}>{message}</Text>}
       </ScrollView>
     </KeyboardAvoidingView>
@@ -189,7 +211,7 @@ function Field({
         keyboardType={keyboardType}
         returnKeyType={returnKeyType ?? 'next'}
         onSubmitEditing={onSubmit}
-        placeholderTextColor="#6d7f96"
+        placeholderTextColor={THEME.textSubtle}
         accessibilityLabel={label}
         style={styles.input}
       />
@@ -198,46 +220,75 @@ function Field({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#07111f' },
+  root: { flex: 1, backgroundColor: THEME.bg },
   content: {
     width: '100%',
     alignSelf: 'center',
     paddingTop: 16,
-    // Leaves room to scroll the last button clear of the keyboard on short screens.
     paddingBottom: 48,
   },
-  title: { color: '#f4f7fb', fontSize: 24, fontWeight: '800', marginBottom: 12 },
-  section: { color: '#7ee0c5', fontWeight: '700', marginTop: 18, marginBottom: 8 },
-  field: { marginBottom: 10 },
-  label: { color: '#9fb0c8', marginBottom: 4 },
+  title: { color: '#fff', fontSize: 22, fontWeight: '800', marginBottom: 6, letterSpacing: -0.2 },
+  roleHeader: { marginBottom: 14 },
+  roleText: { color: THEME.cyan, fontSize: 13, fontWeight: '800' },
+  card: {
+    backgroundColor: THEME.card,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+  },
+  sectionTitle: { color: THEME.cyan, fontSize: 15, fontWeight: '800', marginBottom: 12 },
+  field: { marginBottom: 12 },
+  label: { color: THEME.textMuted, fontSize: 12, fontWeight: '800', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 },
   input: {
     minHeight: TAP_TARGET,
     borderWidth: 1,
-    borderColor: '#2a3d5c',
-    borderRadius: 10,
-    color: '#f4f7fb',
-    fontSize: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  btn: {
-    minHeight: TAP_TARGET,
-    backgroundColor: '#2d6cdf',
+    borderColor: THEME.border,
     borderRadius: 12,
-    paddingVertical: 14,
+    color: '#fff',
+    fontSize: 15,
+    paddingHorizontal: 14,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+  },
+  btnRow: { flexDirection: 'row', gap: 10, marginTop: 4 },
+  flexBtn: { flex: 1 },
+  btnPrimary: {
+    minHeight: TAP_TARGET,
+    backgroundColor: THEME.cyan,
+    borderRadius: 12,
+    paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 8,
+    marginTop: 6,
+    shadowColor: THEME.cyan,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  btnAlt: {
+  btnDanger: {
     minHeight: TAP_TARGET,
-    backgroundColor: '#1f8a70',
+    backgroundColor: THEME.rose,
     borderRadius: 12,
-    paddingVertical: 14,
+    paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 8,
+    marginTop: 6,
   },
-  btnText: { color: '#fff', fontWeight: '800' },
-  status: { color: '#c5d2e4', marginTop: 14, textAlign: 'center' },
+  btnSecondary: {
+    minHeight: TAP_TARGET,
+    backgroundColor: 'rgba(6, 182, 212, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(6, 182, 212, 0.3)',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+  },
+  btnText: { color: '#fff', fontWeight: '800', fontSize: 14 },
+  btnSecondaryText: { color: THEME.cyan, fontWeight: '800', fontSize: 14 },
+  status: { color: THEME.textSecondary, marginTop: 14, textAlign: 'center', fontSize: 14, fontWeight: '600' },
 });
+

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { TAP_TARGET } from '../theme/responsive';
+import { THEME } from '../theme/colors';
 
 type Props = {
   visible: boolean;
@@ -50,7 +51,7 @@ export function ConfirmModal({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(4, 10, 22, 0.72)',
+    backgroundColor: 'rgba(4, 10, 22, 0.8)',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 16,
@@ -58,35 +59,48 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 420,
-    // Long messages scroll inside the card instead of pushing the buttons off screen.
     maxHeight: '86%',
-    backgroundColor: '#152238',
-    borderRadius: 16,
-    padding: 20,
+    backgroundColor: THEME.cardSolid,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: 20,
+    padding: 22,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 10,
   },
   cardBody: { paddingBottom: 16 },
-  title: { color: '#f4f7fb', fontSize: 21, fontWeight: '700', marginBottom: 8 },
-  message: { color: '#c5d2e4', fontSize: 16, lineHeight: 22 },
-  row: { flexDirection: 'row', gap: 10 },
+  title: { color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 8, letterSpacing: -0.2 },
+  message: { color: THEME.textSecondary, fontSize: 15, lineHeight: 22 },
+  row: { flexDirection: 'row', gap: 12 },
   cancel: {
     flex: 1,
     minHeight: TAP_TARGET,
     borderWidth: 1,
-    borderColor: '#2a3d5c',
-    borderRadius: 10,
+    borderColor: THEME.border,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.04)',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 12,
   },
-  cancelText: { color: '#9fb0c8', fontSize: 16, fontWeight: '700' },
+  cancelText: { color: THEME.textMuted, fontSize: 15, fontWeight: '700' },
   ok: {
     flex: 1.4,
     minHeight: TAP_TARGET,
-    backgroundColor: '#1f8a70',
-    borderRadius: 10,
+    backgroundColor: THEME.emerald,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 12,
+    shadowColor: THEME.emerald,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  okText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  okText: { color: '#fff', fontWeight: '800', fontSize: 15 },
 });
+

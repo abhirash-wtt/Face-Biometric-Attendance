@@ -7,6 +7,7 @@ import { api } from '../services/api';
 import { getCurrentGps } from '../services/geo';
 import { storage } from '../services/storage';
 import { TAP_TARGET, useLayout } from '../theme/responsive';
+import { THEME } from '../theme/colors';
 import {
   AppDispatch,
   PunchType,
@@ -68,7 +69,7 @@ export function KioskScreen() {
         image_b64,
         liveness: 0.95,
       });
-      const minSim = res.thresholds?.similarity ?? 0.97;
+      const minSim = res.thresholds?.similarity ?? 0.8;
       const minLive = res.thresholds?.liveness ?? 0.6;
       if (res.ok && res.similarity >= minSim && res.liveness >= minLive && res.employee_id) {
         setPending({
@@ -178,8 +179,10 @@ export function KioskScreen() {
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
-      <Text style={[styles.brand, layout.short && styles.brandShort]}>Face Attendance</Text>
-      <Text style={styles.prompt}>{promptCopy[livenessPrompt] || livenessPrompt}</Text>
+      <View style={styles.promptBadge}>
+        <View style={styles.promptDot} />
+        <Text style={styles.prompt}>{promptCopy[livenessPrompt] || livenessPrompt}</Text>
+      </View>
       <View style={[styles.camera, { height: layout.cameraHeight }]}>
         <CameraView onReady={onReady} />
       </View>
@@ -188,7 +191,7 @@ export function KioskScreen() {
           disabled={busy}
           onPress={() => captureAndIdentify('IN')}
           accessibilityRole="button"
-          style={[styles.cta, styles.ctaHalf, busy && styles.ctaBusy]}
+          style={[styles.cta, styles.ctaIn, busy && styles.ctaBusy]}
         >
           <Text style={styles.ctaText}>{busy ? 'Working…' : 'Clock In'}</Text>
         </Pressable>
@@ -196,7 +199,7 @@ export function KioskScreen() {
           disabled={busy}
           onPress={() => captureAndIdentify('OUT')}
           accessibilityRole="button"
-          style={[styles.cta, styles.ctaHalf, busy && styles.ctaBusy]}
+          style={[styles.cta, styles.ctaOut, busy && styles.ctaBusy]}
         >
           <Text style={styles.ctaText}>{busy ? 'Working…' : 'Clock Out'}</Text>
         </Pressable>
@@ -219,29 +222,63 @@ export function KioskScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#07111f' },
+  root: { flex: 1, backgroundColor: THEME.bg },
   content: { flexGrow: 1, width: '100%', alignSelf: 'center' },
-  brand: {
-    color: '#f4f7fb',
-    fontSize: 28,
-    fontWeight: '800',
-    textAlign: 'center',
-    marginTop: 8,
+  promptBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(56, 189, 248, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.25)',
+    borderRadius: 999,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    marginVertical: 10,
+    alignSelf: 'center',
   },
-  brandShort: { fontSize: 22, marginTop: 0 },
-  prompt: { color: '#7ee0c5', textAlign: 'center', marginVertical: 10, fontSize: 16 },
+  promptDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: THEME.cyan,
+  },
+  prompt: { color: THEME.cyanLight, textAlign: 'center', fontSize: 14, fontWeight: '700' },
   camera: { marginVertical: 8 },
-  actions: { flexDirection: 'row', gap: 10, marginTop: 12 },
+  actions: { flexDirection: 'row', gap: 12, marginTop: 14 },
   cta: {
-    minHeight: TAP_TARGET + 4,
-    backgroundColor: '#1f8a70',
-    borderRadius: 14,
-    paddingVertical: 16,
+    flex: 1,
+    minHeight: TAP_TARGET + 6,
+    borderRadius: 16,
+    paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  ctaHalf: { flex: 1 },
-  ctaBusy: { opacity: 0.6 },
-  ctaText: { color: '#fff', fontSize: 18, fontWeight: '800' },
-  status: { color: '#c5d2e4', textAlign: 'center', marginTop: 12, fontSize: 16 },
+  ctaIn: {
+    backgroundColor: THEME.emerald,
+    shadowColor: THEME.emerald,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  ctaOut: {
+    backgroundColor: THEME.indigo,
+    shadowColor: THEME.indigo,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  ctaBusy: { opacity: 0.55 },
+  ctaText: { color: '#fff', fontSize: 17, fontWeight: '800' },
+  status: {
+    color: THEME.textSecondary,
+    textAlign: 'center',
+    marginTop: 14,
+    fontSize: 15,
+    fontWeight: '600',
+  },
 });
+

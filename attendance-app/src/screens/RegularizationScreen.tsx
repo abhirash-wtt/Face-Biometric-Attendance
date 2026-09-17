@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { api, WfhRequest } from '../services/api';
 import { TAP_TARGET, useLayout } from '../theme/responsive';
+import { THEME } from '../theme/colors';
 
 const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
@@ -164,7 +165,7 @@ function StatusPill({ status }: { status: string }) {
           : styles.pillCancelled;
   return (
     <View style={[styles.pill, tone]}>
-      <Text style={styles.pillText}>{status}</Text>
+      <Text style={styles.pillText}>{status.toUpperCase()}</Text>
     </View>
   );
 }
@@ -198,27 +199,43 @@ export function RegularizationScreen({ role }: { role: 'admin' | 'user' | '' }) 
 
   const submit = async () => {
     try {
+      if (!reason.trim()) {
+        setMessage('Reason is required');
+        return;
+      }
       setBusy(true);
       await api.createWfhRequest({ work_date: workDate, reason: reason.trim() });
       setReason('');
       setMessage('WFH request submitted');
       await load();
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Request failed');
+      setMessage(err instanceof Error ? err.message : 'Submit failed');
     } finally {
       setBusy(false);
     }
   };
 
-  const review = async (id: string, action: 'approve' | 'reject') => {
+  const approve = async (id: string) => {
     try {
       setBusy(true);
-      if (action === 'approve') await api.approveWfhRequest(id);
-      else await api.rejectWfhRequest(id);
-      setMessage(action === 'approve' ? 'Request approved' : 'Request rejected');
+      await api.approveWfhRequest(id);
+      setMessage('Request approved');
       await load();
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Review failed');
+      setMessage(err instanceof Error ? err.message : 'Approve failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reject = async (id: string) => {
+    try {
+      setBusy(true);
+      await api.rejectWfhRequest(id);
+      setMessage('Request rejected');
+      await load();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Reject failed');
     } finally {
       setBusy(false);
     }
@@ -237,71 +254,64 @@ export function RegularizationScreen({ role }: { role: 'admin' | 'user' | '' }) 
     }
   };
 
+  const renderForm = !isAdmin;
+
   return (
     <View
       style={[styles.root, { paddingHorizontal: layout.gutter, maxWidth: layout.maxContentWidth }]}
     >
       <Text style={styles.title}>Regularize</Text>
       <Text style={styles.meta}>
-        Request Work From Home for today or a future date. After admin approval, geofencing is skipped
-        when clocking in/out on that date.
+        Request Work From Home for today or a future date. Geofencing is skipped on approved dates.
       </Text>
-
-      {!isAdmin && (
-        <View style={styles.form}>
-          <Text style={styles.section}>New request</Text>
+      {renderForm && (
+        <View style={styles.formCard}>
+          <Text style={styles.sectionTitle}>New WFH Request</Text>
+          <Text style={styles.label}>WFH Date</Text>
           <DatePickerField value={workDate} onChange={setWorkDate} minDate={earliest} />
+          <Text style={styles.label}>Reason</Text>
           <TextInput
             value={reason}
             onChangeText={setReason}
-            placeholder="Reason (required)"
-            placeholderTextColor="#6d7f96"
+            placeholder="Describe reason (required)"
+            placeholderTextColor={THEME.textSubtle}
             multiline
+            numberOfLines={3}
             style={styles.reason}
-            accessibilityLabel="WFH reason"
           />
           <Pressable
+            disabled={busy || !reason.trim()}
             onPress={submit}
-            disabled={busy || reason.trim().length < 3}
             accessibilityRole="button"
-            style={[styles.btn, (busy || reason.trim().length < 3) && styles.btnDisabled]}
+            style={[styles.btn, (busy || !reason.trim()) && styles.btnDisabled]}
           >
-            <Text style={styles.btnText}>{busy ? '…' : 'Submit request'}</Text>
+            <Text style={styles.btnText}>{busy ? 'Submitting…' : 'Submit Request'}</Text>
           </Pressable>
         </View>
       )}
-      {isAdmin && (
-        <Text style={styles.meta}>
-          Employees submit from this Regularize tab after logging in with their employee account
-          (Settings → Login). As admin you approve or reject pending requests below.
-        </Text>
-      )}
-
-      <View style={styles.listHead}>
-        <Text style={styles.section}>{isAdmin ? 'All requests' : 'My requests'}</Text>
+      <View style={styles.toolbar}>
+        <Text style={styles.listTitle}>{isAdmin ? 'Pending & All Requests' : 'My Requests'}</Text>
         <Pressable onPress={load} accessibilityRole="button" style={styles.refresh}>
           <Text style={styles.refreshText}>{busy ? '…' : 'Refresh'}</Text>
         </Pressable>
       </View>
-
       <FlatList
         data={rows}
         keyExtractor={(item) => item.id}
-        refreshControl={<RefreshControl refreshing={busy} onRefresh={load} tintColor="#7ee0c5" />}
+        refreshControl={<RefreshControl refreshing={busy} onRefresh={load} tintColor={THEME.cyan} />}
         ListEmptyComponent={<Text style={styles.empty}>No WFH requests yet</Text>}
         contentContainerStyle={styles.listContent}
         renderItem={({ item }) => {
-          const workDateLabel = formatDateLabel(String(item.work_date).slice(0, 10));
+          const who = item.employee
+            ? `${item.employee.display_name} (${item.employee.code})`
+            : '';
+          const isPending = item.status === 'pending';
           return (
             <View style={styles.card}>
               <View style={styles.cardHead}>
                 <View style={styles.cardWho}>
-                  <Text style={styles.dateTitle}>{workDateLabel}</Text>
-                  {!!item.employee && (
-                    <Text style={styles.name}>
-                      {item.employee.display_name} ({item.employee.code})
-                    </Text>
-                  )}
+                  <Text style={styles.dateTitle}>{formatDateLabel(item.work_date)}</Text>
+                  {!!who && <Text style={styles.name}>{who}</Text>}
                   <Text style={styles.reasonText}>{item.reason}</Text>
                   {!!item.review_note && (
                     <Text style={styles.note}>Note: {item.review_note}</Text>
@@ -309,25 +319,34 @@ export function RegularizationScreen({ role }: { role: 'admin' | 'user' | '' }) 
                 </View>
                 <StatusPill status={item.status} />
               </View>
-              {item.status === 'pending' && isAdmin && (
+              {isPending && isAdmin && (
                 <View style={styles.actions}>
                   <Pressable
-                    onPress={() => review(item.id, 'approve')}
+                    disabled={busy}
+                    onPress={() => approve(item.id)}
+                    accessibilityRole="button"
                     style={[styles.actionBtn, styles.approve]}
                   >
                     <Text style={styles.btnText}>Approve</Text>
                   </Pressable>
                   <Pressable
-                    onPress={() => review(item.id, 'reject')}
+                    disabled={busy}
+                    onPress={() => reject(item.id)}
+                    accessibilityRole="button"
                     style={[styles.actionBtn, styles.reject]}
                   >
                     <Text style={styles.btnText}>Reject</Text>
                   </Pressable>
                 </View>
               )}
-              {item.status === 'pending' && !isAdmin && (
-                <Pressable onPress={() => cancel(item.id)} style={[styles.actionBtn, styles.cancel]}>
-                  <Text style={styles.btnText}>Cancel</Text>
+              {isPending && !isAdmin && (
+                <Pressable
+                  disabled={busy}
+                  onPress={() => cancel(item.id)}
+                  accessibilityRole="button"
+                  style={[styles.actionBtn, styles.cancel]}
+                >
+                  <Text style={styles.btnText}>Cancel Request</Text>
                 </Pressable>
               )}
             </View>
@@ -340,67 +359,71 @@ export function RegularizationScreen({ role }: { role: 'admin' | 'user' | '' }) 
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, width: '100%', alignSelf: 'center', backgroundColor: '#07111f', paddingVertical: 16 },
-  title: { color: '#f4f7fb', fontSize: 24, fontWeight: '800', marginBottom: 6 },
-  meta: { color: '#9fb0c8', fontSize: 14, marginBottom: 12, lineHeight: 20 },
-  form: { marginBottom: 16 },
-  section: { color: '#7ee0c5', fontSize: 16, fontWeight: '700', marginBottom: 10 },
-  listHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    marginTop: 8,
-    marginBottom: 12,
+  root: { flex: 1, width: '100%', alignSelf: 'center', backgroundColor: THEME.bg, paddingVertical: 16 },
+  title: { color: '#fff', fontSize: 22, fontWeight: '800', marginBottom: 4, letterSpacing: -0.2 },
+  meta: { color: THEME.textMuted, fontSize: 13, marginBottom: 14, lineHeight: 18 },
+  formCard: {
+    backgroundColor: THEME.card,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
   },
+  sectionTitle: { color: THEME.cyan, fontSize: 16, fontWeight: '800', marginBottom: 12 },
+  label: { color: THEME.textMuted, fontSize: 12, fontWeight: '800', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 },
+  toolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  listTitle: { color: '#fff', fontSize: 16, fontWeight: '800' },
   dateField: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-start',
     gap: 10,
     minHeight: TAP_TARGET,
     borderWidth: 1,
-    borderColor: '#2a3d5c',
-    borderRadius: 10,
-    paddingHorizontal: 12,
+    borderColor: THEME.border,
+    borderRadius: 12,
+    paddingHorizontal: 14,
     paddingVertical: 10,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
     marginBottom: 10,
   },
-  dateLabel: { flex: 1, color: '#f4f7fb', fontSize: 16, fontWeight: '700' },
+  dateLabel: { flex: 1, color: '#fff', fontWeight: '700', fontSize: 14 },
   calIcon: { fontSize: 16 },
   calBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(4, 10, 22, 0.72)',
+    backgroundColor: 'rgba(4, 10, 22, 0.8)',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 16,
   },
   calendar: {
     maxWidth: '100%',
-    backgroundColor: '#152238',
-    borderRadius: 14,
-    padding: 12,
+    backgroundColor: THEME.cardSolid,
+    borderRadius: 18,
+    padding: 14,
     borderWidth: 1,
-    borderColor: '#2a3d5c',
+    borderColor: THEME.border,
   },
-  calHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  calTitle: { flex: 1, textAlign: 'center', color: '#f4f7fb', fontSize: 16, fontWeight: '800' },
+  calHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  calTitle: { flex: 1, textAlign: 'center', color: '#fff', fontSize: 15, fontWeight: '800' },
   calNav: {
     minWidth: 44,
-    minHeight: 40,
-    backgroundColor: '#102038',
+    minHeight: 38,
+    backgroundColor: 'rgba(255,255,255,0.05)',
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 12,
   },
-  calNavText: { color: '#7ee0c5', fontWeight: '800', fontSize: 18 },
+  calNavText: { color: THEME.cyan, fontWeight: '800', fontSize: 18 },
   calGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   calDow: {
     width: '14.28%',
     textAlign: 'center',
-    color: '#9fb0c8',
-    fontSize: 13,
-    fontWeight: '700',
+    color: THEME.textMuted,
+    fontSize: 11,
+    fontWeight: '800',
     paddingVertical: 6,
   },
   calDay: {
@@ -411,78 +434,87 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 8,
   },
-  calDayOn: { backgroundColor: '#1f8a70' },
-  calDayDisabled: { opacity: 0.35 },
-  calDayText: { color: '#f4f7fb', fontSize: 16, fontWeight: '700' },
-  calDayTextOn: { color: '#fff' },
-  calDayTextDisabled: { color: '#6d7f96' },
+  calDayOn: { backgroundColor: THEME.cyan },
+  calDayDisabled: { opacity: 0.3 },
+  calDayText: { color: THEME.textSecondary, fontSize: 14, fontWeight: '700' },
+  calDayTextOn: { color: '#fff', fontWeight: '800' },
+  calDayTextDisabled: { color: THEME.textSubtle },
   reason: {
-    minHeight: 96,
+    minHeight: 88,
     borderWidth: 1,
-    borderColor: '#2a3d5c',
-    borderRadius: 10,
-    color: '#f4f7fb',
-    fontSize: 16,
-    paddingHorizontal: 12,
+    borderColor: THEME.border,
+    borderRadius: 12,
+    color: '#fff',
+    fontSize: 14,
+    paddingHorizontal: 14,
     paddingVertical: 12,
     textAlignVertical: 'top',
-    marginBottom: 10,
+    marginBottom: 12,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
   },
   btn: {
     minHeight: TAP_TARGET,
-    backgroundColor: '#2d6cdf',
+    backgroundColor: THEME.cyan,
     borderRadius: 12,
-    paddingVertical: 14,
+    paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: THEME.cyan,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  btnDisabled: { opacity: 0.5 },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  btnDisabled: { opacity: 0.55 },
+  btnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
   refresh: {
-    minHeight: TAP_TARGET,
-    backgroundColor: '#2d6cdf',
+    minHeight: 38,
+    backgroundColor: 'rgba(6, 182, 212, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(6, 182, 212, 0.3)',
     borderRadius: 10,
     paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  refreshText: { color: '#fff', fontWeight: '800', fontSize: 16 },
-  listContent: { paddingBottom: 12 },
+  refreshText: { color: THEME.cyan, fontWeight: '800', fontSize: 13 },
+  listContent: { paddingBottom: 16 },
   card: {
-    backgroundColor: '#102038',
+    backgroundColor: THEME.card,
     borderWidth: 1,
-    borderColor: '#22344f',
-    borderRadius: 12,
-    padding: 14,
+    borderColor: THEME.border,
+    borderRadius: 16,
+    padding: 16,
     marginBottom: 12,
   },
   cardHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   cardWho: { flex: 1 },
-  dateTitle: { color: '#f4f7fb', fontWeight: '800', fontSize: 16 },
-  name: { color: '#7ee0c5', fontSize: 14, fontWeight: '700', marginTop: 4 },
-  reasonText: { color: '#c5d2e4', fontSize: 15, marginTop: 8, lineHeight: 21 },
-  note: { color: '#9fb0c8', fontSize: 14, marginTop: 6, fontStyle: 'italic' },
+  dateTitle: { color: '#fff', fontWeight: '800', fontSize: 16 },
+  name: { color: THEME.cyan, fontSize: 13, fontWeight: '700', marginTop: 4 },
+  reasonText: { color: THEME.textSecondary, fontSize: 14, marginTop: 6, lineHeight: 20 },
+  note: { color: THEME.textMuted, fontSize: 13, marginTop: 6, fontStyle: 'italic' },
   pill: {
     borderRadius: 999,
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 4,
+    borderWidth: 1,
   },
-  pillText: { fontSize: 13, fontWeight: '800', color: '#fff', textTransform: 'capitalize' },
-  pillApproved: { backgroundColor: '#1f8a70' },
-  pillPending: { backgroundColor: '#2d6cdf' },
-  pillRejected: { backgroundColor: '#a33b3b' },
-  pillCancelled: { backgroundColor: '#3a4a63' },
-  actions: { flexDirection: 'row', gap: 10, marginTop: 12 },
+  pillText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+  pillApproved: { backgroundColor: THEME.presentBg, borderColor: THEME.presentBorder, color: THEME.presentText },
+  pillPending: { backgroundColor: THEME.pendingBg, borderColor: THEME.pendingBorder, color: THEME.pendingText },
+  pillRejected: { backgroundColor: THEME.rejectedBg, borderColor: THEME.rejectedBorder, color: THEME.rejectedText },
+  pillCancelled: { backgroundColor: THEME.absentBg, borderColor: THEME.absentBorder, color: THEME.absentText },
+  actions: { flexDirection: 'row', gap: 10, marginTop: 14 },
   actionBtn: {
     flex: 1,
-    minHeight: TAP_TARGET,
-    borderRadius: 12,
+    minHeight: 40,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  approve: { backgroundColor: '#1f8a70' },
-  reject: { backgroundColor: '#a33b3b' },
-  cancel: { backgroundColor: '#3a4a63', marginTop: 12 },
-  empty: { color: '#9fb0c8', textAlign: 'center', marginTop: 24, fontSize: 15 },
-  status: { color: '#c5d2e4', textAlign: 'center', marginTop: 12, fontSize: 15 },
+  approve: { backgroundColor: THEME.emerald },
+  reject: { backgroundColor: THEME.rose },
+  cancel: { backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: THEME.border, marginTop: 12 },
+  empty: { color: THEME.textMuted, textAlign: 'center', marginTop: 24, fontSize: 15 },
+  status: { color: THEME.textSecondary, textAlign: 'center', marginTop: 12, fontSize: 14, fontWeight: '600' },
 });

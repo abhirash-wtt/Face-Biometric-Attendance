@@ -14,6 +14,7 @@ import { CameraView } from '../components/CameraView';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { api, Employee, WorkingMode } from '../services/api';
 import { TAP_TARGET, useLayout } from '../theme/responsive';
+import { THEME } from '../theme/colors';
 
 const WORKING_MODE_OPTIONS: Array<{ value: WorkingMode; label: string }> = [
   { value: 'onsite', label: 'On-site' },
@@ -37,7 +38,6 @@ export function EnrollScreen() {
     throw new Error('Camera not ready');
   });
 
-  // A stable callback keeps CameraView from re-requesting the camera on every render.
   const onCameraReady = useCallback((capture: () => Promise<string>) => {
     captureRef.current = capture;
   }, []);
@@ -124,7 +124,6 @@ export function EnrollScreen() {
     }
   };
 
-  // Landscape phones are too short to stack the list and the camera, so they sit side by side.
   const twoColumn = layout.landscape && layout.short;
 
   const camera = (
@@ -155,13 +154,12 @@ export function EnrollScreen() {
         {twoColumn && camera}
         <View style={styles.controls}>
           <Text style={styles.title}>Enroll faces</Text>
-          {/* Search sits on one line so the keyboard leaves room for the camera. */}
           <View style={styles.searchRow}>
             <TextInput
               value={q}
               onChangeText={setQ}
               placeholder="Search code or name"
-              placeholderTextColor="#6d7f96"
+              placeholderTextColor={THEME.textSubtle}
               style={[styles.input, styles.searchInput]}
               autoCapitalize="none"
               autoCorrect={false}
@@ -182,6 +180,7 @@ export function EnrollScreen() {
               const mode = item.working_mode || 'onsite';
               const modeLabel = mode === 'remote' ? 'Remote' : 'On-site';
               const modeDisabled = modeBusyId === item.id;
+              const isSelected = selected?.id === item.id;
               return (
                 <Pressable
                   onPress={() => {
@@ -190,8 +189,8 @@ export function EnrollScreen() {
                     setMessage(`Enrolling ${item.display_name} (${item.code})`);
                   }}
                   accessibilityRole="button"
-                  accessibilityState={{ selected: selected?.id === item.id }}
-                  style={[styles.row, selected?.id === item.id && styles.rowOn]}
+                  accessibilityState={{ selected: isSelected }}
+                  style={[styles.row, isSelected && styles.rowOn]}
                 >
                   <Text style={styles.code}>{item.code}</Text>
                   <Text style={styles.name} numberOfLines={2}>
@@ -216,7 +215,7 @@ export function EnrollScreen() {
             disabled={busy || !selected}
             onPress={captureSample}
             accessibilityRole="button"
-            style={[styles.cta, (busy || !selected) && styles.ctaBusy]}
+            style={[styles.cta, styles.ctaPrimary, (busy || !selected) && styles.ctaBusy]}
           >
             <Text style={styles.ctaText}>{busy ? 'Saving…' : 'Capture sample'}</Text>
           </Pressable>
@@ -224,9 +223,9 @@ export function EnrollScreen() {
             disabled={busy || !selected}
             onPress={() => setResetConfirm(true)}
             accessibilityRole="button"
-            style={[styles.cta, styles.ctaSpaced, (busy || !selected) && styles.ctaBusy]}
+            style={[styles.cta, styles.ctaReset, styles.ctaSpaced, (busy || !selected) && styles.ctaBusy]}
           >
-            <Text style={styles.ctaText}>Reset face samples</Text>
+            <Text style={[styles.ctaText, styles.ctaResetText]}>Reset face samples</Text>
           </Pressable>
           <Text style={styles.status} numberOfLines={2}>
             {message}
@@ -287,103 +286,138 @@ export function EnrollScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#07111f' },
+  root: { flex: 1, backgroundColor: THEME.bg },
   inner: { flex: 1, width: '100%', alignSelf: 'center' },
   innerRow: { flexDirection: 'row', gap: 12 },
   controls: { flex: 1, minWidth: 0 },
-  title: { color: '#f4f7fb', fontSize: 24, fontWeight: '800', marginBottom: 10 },
+  title: { color: '#fff', fontSize: 22, fontWeight: '800', marginBottom: 12, letterSpacing: -0.2 },
   searchRow: { flexDirection: 'row', gap: 8, alignItems: 'stretch' },
   input: {
     minHeight: TAP_TARGET,
     borderWidth: 1,
-    borderColor: '#2a3d5c',
-    borderRadius: 10,
-    color: '#f4f7fb',
-    fontSize: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderColor: THEME.border,
+    borderRadius: 12,
+    color: '#fff',
+    fontSize: 15,
+    paddingHorizontal: 14,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
   },
   searchInput: { flex: 1 },
   searchBtn: {
     minHeight: TAP_TARGET,
     paddingHorizontal: 16,
-    borderRadius: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(6, 182, 212, 0.15)',
     borderWidth: 1,
-    borderColor: '#2a3d5c',
+    borderColor: 'rgba(6, 182, 212, 0.3)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  searchBtnText: { color: '#7ee0c5', fontWeight: '700', fontSize: 15 },
-  list: { marginTop: 10 },
+  searchBtnText: { color: THEME.cyan, fontWeight: '800', fontSize: 14 },
+  list: {
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: 14,
+    backgroundColor: 'rgba(15, 23, 42, 0.4)',
+  },
   listFlexible: { flex: 1 },
   row: {
     flexDirection: 'row',
     gap: 10,
     minHeight: TAP_TARGET,
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#22344f',
+    borderBottomColor: 'rgba(255, 255, 255, 0.06)',
   },
-  rowOn: { backgroundColor: '#123348' },
-  code: { color: '#7ee0c5', width: 72, fontWeight: '700' },
-  name: { color: '#f4f7fb', flex: 1, minWidth: 0 },
+  rowOn: {
+    backgroundColor: 'rgba(6, 182, 212, 0.12)',
+    borderLeftWidth: 3,
+    borderLeftColor: THEME.cyan,
+  },
+  code: {
+    color: THEME.cyan,
+    width: 72,
+    fontWeight: '800',
+    fontSize: 13,
+    backgroundColor: 'rgba(6, 182, 212, 0.1)',
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    borderRadius: 6,
+    textAlign: 'center',
+  },
+  name: { color: '#fff', flex: 1, minWidth: 0, fontWeight: '600', fontSize: 15 },
   modeSelect: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    minHeight: TAP_TARGET,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    gap: 6,
+    minHeight: 36,
+    paddingHorizontal: 10,
     borderWidth: 1,
-    borderColor: '#2a3d5c',
-    borderRadius: 10,
-    backgroundColor: 'transparent',
+    borderColor: THEME.border,
+    borderRadius: 8,
+    backgroundColor: 'rgba(15, 23, 42, 0.8)',
   },
   modeSelectBusy: { opacity: 0.6 },
-  modeSelectText: { color: '#f4f7fb', fontSize: 16, fontWeight: '700' },
-  modeChevron: { color: '#9fb0c8', fontSize: 14, fontWeight: '700' },
+  modeSelectText: { color: THEME.textSecondary, fontSize: 13, fontWeight: '700' },
+  modeChevron: { color: THEME.textMuted, fontSize: 12, fontWeight: '700' },
   modeMenuBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    backgroundColor: 'rgba(4, 10, 22, 0.8)',
     justifyContent: 'center',
     padding: 24,
   },
   modeMenuCard: {
-    backgroundColor: '#152238',
-    borderRadius: 14,
+    backgroundColor: THEME.cardSolid,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#2a3d5c',
-    padding: 14,
+    borderColor: THEME.border,
+    padding: 18,
   },
-  modeMenuTitle: { color: '#f4f7fb', fontSize: 18, fontWeight: '800' },
-  modeMenuSubtitle: { color: '#9fb0c8', marginTop: 4, marginBottom: 12 },
+  modeMenuTitle: { color: '#fff', fontSize: 18, fontWeight: '800' },
+  modeMenuSubtitle: { color: THEME.textMuted, marginTop: 4, marginBottom: 12, fontSize: 14 },
   modeMenuOption: {
-    minHeight: TAP_TARGET,
+    minHeight: TAP_TARGET - 4,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#2a3d5c',
-    paddingHorizontal: 12,
+    borderColor: THEME.border,
+    paddingHorizontal: 14,
     justifyContent: 'center',
     marginTop: 8,
     backgroundColor: 'transparent',
   },
-  modeMenuOptionOn: { backgroundColor: '#1f8a70', borderColor: '#1f8a70' },
-  modeMenuOptionText: { color: '#c5d2e4', fontWeight: '700', fontSize: 16 },
+  modeMenuOptionOn: { backgroundColor: THEME.emerald, borderColor: THEME.emerald },
+  modeMenuOptionText: { color: THEME.textSecondary, fontWeight: '700', fontSize: 15 },
   modeMenuOptionTextOn: { color: '#fff' },
-  empty: { color: '#9fb0c8', paddingVertical: 12 },
+  empty: { color: THEME.textMuted, paddingVertical: 14, textAlign: 'center' },
   camera: { flex: 1, marginVertical: 10 },
   cameraColumn: { flex: 0.85, marginVertical: 0, minHeight: 0 },
   cta: {
-    minHeight: TAP_TARGET,
-    backgroundColor: '#2d6cdf',
+    minHeight: TAP_TARGET + 2,
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  ctaBusy: { opacity: 0.6 },
-  ctaText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+  ctaPrimary: {
+    backgroundColor: THEME.cyan,
+    shadowColor: THEME.cyan,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  ctaReset: {
+    backgroundColor: 'rgba(244, 63, 94, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(244, 63, 94, 0.3)',
+  },
+  ctaResetText: { color: THEME.rose },
+  ctaBusy: { opacity: 0.55 },
+  ctaText: { color: '#fff', fontWeight: '800', fontSize: 15 },
   ctaSpaced: { marginTop: 8 },
-  status: { color: '#c5d2e4', marginTop: 10, textAlign: 'center' },
+  status: { color: THEME.textSecondary, marginTop: 10, textAlign: 'center', fontSize: 14, fontWeight: '600' },
 });
+
