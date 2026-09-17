@@ -34,13 +34,7 @@ function identifyFailMessage(reason?: string) {
   return 'Please try again';
 }
 
-function buildFailureMessage(res: {
-  reason?: string;
-  similarity?: number;
-  liveness?: number;
-  thresholds?: { similarity: number; liveness: number };
-}): string {
-  const reason = res.reason;
+function buildFailureMessage(reason?: string): string {
   let reasonText = 'Face verification was unsuccessful.';
   if (reason === 'low_similarity') {
     reasonText = 'Face not recognized. Your face did not match any active employee profile.';
@@ -58,21 +52,7 @@ function buildFailureMessage(res: {
     reasonText = 'No face detected in camera. Please position your face inside the guide frame.';
   }
 
-  const lines: string[] = [reasonText];
-  const sim = res.similarity;
-  const reqSim = res.thresholds?.similarity ?? 0.9;
-  const live = res.liveness;
-  const reqLive = res.thresholds?.liveness ?? 0.6;
-
-  if (typeof sim === 'number' && sim > 0) {
-    lines.push(`Similarity: ${Math.round(sim * 100)}% (Required: ≥${Math.round(reqSim * 100)}%)`);
-  }
-  if (typeof live === 'number' && live > 0) {
-    lines.push(`Liveness: ${Math.round(live * 100)}% (Required: ≥${Math.round(reqLive * 100)}%)`);
-  }
-  lines.push('\nPlease ensure good lighting, look straight into the camera without accessories, and try again.');
-
-  return lines.join('\n');
+  return `${reasonText}\n\nPlease ensure good lighting, look straight into the camera without accessories, and try again.`;
 }
 
 export function KioskScreen() {
@@ -82,15 +62,11 @@ export function KioskScreen() {
   const captureRef = React.useRef<() => Promise<string>>(async () => {
     throw new Error('Camera not ready');
   });
-  const [pending, setPending] = useState<{
-    employee_id: string;
+  const [success, setSuccess] = useState<{
     name: string;
+    type: PunchType;
     similarity: number;
     liveness: number;
-    face_crop_url?: string;
-    image_b64: string;
-    gps?: { lat: number; lng: number; accuracy?: number };
-    type: PunchType;
   } | null>(null);
   const [failure, setFailure] = useState<{
     title: string;
@@ -121,31 +97,66 @@ export function KioskScreen() {
       const minLive = res.thresholds?.liveness ?? 0.6;
       if (res.ok && res.similarity >= minSim && res.liveness >= minLive && res.employee_id) {
         setFailure(null);
-        setPending({
+        const empName = res.name || res.employee_code || 'Employee';
+        const body = {
           employee_id: res.employee_id,
-          name: res.name || res.employee_code || 'Employee',
+          type,
+          device_id: settings.deviceId,
+          site_code: settings.siteCode,
+          gps,
           similarity: res.similarity,
-          liveness: res.liveness,
+          liveness_score: res.liveness,
           face_crop_url: res.face_crop_url,
           image_b64,
-          gps,
+        };
+        try {
+          await api.attendance(body);
+          dispatch(
+            setLastMessage(
+              res.remote_bypass
+                ? `Matched ${empName} (Remote — geofence skipped)`
+                : res.wfh_bypass
+                  ? `Matched ${empName} (WFH — geofence skipped)`
+                  : `Matched ${empName} — Clock ${type} recorded`,
+            ),
+          );
+          dispatch(rollLivenessPrompt());
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Please try again';
+          if (/geofence|location is required|outside office|not linked|does not match|Face verification required|only clock in|No face enrolled/i.test(message)) {
+            dispatch(setLastMessage(message));
+            setFailure({
+              title: /geofence|location|outside/i.test(message) ? 'Location Verification Failed' : 'Attendance Failed',
+              message,
+            });
+            return;
+          } else {
+            await storage.enqueue({
+              id: String(Date.now()),
+              path: '/attendance',
+              body,
+              createdAt: Date.now(),
+            });
+            dispatch(
+              setLastMessage(
+                err instanceof Error ? `Saved offline: ${err.message}` : 'Saved offline',
+              ),
+            );
+          }
+        }
+
+        setSuccess({
+          name: empName,
           type,
+          similarity: res.similarity,
+          liveness: res.liveness,
         });
-        dispatch(
-          setLastMessage(
-            res.remote_bypass
-              ? `Matched ${res.name || res.employee_code} (Remote — geofence skipped)`
-              : res.wfh_bypass
-                ? `Matched ${res.name || res.employee_code} (WFH — geofence skipped)`
-                : `Matched ${res.name || res.employee_code}`,
-          ),
-        );
       } else {
         const failMsg = identifyFailMessage(res.reason);
-        const detailedMsg = buildFailureMessage(res);
+        const detailedMsg = buildFailureMessage(res.reason);
         dispatch(setLastMessage(failMsg));
         dispatch(rollLivenessPrompt());
-        setPending(null);
+        setSuccess(null);
         setFailure({
           title: 'Face Verification Failed',
           message: detailedMsg,
@@ -194,48 +205,6 @@ export function KioskScreen() {
     }
   };
 
-  const confirmAttendance = async () => {
-    if (!pending) return;
-    const settings = await storage.getSettings();
-    // Reuse the GPS fix from identify — avoid a second multi-second GPS wait.
-    const gps = pending.gps;
-    const body = {
-      employee_id: pending.employee_id,
-      type: pending.type,
-      device_id: settings.deviceId,
-      site_code: settings.siteCode,
-      gps,
-      similarity: pending.similarity,
-      liveness_score: pending.liveness,
-      face_crop_url: pending.face_crop_url,
-      image_b64: pending.image_b64,
-    };
-    try {
-      await api.attendance(body);
-      dispatch(setLastMessage(`Welcome ${pending.name}`));
-      dispatch(rollLivenessPrompt());
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Please try again';
-      if (/geofence|location is required|outside office|not linked|does not match|Face verification required|only clock in|No face enrolled/i.test(message)) {
-        dispatch(setLastMessage(message));
-      } else {
-        await storage.enqueue({
-          id: String(Date.now()),
-          path: '/attendance',
-          body,
-          createdAt: Date.now(),
-        });
-        dispatch(
-          setLastMessage(
-            err instanceof Error ? `Saved offline: ${err.message}` : 'Saved offline',
-          ),
-        );
-      }
-    } finally {
-      setPending(null);
-    }
-  };
-
   return (
     <ScrollView
       style={styles.root}
@@ -273,26 +242,23 @@ export function KioskScreen() {
       </View>
       {!!lastMessage && <Text style={styles.status}>{lastMessage}</Text>}
       <ConfirmModal
-        visible={!!pending || !!failure}
-        title={pending ? `Welcome ${pending.name}` : failure?.title || 'Face Verification Failed'}
+        visible={!!success || !!failure}
+        title={success ? `Welcome ${success.name}` : failure?.title || 'Face Verification Failed'}
         message={
-          pending
-            ? `Similarity ${Math.round(pending.similarity * 100)}% · Liveness ${Math.round(pending.liveness * 100)}%\nConfirm clock ${pending.type}?`
+          success
+            ? `Clock ${success.type} recorded successfully!`
             : failure?.message || ''
         }
-        confirmLabel={pending ? `Confirm ${pending.type}` : 'Try Again'}
-        cancelLabel={pending ? 'Cancel' : 'Dismiss'}
-        variant={failure ? 'danger' : 'default'}
-        showCancel={!!pending}
+        confirmLabel={failure ? 'Try Again' : ''}
+        variant={failure ? 'danger' : 'success'}
+        showButtons={!success}
+        showCancel={false}
+        autoCloseMs={success ? 2500 : undefined}
         onConfirm={() => {
-          if (pending) {
-            confirmAttendance();
-          } else {
-            setFailure(null);
-          }
+          setFailure(null);
         }}
         onCancel={() => {
-          setPending(null);
+          setSuccess(null);
           setFailure(null);
         }}
       />

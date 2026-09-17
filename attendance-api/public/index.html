@@ -377,6 +377,13 @@
       font-size:20px; font-weight:900; margin-bottom:14px;
       box-shadow:0 0 16px rgba(244, 63, 94, 0.25);
     }
+    .modal-success-badge {
+      width:44px; height:44px; border-radius:50%;
+      background:rgba(16, 185, 129, 0.15); border:1.5px solid rgba(16, 185, 129, 0.35);
+      color:var(--ok); display:flex; align-items:center; justify-content:center;
+      font-size:22px; font-weight:900; margin-bottom:14px;
+      box-shadow:0 0 16px rgba(16, 185, 129, 0.25);
+    }
     .failure-metrics {
       display:flex; flex-direction:column; gap:8px; margin:12px 0 14px;
     }
@@ -554,12 +561,9 @@
     </section>
   </main>
   <dialog id="confirm">
+    <div class="modal-success-badge">✓</div>
     <h2 id="confirmTitle"></h2>
-    <p id="confirmMsg"></p>
-    <div class="row">
-      <button class="toggle" id="cancelBtn">Cancel</button>
-      <button class="cta" id="okBtn" style="margin:0">Confirm</button>
-    </div>
+    <p id="confirmMsg" style="white-space:pre-line; margin-bottom:0;"></p>
   </dialog>
   <dialog id="resetEnroll">
     <h2>Reset face samples?</h2>
@@ -1100,40 +1104,71 @@
         const minSim = (res.thresholds && res.thresholds.similarity) || 0.9;
         const minLive = (res.thresholds && res.thresholds.liveness) || 0.6;
         if (res.ok && res.similarity >= minSim && res.liveness >= minLive && res.employee_id) {
-          state.pending = { ...res, image_b64, gps, punch };
-          $('confirmTitle').textContent = 'Welcome ' + res.name;
-          $('confirmMsg').textContent =
-            'Similarity ' + Math.round(Number(res.similarity) * 100) +
-            '% · Liveness ' + Math.round(Number(res.liveness) * 100) +
-            '%\nConfirm clock ' + punch + '?';
+          const empName = res.name || res.employee_code || 'Employee';
+          try {
+            // Automatically record attendance immediately
+            const gpsFix = gps || undefined;
+            await api('/attendance', {
+              method: 'POST',
+              body: {
+                employee_id: res.employee_id,
+                type: punch,
+                device_id: state.settings.deviceId,
+                site_code: state.settings.siteCode,
+                gps: gpsFix,
+                similarity: res.similarity,
+                liveness_score: res.liveness,
+                face_crop_url: res.face_crop_url,
+                image_b64,
+              },
+            });
+            status('kioskStatus', res.remote_bypass
+              ? ('Matched ' + empName + ' (Remote — geofence skipped)')
+              : res.wfh_bypass
+                ? ('Matched ' + empName + ' (WFH — geofence skipped)')
+                : ('Matched ' + empName + ' — Clock ' + punch + ' recorded'));
+          } catch (attErr) {
+            const attMsg = attErr.message || '';
+            if (/geofence|location is required|outside office|not linked|does not match|Face verification required|only clock in|No face enrolled/i.test(attMsg)) {
+              status('kioskStatus', attMsg);
+              showFailureModal({
+                title: /geofence|location|outside/i.test(attMsg) ? 'Location Verification Failed' : 'Attendance Failed',
+                message: attMsg,
+              });
+              return;
+            } else {
+              state.queue.push({
+                path: '/attendance',
+                body: {
+                  employee_id: res.employee_id,
+                  type: punch,
+                  gps,
+                  similarity: res.similarity,
+                  liveness_score: res.liveness,
+                  face_crop_url: res.face_crop_url,
+                  image_b64,
+                },
+                createdAt: Date.now(),
+              });
+              localStorage.setItem('offline_queue', JSON.stringify(state.queue));
+              status('kioskStatus', 'Saved offline: ' + attMsg);
+            }
+          }
+
+          // Show confirmation pop-up without Cancel and Confirm buttons
+          $('confirmTitle').textContent = 'Welcome ' + empName;
+          $('confirmMsg').textContent = 'Clock ' + punch + ' recorded successfully!';
           $('confirm').showModal();
-          status('kioskStatus', res.remote_bypass
-            ? ('Matched ' + res.name + ' (Remote — geofence skipped)')
-            : res.wfh_bypass
-              ? ('Matched ' + res.name + ' (WFH — geofence skipped)')
-              : ('Matched ' + res.name));
+          rollPrompt();
+
+          if (window._confirmTimer) clearTimeout(window._confirmTimer);
+          window._confirmTimer = setTimeout(() => {
+            if ($('confirm').open) $('confirm').close();
+          }, 2500);
         } else {
           const failMsg = identifyFailMessage(res.reason);
           status('kioskStatus', failMsg);
           rollPrompt();
-
-          const metrics = [];
-          if (typeof res.similarity === 'number' && res.similarity > 0) {
-            metrics.push({
-              label: 'Similarity',
-              val: Math.round(Number(res.similarity) * 100) + '%',
-              req: Math.round(Number(minSim) * 100) + '%',
-              ok: res.similarity >= minSim,
-            });
-          }
-          if (typeof res.liveness === 'number' && res.liveness > 0) {
-            metrics.push({
-              label: 'Liveness',
-              val: Math.round(Number(res.liveness) * 100) + '%',
-              req: Math.round(Number(minLive) * 100) + '%',
-              ok: res.liveness >= minLive,
-            });
-          }
 
           let detailText = failMsg;
           if (res.reason === 'low_similarity') {
@@ -1155,7 +1190,6 @@
           showFailureModal({
             title: 'Face Verification Failed',
             message: detailText,
-            metrics,
           });
         }
       } catch (e) {
@@ -1196,55 +1230,10 @@
       rollPrompt();
     };
 
-    $('okBtn').onclick = async () => {
-      const p = state.pending;
-      $('confirm').close();
-      if (!p) return;
-      const punch = p.punch || state.punch;
-      try {
-        // Reuse the GPS fix from identify — avoid a second multi-second GPS wait.
-        const gps = p.gps || undefined;
-        await api('/attendance', {
-          method: 'POST',
-          body: {
-            employee_id: p.employee_id,
-            type: punch,
-            device_id: state.settings.deviceId,
-            site_code: state.settings.siteCode,
-            gps,
-            similarity: p.similarity,
-            liveness_score: p.liveness,
-            face_crop_url: p.face_crop_url,
-            image_b64: p.image_b64,
-          },
-        });
-        status('kioskStatus', 'Welcome ' + p.name);
-        rollPrompt();
-      } catch (e) {
-        const msg = e.message || '';
-        if (/geofence|location is required|outside office|not linked|does not match|Face verification required|only clock in|No face enrolled/i.test(msg)) {
-          status('kioskStatus', msg);
-        } else {
-          state.queue.push({
-            path: '/attendance',
-            body: {
-              employee_id: p.employee_id,
-              type: punch,
-              gps: p.gps,
-              similarity: p.similarity,
-              liveness_score: p.liveness,
-              face_crop_url: p.face_crop_url,
-              image_b64: p.image_b64,
-            },
-            createdAt: Date.now(),
-          });
-          localStorage.setItem('offline_queue', JSON.stringify(state.queue));
-          status('kioskStatus', 'Saved offline: ' + msg);
-        }
-      }
-      state.pending = null;
+    $('confirm').onclick = () => {
+      if (window._confirmTimer) clearTimeout(window._confirmTimer);
+      if ($('confirm').open) $('confirm').close();
     };
-    $('cancelBtn').onclick = () => { $('confirm').close(); state.pending = null; };
 
     function closeWorkingModeMenus(except) {
       $('empList').querySelectorAll('.mode-dd.open').forEach((dd) => {
