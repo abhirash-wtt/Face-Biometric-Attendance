@@ -2,7 +2,7 @@ import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
-import { RegisterDto } from './dto/register.dto';
+import { RegisterDto, ResendRegisterOtpDto, VerifyRegisterOtpDto } from './dto/register.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtUser } from './jwt.strategy';
@@ -21,9 +21,26 @@ export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   @Post('register')
-  @ApiOperation({ summary: 'Self-register as an employee user; returns access + refresh tokens' })
+  @ApiOperation({
+    summary:
+      'Start self-registration with an official @walkingtree.tech email; sends a verification OTP',
+  })
   register(@Body() dto: RegisterDto) {
-    return this.auth.register(dto.email, dto.password, dto.display_name);
+    return this.auth.startRegistration(dto.email, dto.password, dto.display_name);
+  }
+
+  @Post('register/verify')
+  @ApiOperation({
+    summary: 'Verify the OTP sent to the company email and create the employee account',
+  })
+  verifyRegister(@Body() dto: VerifyRegisterOtpDto) {
+    return this.auth.verifyRegistration(dto.email, dto.otp);
+  }
+
+  @Post('register/resend')
+  @ApiOperation({ summary: 'Resend the registration OTP to the company email' })
+  resendRegisterOtp(@Body() dto: ResendRegisterOtpDto) {
+    return this.auth.resendRegistrationOtp(dto.email);
   }
 
   @Post('login')

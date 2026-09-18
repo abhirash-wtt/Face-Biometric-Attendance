@@ -1,5 +1,8 @@
 import {
+  BadRequestException,
   ConflictException,
+  HttpException,
+  HttpStatus,
   Injectable,
   Logger,
   OnModuleInit,
@@ -18,6 +21,19 @@ import { JwtUser } from './jwt.strategy';
 import { DatabaseInitService } from '../database/database-init.service';
 import { nextEmployeeCode } from './employee-code';
 import { effectiveRole } from '../common/guards/roles.guard';
+import { MailService } from '../mail/mail.service';
+import { assertCompanyEmail } from './company-email';
+import {
+  generateOtp,
+  hashOtp,
+  otpMatches,
+  PendingRegistration,
+  REGISTER_OTP_MAX_ATTEMPTS,
+  REGISTER_OTP_MAX_RESENDS,
+  REGISTER_OTP_RESEND_SEC,
+  REGISTER_OTP_TTL_SEC,
+  registrationOtpKey,
+} from './registration-otp';
 
 @Injectable()
 export class AuthService implements OnModuleInit {
@@ -31,6 +47,7 @@ export class AuthService implements OnModuleInit {
     private readonly redis: RedisService,
     private readonly dbInit: DatabaseInitService,
     private readonly ds: DataSource,
+    private readonly mail: MailService,
   ) {}
 
   async onModuleInit() {
@@ -59,13 +76,78 @@ export class AuthService implements OnModuleInit {
     }
   }
 
-  async register(email: string, password: string, displayName: string) {
-    const normalized = email.trim().toLowerCase();
+  async startRegistration(email: string, password: string, displayName: string) {
+    const normalized = assertCompanyEmail(email);
     const name = displayName.trim();
-    const existing = await this.users.findOne({ where: { email: normalized } });
+    await this.assertEmailAvailable(normalized);
+
+    const pending = await this.readPending(normalized);
+    this.assertCanSendOtp(pending);
+
+    const otp = generateOtp();
+    const record: PendingRegistration = {
+      displayName: name,
+      passwordHash: await bcrypt.hash(password, 10),
+      otpHash: hashOtp(otp, normalized, this.otpSecret()),
+      attempts: 0,
+      sentAt: Date.now(),
+      resends: pending ? pending.resends + 1 : 0,
+    };
+    await this.savePending(normalized, record);
+    await this.mail.sendRegistrationOtp(normalized, otp);
+    return this.otpSentResponse(normalized);
+  }
+
+  async resendRegistrationOtp(email: string) {
+    const normalized = assertCompanyEmail(email);
+    await this.assertEmailAvailable(normalized);
+    const pending = await this.readPending(normalized);
+    if (!pending) {
+      throw new BadRequestException('Start registration first so we can send a verification code');
+    }
+    this.assertCanSendOtp(pending);
+
+    const otp = generateOtp();
+    const record: PendingRegistration = {
+      ...pending,
+      otpHash: hashOtp(otp, normalized, this.otpSecret()),
+      attempts: 0,
+      sentAt: Date.now(),
+      resends: pending.resends + 1,
+    };
+    await this.savePending(normalized, record);
+    await this.mail.sendRegistrationOtp(normalized, otp);
+    return this.otpSentResponse(normalized);
+  }
+
+  async verifyRegistration(email: string, otp: string) {
+    const normalized = assertCompanyEmail(email);
+    const pending = await this.readPending(normalized);
+    if (!pending) {
+      throw new UnauthorizedException('Invalid or expired verification code');
+    }
+    if (pending.attempts >= REGISTER_OTP_MAX_ATTEMPTS) {
+      await this.redis.del(registrationOtpKey(normalized));
+      throw new UnauthorizedException('Too many incorrect codes. Request a new verification code');
+    }
+    if (!otpMatches(otp, normalized, this.otpSecret(), pending.otpHash)) {
+      pending.attempts += 1;
+      await this.savePending(normalized, pending);
+      const left = REGISTER_OTP_MAX_ATTEMPTS - pending.attempts;
+      throw new UnauthorizedException(
+        left > 0
+          ? `Invalid verification code. ${left} attempt${left === 1 ? '' : 's'} remaining`
+          : 'Too many incorrect codes. Request a new verification code',
+      );
+    }
+    await this.redis.del(registrationOtpKey(normalized));
+    return this.createRegisteredUser(normalized, pending.passwordHash, pending.displayName);
+  }
+
+  private async createRegisteredUser(email: string, passwordHash: string, displayName: string) {
+    const existing = await this.users.findOne({ where: { email } });
     if (existing) throw new ConflictException('Email already registered');
 
-    const password_hash = await bcrypt.hash(password, 10);
     let lastError: unknown;
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
@@ -75,15 +157,15 @@ export class AuthService implements OnModuleInit {
             Employee,
             manager.create(Employee, {
               code: nextEmployeeCode(codes),
-              display_name: name,
+              display_name: displayName,
               status: 'active',
             }),
           );
           const user = await manager.save(
             User,
             manager.create(User, {
-              email: normalized,
-              password_hash,
+              email,
+              password_hash: passwordHash,
               role: 'user',
               employee_id: employee.id,
             }),
@@ -100,6 +182,65 @@ export class AuthService implements OnModuleInit {
       }
     }
     throw lastError instanceof Error ? lastError : new ConflictException('Could not create account');
+  }
+
+  private async assertEmailAvailable(email: string) {
+    const existing = await this.users.findOne({ where: { email } });
+    if (existing) throw new ConflictException('Email already registered');
+  }
+
+  private assertCanSendOtp(pending: PendingRegistration | null) {
+    if (!pending) return;
+    if (pending.resends >= REGISTER_OTP_MAX_RESENDS) {
+      throw new HttpException(
+        'Too many verification emails. Wait for the current code to expire, then try again',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    const waitMs = REGISTER_OTP_RESEND_SEC * 1000 - (Date.now() - pending.sentAt);
+    if (waitMs > 0) {
+      const waitSec = Math.max(1, Math.ceil(waitMs / 1000));
+      throw new HttpException(
+        `A verification code was already sent. Try again in ${waitSec} second${waitSec === 1 ? '' : 's'}`,
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+  }
+
+  private async readPending(email: string): Promise<PendingRegistration | null> {
+    const raw = await this.redis.get(registrationOtpKey(email));
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as PendingRegistration;
+      if (!parsed?.passwordHash || !parsed?.otpHash || !parsed?.displayName) return null;
+      return {
+        displayName: parsed.displayName,
+        passwordHash: parsed.passwordHash,
+        otpHash: parsed.otpHash,
+        attempts: Number(parsed.attempts) || 0,
+        sentAt: Number(parsed.sentAt) || 0,
+        resends: Number(parsed.resends) || 0,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private savePending(email: string, record: PendingRegistration) {
+    return this.redis.set(registrationOtpKey(email), JSON.stringify(record), REGISTER_OTP_TTL_SEC);
+  }
+
+  private otpSecret() {
+    return this.config.get<string>('jwt.accessSecret') || 'change-me-access';
+  }
+
+  private otpSentResponse(email: string) {
+    return {
+      status: 'otp_sent' as const,
+      email,
+      expires_in: REGISTER_OTP_TTL_SEC,
+      resend_after: REGISTER_OTP_RESEND_SEC,
+    };
   }
 
   async login(email: string, password: string) {

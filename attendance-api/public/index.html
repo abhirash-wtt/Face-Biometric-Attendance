@@ -455,6 +455,10 @@
     }
 
     .hidden { display:none !important; }
+    .muted { color:var(--muted); font-size:13px; font-weight:500; line-height:1.45; margin:0 0 10px; }
+    #registerOtp {
+      letter-spacing:0.45em; text-align:center; font-size:22px; font-weight:800;
+    }
     .rbac-hide { display:none !important; }
     .role-badge {
       display:inline-block; background:rgba(6, 182, 212, 0.12); color:var(--accent);
@@ -613,9 +617,18 @@
         <label for="password2">Confirm password</label>
         <input id="password2" type="password" autocomplete="new-password" enterkeyhint="go" />
       </div>
-      <p class="muted hidden" id="registerHint">Creates your employee account. After that, open Enroll and capture looking straight, left, and right so you can clock in.</p>
+      <p class="muted hidden" id="registerHint">Use your official Walking Tree email (@walkingtree.tech). We will send a one-time code to that inbox before the account is created.</p>
+      <div id="registerOtpBlock" class="hidden">
+        <label for="registerOtp">Email verification code</label>
+        <input id="registerOtp" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code"
+               maxlength="6" enterkeyhint="go" placeholder="______" />
+        <p class="muted" id="registerOtpHint">Enter the 6-digit code sent to your company email.</p>
+        <button class="cta" id="verifyOtpBtn">Verify email</button>
+        <button class="alt" id="resendOtpBtn" type="button">Resend code</button>
+        <button class="alt" id="changeRegisterEmailBtn" type="button" style="background:transparent;box-shadow:none;border:1px solid var(--line);color:var(--muted)">Use a different email</button>
+      </div>
       <button class="cta" id="loginBtn">Login</button>
-      <button class="cta hidden" id="registerBtn">Create account</button>
+      <button class="cta hidden" id="registerBtn">Send verification code</button>
       <button class="alt" id="logoutBtn">Logout</button>
       <button class="alt" id="bindBtn">Register this device</button>
       <button class="alt" id="syncBtn">Sync offline queue</button>
@@ -946,7 +959,7 @@
       const text = await res.text();
       let data = null;
       try { data = text ? JSON.parse(text) : null; } catch { data = text; }
-      if (res.status === 401 && !opts._retry && path !== '/auth/login' && path !== '/auth/refresh' && path !== '/auth/register') {
+      if (res.status === 401 && !opts._retry && path !== '/auth/login' && path !== '/auth/refresh' && !String(path).startsWith('/auth/register')) {
         const ok = await refreshSession();
         if (ok) return api(path, Object.assign({}, opts, { _retry: true }));
         clearSession();
@@ -1951,6 +1964,64 @@
       saveSettings();
       status('settingsStatus', 'Settings saved');
     };
+    const COMPANY_EMAIL_DOMAIN = 'walkingtree.tech';
+    let registerOtpEmail = '';
+    let resendOtpTimer = null;
+    function isCompanyEmail(email) {
+      return /^[a-z0-9._%+\-]+@walkingtree\.tech$/i.test(String(email || '').trim());
+    }
+    function setRegisterAwaitingOtp(awaiting, email) {
+      const on = !!awaiting;
+      $('registerOtpBlock').classList.toggle('hidden', !on);
+      $('registerBtn').classList.toggle('hidden', on || $('authHeading').textContent !== 'Register');
+      ['displayName', 'email', 'password', 'password2'].forEach((id) => {
+        $(id).disabled = on;
+      });
+      if (on) {
+        registerOtpEmail = email || ($('email').value || '').trim().toLowerCase();
+        $('registerOtpHint').textContent = 'Enter the 6-digit code sent to ' + registerOtpEmail + '.';
+        $('registerOtp').value = '';
+        $('registerOtp').focus();
+      } else {
+        registerOtpEmail = '';
+        $('registerOtp').value = '';
+        if (resendOtpTimer) { clearInterval(resendOtpTimer); resendOtpTimer = null; }
+        $('resendOtpBtn').disabled = false;
+        $('resendOtpBtn').textContent = 'Resend code';
+      }
+    }
+    function startResendCooldown(seconds) {
+      let left = Math.max(0, Number(seconds) || 0);
+      if (resendOtpTimer) { clearInterval(resendOtpTimer); resendOtpTimer = null; }
+      const tick = () => {
+        if (left <= 0) {
+          $('resendOtpBtn').disabled = false;
+          $('resendOtpBtn').textContent = 'Resend code';
+          if (resendOtpTimer) { clearInterval(resendOtpTimer); resendOtpTimer = null; }
+          return;
+        }
+        $('resendOtpBtn').disabled = true;
+        $('resendOtpBtn').textContent = 'Resend code (' + left + 's)';
+        left -= 1;
+      };
+      tick();
+      resendOtpTimer = setInterval(tick, 1000);
+    }
+    function completeRegistration(res) {
+      setSession(res);
+      $('password').value = '';
+      $('password2').value = '';
+      setRegisterAwaitingOtp(false);
+      setAuthMode('login');
+      applyAccess();
+      const who = res.user && (res.user.display_name || res.user.email);
+      status('settingsStatus', 'Account created' + (who ? ' for ' + who : ''));
+      if (canEnroll()) {
+        const enrollTab = document.querySelector('header button[data-tab="enroll"]');
+        if (enrollTab) enrollTab.click();
+        status('enrollStatus', 'Account created. Capture looking straight, left, and right to complete enrollment.');
+      }
+    }
     function setAuthMode(mode) {
       const register = mode === 'register';
       $('authModeLogin').classList.toggle('on', !register);
@@ -1962,8 +2033,10 @@
       $('loginBtn').classList.toggle('hidden', register);
       $('registerBtn').classList.toggle('hidden', !register);
       $('email').autocomplete = register ? 'email' : 'username';
+      $('email').placeholder = register ? 'you@walkingtree.tech' : '';
       $('password').autocomplete = register ? 'new-password' : 'current-password';
       $('password').enterKeyHint = register ? 'next' : 'go';
+      setRegisterAwaitingOtp(false);
       if (register) {
         $('password').value = '';
         $('password2').value = '';
@@ -1986,35 +2059,62 @@
       const password = $('password').value || '';
       const confirm = $('password2').value || '';
       if (!display_name) return status('settingsStatus', 'Enter your full name');
-      if (!email) return status('settingsStatus', 'Enter your email');
+      if (!email) return status('settingsStatus', 'Enter your official company email');
+      if (!isCompanyEmail(email)) {
+        return status('settingsStatus', 'Register with your official company email ending in @' + COMPANY_EMAIL_DOMAIN);
+      }
       if (password.length < 6) return status('settingsStatus', 'Password must be at least 6 characters');
       if (password !== confirm) return status('settingsStatus', 'Passwords do not match');
       try {
         const res = await api('/auth/register', { method: 'POST', body: { display_name, email, password } });
-        setSession(res);
-        $('password').value = '';
-        $('password2').value = '';
-        setAuthMode('login');
-        applyAccess();
-        const who = res.user && (res.user.display_name || res.user.email);
-        status('settingsStatus', 'Account created' + (who ? ' for ' + who : ''));
-        if (canEnroll()) {
-          const enrollTab = document.querySelector('header button[data-tab="enroll"]');
-          if (enrollTab) enrollTab.click();
-          status('enrollStatus', 'Account created. Capture looking straight, left, and right to complete enrollment.');
+        if (res && res.access_token) {
+          completeRegistration(res);
+          return;
         }
+        setRegisterAwaitingOtp(true, (res && res.email) || email);
+        startResendCooldown(res && res.resend_after);
+        status('settingsStatus', 'Verification code sent to ' + ((res && res.email) || email));
       } catch (e) { status('settingsStatus', e.message); }
     };
+    $('verifyOtpBtn').onclick = async () => {
+      const otp = ($('registerOtp').value || '').trim();
+      const email = registerOtpEmail || ($('email').value || '').trim();
+      if (!/^\d{6}$/.test(otp)) return status('settingsStatus', 'Enter the 6-digit code sent to your company email');
+      try {
+        const res = await api('/auth/register/verify', { method: 'POST', body: { email, otp } });
+        completeRegistration(res);
+      } catch (e) { status('settingsStatus', e.message); }
+    };
+    $('resendOtpBtn').onclick = async () => {
+      const email = registerOtpEmail || ($('email').value || '').trim();
+      try {
+        const res = await api('/auth/register/resend', { method: 'POST', body: { email } });
+        startResendCooldown(res && res.resend_after);
+        status('settingsStatus', 'A new verification code was sent to ' + ((res && res.email) || email));
+      } catch (e) { status('settingsStatus', e.message); }
+    };
+    $('changeRegisterEmailBtn').onclick = () => {
+      setRegisterAwaitingOtp(false);
+      $('registerBtn').classList.toggle('hidden', false);
+      $('email').focus();
+      status('settingsStatus', 'Update your company email and send a new code');
+    };
     function submitAuthForm() {
+      if (!$('registerOtpBlock').classList.contains('hidden')) {
+        $('verifyOtpBtn').onclick();
+        return;
+      }
       if ($('registerBtn').classList.contains('hidden')) $('loginBtn').onclick();
       else $('registerBtn').onclick();
     }
     $('password').onkeydown = (e) => {
       if (e.key !== 'Enter') return;
       e.preventDefault();
-      if (!$('registerBtn').classList.contains('hidden')) {
-        $('password2').focus();
-        return;
+      if (!$('registerBtn').classList.contains('hidden') || !$('registerOtpBlock').classList.contains('hidden')) {
+        if (!$('registerConfirmBlock').classList.contains('hidden')) {
+          $('password2').focus();
+          return;
+        }
       }
       e.target.blur();
       $('loginBtn').onclick();
@@ -2024,6 +2124,15 @@
       e.preventDefault();
       e.target.blur();
       submitAuthForm();
+    };
+    $('registerOtp').onkeydown = (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      e.target.blur();
+      $('verifyOtpBtn').onclick();
+    };
+    $('registerOtp').oninput = () => {
+      $('registerOtp').value = ($('registerOtp').value || '').replace(/\D/g, '').slice(0, 6);
     };
     $('email').onkeydown = (e) => {
       if (e.key === 'Enter') $('password').focus();

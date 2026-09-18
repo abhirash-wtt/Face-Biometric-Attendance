@@ -6,12 +6,14 @@ Interactive OpenAPI UI is generated at runtime:
 JSON: `GET http://localhost:3000/docs-json`
 
 Auth: `Authorization: Bearer <access_token>`  
-Users: JWT from `POST /auth/register` or `POST /auth/login` (short-lived access + refresh). Self-register creates a linked employee so the new user can enroll their own face and clock in.  
+Users: JWT from `POST /auth/register/verify` or `POST /auth/login` (short-lived access + refresh). Self-register is limited to `@walkingtree.tech` and requires the OTP emailed to that address. After verification it creates a linked employee so the new user can enroll their own face and clock in.  
 Kiosks: device token from `POST /devices/register`.
 
 | Method | Path | Role | Description |
 |---|---|---|---|
-| POST | `/auth/register` | public | Self-register: creates a `user` account + linked employee (`EMP###`); returns tokens |
+| POST | `/auth/register` | public | Start self-register with an official `@walkingtree.tech` email; emails a 6-digit OTP (`status: otp_sent`) |
+| POST | `/auth/register/verify` | public | Confirm the OTP; creates a `user` account + linked employee (`EMP###`); returns tokens |
+| POST | `/auth/register/resend` | public | Resend the registration OTP (cooldown applies) |
 | POST | `/auth/login` | public | User login; returns tokens |
 | POST | `/auth/refresh` | public | Rotate refresh token |
 | GET | `/auth/me` | authenticated | Current principal; `role` is `admin` or `user`; includes `employee_id` / `employee_code` / `display_name` when linked |

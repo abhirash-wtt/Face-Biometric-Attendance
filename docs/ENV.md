@@ -30,5 +30,10 @@ Copy `attendance-api/.env.example` to `.env` per environment (`local` / `dev` / 
 | `DEVICE_BOOTSTRAP_SECRET` | bind-device-once | One-time kiosk bind |
 | `COMPREFACE_URL` / `COMPREFACE_API_KEY` | localhost:8000 | Option A engine |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | admin@attendance.local | Bootstrapped admin |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` | empty / 587 / false | SMTP server for registration OTPs; empty host logs the code in local/dev |
+| `SMTP_USER` / `SMTP_PASS` | empty | SMTP credentials |
+| `MAIL_FROM` | noreply@walkingtree.tech | From address for verification emails |
+
+Self-registration accepts only `@walkingtree.tech` addresses. `POST /auth/register` emails a 6-digit OTP; `POST /auth/register/verify` creates the account after the code is entered.
 
 Feature flags: recognition provider, thresholds, retention, geofence radius.

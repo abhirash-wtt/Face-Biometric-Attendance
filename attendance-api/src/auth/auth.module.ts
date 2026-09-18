@@ -9,10 +9,12 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { DatabaseModule } from '../database/database.module';
+import { MailModule } from '../mail/mail.module';
 
 @Module({
   imports: [
     DatabaseModule,
+    MailModule,
     TypeOrmModule.forFeature([User, Employee]),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({

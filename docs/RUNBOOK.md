@@ -38,7 +38,7 @@ npm run start:dev
 API: http://localhost:3000  
 OpenAPI: http://localhost:3000/docs  
 Kiosk UI (Kiosk / Enroll / Attendance / Settings): http://localhost:3000/  
-From **Settings**, use **Register** to create your own employee account (name, email, password). After that, capture looking **straight**, **left**, and **right** on **Enroll**. Clock-in stays blocked until enrollment is complete.  
+From **Settings**, use **Register** with your official `@walkingtree.tech` email and password, then enter the OTP sent to that inbox. After the account is created, capture looking **straight**, **left**, and **right** on **Enroll**. Clock-in stays blocked until enrollment is complete.  
 Health: http://localhost:3000/health
 
 ### 2a. HTTPS for phones (required for the camera)
@@ -101,7 +101,7 @@ On a device/emulator, set **Settings → API URL**:
 The native app talks to plain HTTP happily; the secure-context rule above applies only to
 browsers, so there is no need to point the app at the HTTPS port.
 
-Then **Login** (admin), **Register** a new employee account in Settings, or **Register this device**. After self-register, open **Enroll** and capture looking straight, left, and right. Clock-in is blocked until enrollment is complete. Admins can open **Attendance** to see any user’s clock-in time, clock-out time, and Present/Absent status.
+Then **Login** (admin), **Register** with a `@walkingtree.tech` email and the emailed OTP, or **Register this device**. After self-register, open **Enroll** and capture looking straight, left, and right. Clock-in is blocked until enrollment is complete. Admins can open **Attendance** to see any user’s clock-in time, clock-out time, and Present/Absent status.
 
 Camera: `react-native-vision-camera`. Active liveness prompts: blink, turn left/right, smile.
 
