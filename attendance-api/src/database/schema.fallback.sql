@@ -27,6 +27,9 @@ CREATE TABLE IF NOT EXISTS face_templates (
   employee_id UUID REFERENCES employees(id) ON DELETE CASCADE,
   embedding TEXT NOT NULL,
   liveness_score REAL,
+  pose TEXT CHECK (pose IS NULL OR pose IN ('straight', 'left', 'right')),
+  features_coverage REAL,
+  features_complete BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 

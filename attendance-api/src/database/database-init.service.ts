@@ -45,6 +45,7 @@ export class DatabaseInitService implements OnModuleInit {
     await this.migrateWfhRegularization();
     await this.migrateRegularizationRequestType();
     await this.migrateEmployeeWorkingMode();
+    await this.migrateFaceEnrollment();
   }
 
   private async migrateRoles() {
@@ -204,6 +205,46 @@ export class DatabaseInitService implements OnModuleInit {
         WHERE status IN ('pending', 'approved')
     `);
     this.logger.log('Regularization request_type column ready');
+  }
+
+  private async migrateFaceEnrollment() {
+    await this.ds.query(`ALTER TABLE face_templates ADD COLUMN IF NOT EXISTS pose TEXT`);
+    await this.ds.query(
+      `ALTER TABLE face_templates ADD COLUMN IF NOT EXISTS features_coverage REAL`,
+    );
+    await this.ds.query(
+      `ALTER TABLE face_templates ADD COLUMN IF NOT EXISTS features_complete BOOLEAN DEFAULT FALSE`,
+    );
+    await this.ds.query(
+      `UPDATE face_templates SET features_complete = FALSE WHERE features_complete IS NULL`,
+    );
+    await this.ds.query(`
+      DO $$
+      DECLARE r RECORD;
+      BEGIN
+        FOR r IN
+          SELECT conname FROM pg_constraint
+          WHERE conrelid = 'face_templates'::regclass AND contype = 'c'
+            AND pg_get_constraintdef(oid) ILIKE '%pose%'
+        LOOP
+          EXECUTE format('ALTER TABLE face_templates DROP CONSTRAINT IF EXISTS %I', r.conname);
+        END LOOP;
+      END $$;
+    `);
+    try {
+      await this.ds.query(
+        `ALTER TABLE face_templates ADD CONSTRAINT face_templates_pose_check CHECK (pose IS NULL OR pose IN ('straight', 'left', 'right'))`,
+      );
+    } catch (err) {
+      const message = (err as Error).message || '';
+      if (!/already exists/i.test(message)) throw err;
+    }
+    await this.ds.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS face_templates_employee_pose_uniq
+        ON face_templates (employee_id, pose)
+        WHERE pose IS NOT NULL
+    `);
+    this.logger.log('Face enrollment pose columns ready');
   }
 
   private readSql(file: string): string {

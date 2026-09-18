@@ -23,12 +23,15 @@ CREATE TABLE IF NOT EXISTS employees (
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS employee_id UUID REFERENCES employees(id) ON DELETE SET NULL;
 
--- FACE TEMPLATES (multiple samples per employee)
+-- FACE TEMPLATES (required poses: straight, left, right)
 CREATE TABLE IF NOT EXISTS face_templates (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   employee_id UUID REFERENCES employees(id) ON DELETE CASCADE,
   embedding vector(512) NOT NULL,
   liveness_score REAL,
+  pose TEXT CHECK (pose IS NULL OR pose IN ('straight', 'left', 'right')),
+  features_coverage REAL,
+  features_complete BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 

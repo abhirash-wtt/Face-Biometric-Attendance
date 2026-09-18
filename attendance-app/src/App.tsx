@@ -18,16 +18,20 @@ function Shell() {
   const [tab, setTab] = useState<Tab>('kiosk');
   const [role, setRole] = useState<'admin' | 'user' | ''>('');
   const [canWfh, setCanWfh] = useState(false);
+  const [canEnroll, setCanEnroll] = useState(false);
   const insets = useSafeAreaInsets();
   const layout = useLayout();
 
   const refreshRole = useCallback(async () => {
     const next = await storage.getRole();
     const wfh = await storage.canUseRegularization();
+    const enroll = await storage.canEnroll();
     setRole(next);
     setCanWfh(wfh);
+    setCanEnroll(enroll);
     setTab((current) => {
-      if (next !== 'admin' && (current === 'enroll' || current === 'attendance')) return 'kiosk';
+      if (next !== 'admin' && current === 'attendance') return 'kiosk';
+      if (!enroll && current === 'enroll') return 'kiosk';
       if (!wfh && current === 'wfh') return 'kiosk';
       return current;
     });
@@ -46,16 +50,12 @@ function Shell() {
           ['wfh', 'Regularize'],
           ['settings', 'Settings'],
         ]
-      : canWfh
-        ? [
-            ['kiosk', 'Kiosk'],
-            ['wfh', 'Regularize'],
-            ['settings', 'Settings'],
-          ]
-        : [
-            ['kiosk', 'Kiosk'],
-            ['settings', 'Settings'],
-          ];
+      : [
+          ['kiosk', 'Kiosk'],
+          ...(canEnroll ? [['enroll', 'Enroll'] as [Tab, string]] : []),
+          ...(canWfh ? [['wfh', 'Regularize'] as [Tab, string]] : []),
+          ['settings', 'Settings'],
+        ];
 
   return (
     <View style={styles.safe}>
@@ -92,7 +92,7 @@ function Shell() {
         ]}
       >
         {tab === 'kiosk' && <KioskScreen />}
-        {tab === 'enroll' && role === 'admin' && <EnrollScreen />}
+        {tab === 'enroll' && canEnroll && <EnrollScreen />}
         {tab === 'attendance' && role === 'admin' && <AttendanceScreen />}
         {tab === 'wfh' && canWfh && <RegularizationScreen role={role} />}
         {tab === 'settings' && <SettingsScreen onAuthChange={refreshRole} />}

@@ -76,7 +76,9 @@ export class AttendanceService {
         throw new UnprocessableEntityException(
           verified.reason === 'no_templates'
             ? 'No face enrolled for this login'
-            : 'Face does not match this login',
+            : verified.reason === 'enrollment_incomplete'
+              ? 'Face enrollment is incomplete. Capture looking straight, left, and right before clock-in'
+              : 'Face does not match this login',
         );
       }
       similarity = verified.similarity;

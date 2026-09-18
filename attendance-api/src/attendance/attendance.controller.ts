@@ -25,6 +25,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtUser } from '../auth/jwt.strategy';
 import { boundClockInEmployeeId } from '../auth/bound-employee';
 import { ConfigService } from '@nestjs/config';
+import { REQUIRED_ENROLL_POSES, REQUIRED_FACE_FEATURES } from '../recognition/enrollment';
 
 function bufferFrom(file?: Express.Multer.File, imageB64?: string): Buffer {
   if (file?.buffer) return file.buffer;
@@ -198,6 +199,10 @@ export class AttendanceController {
       recognition_provider: this.config.get<string>('recognition.provider'),
       retention_days: this.config.get<number>('retentionDays'),
       liveness_prompts: ['blink', 'turn_left', 'turn_right', 'smile'],
+      required_enroll_poses: [...REQUIRED_ENROLL_POSES],
+      required_face_features: [...REQUIRED_FACE_FEATURES],
+      min_face_samples: this.config.get<number>('recognition.minFaceSamples') || REQUIRED_ENROLL_POSES.length,
+      max_face_samples: this.config.get<number>('recognition.maxFaceSamples') || 10,
     };
   }
 }

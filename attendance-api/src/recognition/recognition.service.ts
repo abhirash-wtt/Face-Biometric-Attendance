@@ -1,11 +1,20 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { EmbeddingsService } from './embeddings.service';
 import { LivenessService } from './liveness.service';
 import { ComprefaceService } from './compreface.service';
+import { FaceQualityService } from './face-quality.service';
+import {
+  buildEnrollmentStatus,
+  EnrollPose,
+  EnrollmentStatus,
+  poseLabel,
+} from './enrollment';
 import { cosineSimilarity, parsePgVector, toPgVector } from '../common/math';
 import { DatabaseInitService } from '../database/database-init.service';
+
+const POSE_DIVERSITY_MAX_SIM = 0.992;
 
 export type MatchRow = {
   employee_id: string;
@@ -28,6 +37,7 @@ export class RecognitionService {
     private readonly embeddings: EmbeddingsService,
     private readonly liveness: LivenessService,
     private readonly compreface: ComprefaceService,
+    private readonly faceQuality: FaceQualityService,
     private readonly ds: DataSource,
     private readonly dbInit: DatabaseInitService,
   ) {}
@@ -48,17 +58,116 @@ export class RecognitionService {
     return { embedding, liveness_score };
   }
 
-  async enrollInternal(employeeId: string, employeeCode: string, imageBuf: Buffer, liveness?: number) {
-    const { embedding, liveness_score } = await this.embedAndLiveness(imageBuf, liveness);
+  async enrollmentSnapshot(employeeId: string): Promise<
+    EnrollmentStatus & {
+      samples: Array<{
+        pose: string | null;
+        features_complete: boolean;
+        features_coverage: number | null;
+        liveness_score: number | null;
+        created_at: Date | string | null;
+      }>;
+      total_templates: number;
+    }
+  > {
+    const rows = await this.ds.query(
+      `SELECT pose, features_complete, features_coverage, liveness_score, created_at
+         FROM face_templates
+        WHERE employee_id = $1
+        ORDER BY created_at ASC`,
+      [employeeId],
+    );
+    const samples = (rows || []).map(
+      (row: {
+        pose: string | null;
+        features_complete: boolean | null;
+        features_coverage: number | null;
+        liveness_score: number | null;
+        created_at: Date | string | null;
+      }) => ({
+        pose: row.pose,
+        features_complete: !!row.features_complete,
+        features_coverage: row.features_coverage == null ? null : Number(row.features_coverage),
+        liveness_score: row.liveness_score == null ? null : Number(row.liveness_score),
+        created_at: row.created_at,
+      }),
+    );
+    return {
+      ...buildEnrollmentStatus(samples),
+      samples,
+      total_templates: samples.length,
+    };
+  }
+
+  async isEnrollmentComplete(employeeId: string): Promise<boolean> {
+    const snapshot = await this.enrollmentSnapshot(employeeId);
+    return snapshot.enrollment_complete;
+  }
+
+  async enrollInternal(
+    employeeId: string,
+    employeeCode: string,
+    imageBuf: Buffer,
+    opts?: { liveness?: number; pose: EnrollPose },
+  ) {
+    const pose = opts?.pose;
+    if (!pose) {
+      throw new BadRequestException('Each sample must be one of: looking straight, left, or right');
+    }
+
+    const quality = await this.faceQuality.assess(imageBuf);
+    if (!quality.ok) {
+      throw new BadRequestException(
+        quality.reason || 'Could not capture 100% of required facial features. Recapture this pose.',
+      );
+    }
+
+    const { embedding, liveness_score } = await this.embedAndLiveness(imageBuf, opts?.liveness);
+    await this.assertPoseDiversity(employeeId, pose, embedding);
+
     if (this.compreface.enabled()) {
       await this.compreface.enroll(employeeCode, imageBuf);
     }
     await this.ds.query(
-      `INSERT INTO face_templates (employee_id, embedding, liveness_score)
-       VALUES ($1, $2, $3)`,
-      [employeeId, toPgVector(embedding), liveness_score],
+      `INSERT INTO face_templates
+         (employee_id, embedding, liveness_score, pose, features_coverage, features_complete)
+       VALUES ($1, $2, $3, $4, $5, TRUE)
+       ON CONFLICT (employee_id, pose) WHERE pose IS NOT NULL
+       DO UPDATE SET
+         embedding = EXCLUDED.embedding,
+         liveness_score = EXCLUDED.liveness_score,
+         features_coverage = EXCLUDED.features_coverage,
+         features_complete = TRUE,
+         created_at = now()`,
+      [employeeId, toPgVector(embedding), liveness_score, pose, quality.coverage],
     );
-    return { liveness_score };
+    return {
+      liveness_score,
+      pose,
+      features_coverage: quality.coverage,
+      features_complete: true,
+      features_present: quality.present,
+    };
+  }
+
+  private async assertPoseDiversity(employeeId: string, pose: EnrollPose, embedding: number[]) {
+    const others = await this.ds.query(
+      `SELECT pose, embedding FROM face_templates
+        WHERE employee_id = $1 AND pose IS NOT NULL AND pose <> $2`,
+      [employeeId, pose],
+    );
+    for (const row of others as Array<{ pose: string; embedding: string }>) {
+      const sim = cosineSimilarity(embedding, parsePgVector(row.embedding));
+      if (sim >= POSE_DIVERSITY_MAX_SIM) {
+        throw new BadRequestException(
+          `This capture is too similar to the ${poseLabel(row.pose as EnrollPose)} sample. ${
+            pose === 'straight'
+              ? 'Look straight at the camera.'
+              : `Turn your head farther ${pose} and hold still.`
+          }`,
+        );
+      }
+    }
   }
 
   async clearEnrollments(employeeId: string, employeeCode: string) {
@@ -125,6 +234,19 @@ export class RecognitionService {
             display_name: rows[0].display_name,
             cosine_sim: rec.similarity,
           };
+          const enrollReason = await this.enrollmentBlockReason(match.employee_id);
+          if (enrollReason) {
+            this.metrics.identifyRejected += 1;
+            return {
+              ok: false,
+              reason: enrollReason,
+              embedding,
+              liveness,
+              similarity: rec.similarity,
+              match,
+              top: [match],
+            };
+          }
           const ok = rec.similarity >= th.similarity && liveness >= th.liveness;
           if (ok) this.metrics.identifyAccepted += 1;
           else this.metrics.identifyRejected += 1;
@@ -134,7 +256,7 @@ export class RecognitionService {
             embedding,
             liveness,
             similarity: rec.similarity,
-            match: ok ? match : match,
+            match,
             top: [match],
           };
         }
@@ -144,13 +266,17 @@ export class RecognitionService {
     const top = await this.search(embedding, th.topK);
     const best = top[0];
     const similarity = best?.cosine_sim ?? 0;
-    const ok = !!best && similarity >= th.similarity && liveness >= th.liveness;
+    const enrollReason = best ? await this.enrollmentBlockReason(best.employee_id) : undefined;
+    const ok =
+      !!best && !enrollReason && similarity >= th.similarity && liveness >= th.liveness;
     if (ok) this.metrics.identifyAccepted += 1;
     else this.metrics.identifyRejected += 1;
 
     let reason: string | undefined;
     if (!best) {
       reason = 'no_templates';
+    } else if (enrollReason) {
+      reason = enrollReason;
     } else if (liveness < th.liveness) {
       reason = 'low_liveness';
     } else if (similarity < th.similarity) {
@@ -243,12 +369,16 @@ export class RecognitionService {
       display_name: employee[0].display_name,
       cosine_sim: 0,
     };
-    const ok = !!best && similarity >= th.similarity && liveness >= th.liveness;
+    const enrollReason = await this.enrollmentBlockReason(employeeId);
+    const ok =
+      !!best && !enrollReason && similarity >= th.similarity && liveness >= th.liveness;
     if (ok) this.metrics.identifyAccepted += 1;
     else this.metrics.identifyRejected += 1;
 
     let reason: string | undefined;
-    if (!best) {
+    if (enrollReason) {
+      reason = enrollReason;
+    } else if (!best) {
       reason = 'no_templates';
     } else if (this.embeddings.isModelActive()) {
       const tmpls = await this.ds.query(
@@ -327,6 +457,15 @@ export class RecognitionService {
     }));
     scored.sort((a, b) => b.cosine_sim - a.cosine_sim);
     return this.dedupeEmployees(scored).slice(0, limit);
+  }
+
+  private async enrollmentBlockReason(
+    employeeId: string,
+  ): Promise<'no_templates' | 'enrollment_incomplete' | undefined> {
+    const snapshot = await this.enrollmentSnapshot(employeeId);
+    if (snapshot.total_templates === 0) return 'no_templates';
+    if (!snapshot.enrollment_complete) return 'enrollment_incomplete';
+    return undefined;
   }
 
   private dedupeEmployees(rows: MatchRow[]): MatchRow[] {

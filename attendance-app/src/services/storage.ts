@@ -44,6 +44,15 @@ export const storage = {
       return '';
     }
   },
+  employeeIdFromToken(token: string | null): string {
+    if (!token) return '';
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      return typeof payload.employee_id === 'string' ? payload.employee_id : '';
+    } catch {
+      return '';
+    }
+  },
   /** True for human logins (admin/user accounts), false for kiosk device tokens. */
   isAccountToken(token: string | null): boolean {
     if (!token) return false;
@@ -56,6 +65,13 @@ export const storage = {
   },
   async getRole(): Promise<'admin' | 'user' | ''> {
     return this.roleFromToken(await this.getToken());
+  },
+  async canEnroll(): Promise<boolean> {
+    const token = await this.getToken();
+    if (!this.isAccountToken(token)) return false;
+    const role = this.roleFromToken(token);
+    if (role === 'admin') return true;
+    return role === 'user' && !!this.employeeIdFromToken(token);
   },
   async canUseRegularization(): Promise<boolean> {
     const token = await this.getToken();

@@ -26,6 +26,15 @@ export class FaceTemplate {
   @Column({ type: 'real', nullable: true })
   liveness_score?: number;
 
+  @Column({ type: 'text', nullable: true })
+  pose?: 'straight' | 'left' | 'right' | null;
+
+  @Column({ type: 'real', nullable: true })
+  features_coverage?: number;
+
+  @Column({ type: 'boolean', default: false })
+  features_complete: boolean;
+
   @CreateDateColumn({ type: 'timestamptz' })
   created_at: Date;
 }

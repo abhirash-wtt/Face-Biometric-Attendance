@@ -31,7 +31,7 @@ export class EmployeesController {
   @Get(':id')
   @Roles('admin')
   get(@Param('id') id: string) {
-    return this.employees.get(id);
+    return this.employees.getWithEnrollment(id);
   }
 
   @Patch(':id')

@@ -27,6 +27,7 @@ const promptCopy: Record<string, string> = {
 function identifyFailMessage(reason?: string) {
   if (reason === 'identity_mismatch') return 'Face does not match this login';
   if (reason === 'no_templates') return 'No face enrolled for this login';
+  if (reason === 'enrollment_incomplete') return 'Face enrollment is incomplete';
   if (reason === 're_enroll_required') return 'Biometric model updated. Please re-enroll face';
   if (reason === 'low_similarity') return 'Face not recognized';
   if (reason === 'low_liveness') return 'Liveness check failed';
@@ -42,6 +43,8 @@ function buildFailureMessage(reason?: string): string {
     reasonText = 'Face does not match the employee profile linked to this login.';
   } else if (reason === 'no_templates') {
     reasonText = 'No biometric face templates were found for this account. Please enroll your face first.';
+  } else if (reason === 'enrollment_incomplete') {
+    reasonText = 'Face enrollment is incomplete. Capture looking straight, left, and right in the Enroll tab before clock-in.';
   } else if (reason === 'low_liveness') {
     reasonText = 'Liveness check failed. Please look straight into the camera and follow the movement prompt.';
   } else if (reason === 're_enroll_required') {
@@ -119,7 +122,7 @@ export function KioskScreen() {
             dispatch(setLastMessage('Duplicate entry detected.'));
             dispatch(rollLivenessPrompt());
             return;
-          } else if (/geofence|location is required|outside office|not linked|does not match|Face verification required|only clock in|No face enrolled/i.test(message)) {
+          } else if (/geofence|location is required|outside office|not linked|does not match|Face verification required|only clock in|No face enrolled|enrollment is incomplete/i.test(message)) {
             dispatch(setLastMessage(message));
             setFailure({
               title: /geofence|location|outside/i.test(message) ? 'Location Verification Failed' : 'Attendance Failed',

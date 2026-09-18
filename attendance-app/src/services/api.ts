@@ -17,12 +17,35 @@ export type IdentifyResponse = {
 
 export type WorkingMode = 'onsite' | 'remote';
 
+export type EnrollPose = 'straight' | 'left' | 'right';
+
+export type EnrollmentStatus = {
+  employee_id: string;
+  employee_code?: string;
+  display_name?: string;
+  samples_added?: number;
+  total_templates: number;
+  max_templates: number;
+  min_templates?: number;
+  enrollment_status: 'complete' | 'incomplete';
+  enrollment_complete: boolean;
+  required_poses: EnrollPose[];
+  captured_poses: EnrollPose[];
+  missing_poses: EnrollPose[];
+  required_samples: number;
+  pose?: EnrollPose;
+};
+
 export type Employee = {
   id: string;
   code: string;
   display_name: string;
   status: string;
   working_mode?: WorkingMode;
+  enrollment_complete?: boolean;
+  enrollment_status?: 'complete' | 'incomplete';
+  captured_poses?: EnrollPose[];
+  missing_poses?: EnrollPose[];
 };
 
 export type AttendanceStatusRow = {
@@ -140,26 +163,19 @@ export const api = {
       `/attendance/status${qs}`,
     );
   },
-  enroll(employeeId: string, imageB64: string, liveness?: number) {
-    return request<{
-      employee_id: string;
-      employee_code: string;
-      samples_added: number;
-      total_templates: number;
-      max_templates: number;
-    }>('/enroll', {
+  enroll(employeeId: string, imageB64: string, liveness?: number, pose?: EnrollPose) {
+    return request<EnrollmentStatus>('/enroll', {
       method: 'POST',
-      body: { employee_id: employeeId, image_b64: imageB64, liveness_score: liveness },
+      body: { employee_id: employeeId, image_b64: imageB64, liveness_score: liveness, pose },
     });
   },
+  enrollmentStatus(employeeId: string) {
+    return request<EnrollmentStatus>(`/enroll/${employeeId}`);
+  },
   resetEnroll(employeeId: string) {
-    return request<{
-      employee_id: string;
-      employee_code: string;
-      templates_removed: number;
-      total_templates: number;
-      max_templates: number;
-    }>(`/enroll/${employeeId}`, { method: 'DELETE' });
+    return request<EnrollmentStatus & { templates_removed: number }>(`/enroll/${employeeId}`, {
+      method: 'DELETE',
+    });
   },
   config() {
     return request<{

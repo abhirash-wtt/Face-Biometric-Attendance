@@ -12,7 +12,8 @@ import {
 } from 'react-native';
 import { CameraView } from '../components/CameraView';
 import { ConfirmModal } from '../components/ConfirmModal';
-import { api, Employee, WorkingMode } from '../services/api';
+import { api, Employee, EnrollPose, EnrollmentStatus, WorkingMode } from '../services/api';
+import { storage } from '../services/storage';
 import { TAP_TARGET, useLayout } from '../theme/responsive';
 import { THEME } from '../theme/colors';
 
@@ -21,19 +22,43 @@ const WORKING_MODE_OPTIONS: Array<{ value: WorkingMode; label: string }> = [
   { value: 'remote', label: 'Remote' },
 ];
 
+const POSES: Array<{ id: EnrollPose; label: string; prompt: string }> = [
+  { id: 'straight', label: 'Straight', prompt: 'Look straight at the camera' },
+  { id: 'left', label: 'Left', prompt: 'Turn your head left, then hold still' },
+  { id: 'right', label: 'Right', prompt: 'Turn your head right, then hold still' },
+];
+
+function posePhrase(pose: EnrollPose) {
+  if (pose === 'left') return 'looking left';
+  if (pose === 'right') return 'looking right';
+  return 'looking straight';
+}
+
+function statusMessage(res: EnrollmentStatus | null, name?: string) {
+  if (!res) return 'Capture looking straight, left, and right to complete enrollment.';
+  if (res.enrollment_complete) {
+    return `Enrollment complete${name ? ` for ${name}` : ''}. Clock-in is enabled.`;
+  }
+  const missing = (res.missing_poses || []).map(posePhrase);
+  return `Enrollment incomplete. Still need: ${missing.join(', ') || 'straight, left, right'}.`;
+}
+
 export function EnrollScreen() {
   const layout = useLayout();
   const [q, setQ] = useState('');
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selected, setSelected] = useState<Employee | null>(null);
-  const [samples, setSamples] = useState(0);
-  const [message, setMessage] = useState('Select an employee, then capture 3–10 face samples.');
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [enrollment, setEnrollment] = useState<EnrollmentStatus | null>(null);
+  const [enrollPose, setEnrollPose] = useState<EnrollPose>('straight');
+  const [message, setMessage] = useState(
+    'Select an employee, then capture looking straight, left, and right.',
+  );
   const [busy, setBusy] = useState(false);
   const [modeBusyId, setModeBusyId] = useState<string | null>(null);
   const [modeMenuFor, setModeMenuFor] = useState<Employee | null>(null);
   const [confirm, setConfirm] = useState(false);
   const [resetConfirm, setResetConfirm] = useState(false);
-  const maxSamples = 10;
   const captureRef = React.useRef<() => Promise<string>>(async () => {
     throw new Error('Camera not ready');
   });
@@ -41,6 +66,19 @@ export function EnrollScreen() {
   const onCameraReady = useCallback((capture: () => Promise<string>) => {
     captureRef.current = capture;
   }, []);
+
+  const applyEnrollment = (res: EnrollmentStatus | null, autoPose = true) => {
+    setEnrollment(res);
+    const missing = res?.missing_poses || [];
+    if (autoPose && missing.length) setEnrollPose(missing[0]);
+  };
+
+  const loadEnrollment = async (employee: Employee, autoPose = true) => {
+    const res = await api.enrollmentStatus(employee.id);
+    applyEnrollment(res, autoPose);
+    setMessage(statusMessage(res, employee.display_name));
+    return res;
+  };
 
   const load = async () => {
     try {
@@ -51,7 +89,32 @@ export function EnrollScreen() {
   };
 
   useEffect(() => {
-    load();
+    (async () => {
+      const token = await storage.getToken();
+      const admin = storage.roleFromToken(token) === 'admin';
+      setIsAdmin(admin);
+      if (admin) {
+        load();
+        return;
+      }
+      const employeeId = storage.employeeIdFromToken(token);
+      if (!employeeId) {
+        setMessage('This login is not linked to an employee.');
+        return;
+      }
+      const self: Employee = {
+        id: employeeId,
+        code: '',
+        display_name: 'Your face',
+        status: 'active',
+      };
+      setSelected(self);
+      try {
+        await loadEnrollment(self);
+      } catch (err) {
+        setMessage(err instanceof Error ? err.message : 'Unable to load enrollment status');
+      }
+    })();
   }, []);
 
   const setWorkingMode = async (item: Employee, working_mode: WorkingMode) => {
@@ -86,11 +149,11 @@ export function EnrollScreen() {
     try {
       setBusy(true);
       const res = await api.resetEnroll(selected.id);
-      setSamples(0);
+      applyEnrollment(res);
       setMessage(
         res.templates_removed
-          ? `Reset ${res.templates_removed} sample(s) for ${selected.display_name}. Capture new face samples.`
-          : `No samples to reset for ${selected.display_name}. Capture new face samples.`,
+          ? `Reset ${res.templates_removed} sample(s) for ${selected.display_name}. Capture looking straight, left, and right again.`
+          : `No samples to reset for ${selected.display_name}. Capture looking straight, left, and right.`,
       );
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Reset failed');
@@ -105,18 +168,15 @@ export function EnrollScreen() {
       setMessage('Select an employee first');
       return;
     }
-    if (samples >= maxSamples) {
-      setMessage(`Maximum of ${maxSamples} face samples reached for this user`);
-      return;
-    }
     try {
       setBusy(true);
       const image_b64 = await captureRef.current();
-      const res = await api.enroll(selected.id, image_b64, 0.95);
-      const next = res.total_templates;
-      setSamples(next);
-      setMessage(`Saved sample ${next} of ${res.max_templates} for ${selected.display_name}`);
-      if (next >= 3) setConfirm(true);
+      const wasComplete = !!enrollment?.enrollment_complete;
+      const res = await api.enroll(selected.id, image_b64, 0.95, enrollPose);
+      applyEnrollment(res);
+      setMessage(`Saved ${posePhrase(enrollPose)} sample. ${statusMessage(res, selected.display_name)}`);
+      if (res.enrollment_complete && !wasComplete) setConfirm(true);
+      if (isAdmin) load();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Enroll failed');
     } finally {
@@ -153,23 +213,26 @@ export function EnrollScreen() {
       >
         {twoColumn && camera}
         <View style={styles.controls}>
-          <Text style={styles.title}>Enroll faces</Text>
-          <View style={styles.searchRow}>
-            <TextInput
-              value={q}
-              onChangeText={setQ}
-              placeholder="Search code or name"
-              placeholderTextColor={THEME.textSubtle}
-              style={[styles.input, styles.searchInput]}
-              autoCapitalize="none"
-              autoCorrect={false}
-              returnKeyType="search"
-              onSubmitEditing={load}
-            />
-            <Pressable onPress={load} accessibilityRole="button" style={styles.searchBtn}>
-              <Text style={styles.searchBtnText}>Search</Text>
-            </Pressable>
-          </View>
+          <Text style={styles.title}>{isAdmin ? 'Enroll faces' : 'Enroll your face'}</Text>
+          {isAdmin ? (
+            <View style={styles.searchRow}>
+              <TextInput
+                value={q}
+                onChangeText={setQ}
+                placeholder="Search code or name"
+                placeholderTextColor={THEME.textSubtle}
+                style={[styles.input, styles.searchInput]}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="search"
+                onSubmitEditing={load}
+              />
+              <Pressable onPress={load} accessibilityRole="button" style={styles.searchBtn}>
+                <Text style={styles.searchBtnText}>Search</Text>
+              </Pressable>
+            </View>
+          ) : null}
+          {isAdmin ? (
           <FlatList
             style={[styles.list, twoColumn ? styles.listFlexible : { maxHeight: layout.short ? 116 : 168 }]}
             data={employees}
@@ -183,12 +246,14 @@ export function EnrollScreen() {
               const modeLabel = mode === 'remote' ? 'Remote' : 'On-site';
               const modeDisabled = modeBusyId === item.id;
               const isSelected = selected?.id === item.id;
+              const enrolled = !!item.enrollment_complete;
               return (
                 <Pressable
                   onPress={() => {
                     setSelected(item);
-                    setSamples(0);
-                    setMessage(`Enrolling ${item.display_name} (${item.code})`);
+                    loadEnrollment(item).catch((err) => {
+                      setMessage(err instanceof Error ? err.message : 'Unable to load enrollment status');
+                    });
                   }}
                   accessibilityRole="button"
                   accessibilityState={{ selected: isSelected }}
@@ -198,6 +263,11 @@ export function EnrollScreen() {
                   <Text style={styles.name} numberOfLines={2}>
                     {item.display_name}
                   </Text>
+                  <View style={[styles.enrollPill, enrolled ? styles.enrollPillOn : styles.enrollPillOff]}>
+                    <Text style={[styles.enrollPillText, enrolled ? styles.enrollPillTextOn : styles.enrollPillTextOff]}>
+                      {enrolled ? 'Complete' : 'Incomplete'}
+                    </Text>
+                  </View>
                   <Pressable
                     disabled={modeDisabled}
                     onPress={() => setModeMenuFor(item)}
@@ -212,6 +282,36 @@ export function EnrollScreen() {
               );
             }}
           />
+          ) : null}
+          {selected ? (
+            <View style={[styles.enrollBanner, enrollment?.enrollment_complete ? styles.enrollBannerOn : styles.enrollBannerOff]}>
+              <Text style={[styles.enrollBannerText, enrollment?.enrollment_complete ? styles.enrollBannerTextOn : styles.enrollBannerTextOff]}>
+                {enrollment?.enrollment_complete ? 'Enrollment complete' : 'Enrollment incomplete'}
+              </Text>
+            </View>
+          ) : null}
+          {selected ? (
+            <View style={styles.poseRow}>
+              {POSES.map((pose) => {
+                const done = !!enrollment?.captured_poses?.includes(pose.id);
+                const on = enrollPose === pose.id;
+                return (
+                  <Pressable
+                    key={pose.id}
+                    onPress={() => setEnrollPose(pose.id)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: on }}
+                    style={[styles.poseChip, done && styles.poseChipDone, on && styles.poseChipOn]}
+                  >
+                    <Text style={[styles.poseChipText, (done || on) && styles.poseChipTextOn]}>{pose.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
+          <Text style={styles.prompt}>
+            {selected ? POSES.find((p) => p.id === enrollPose)?.prompt : 'Select an employee to start enrollment'}
+          </Text>
           {!twoColumn && camera}
           <Pressable
             disabled={busy || !selected}
@@ -219,7 +319,9 @@ export function EnrollScreen() {
             accessibilityRole="button"
             style={[styles.cta, styles.ctaPrimary, (busy || !selected) && styles.ctaBusy]}
           >
-            <Text style={styles.ctaText}>{busy ? 'Saving…' : 'Capture sample'}</Text>
+            <Text style={styles.ctaText}>
+              {busy ? 'Saving…' : `${enrollment?.enrollment_complete ? 'Recapture' : 'Capture'} ${posePhrase(enrollPose)}`}
+            </Text>
           </Pressable>
           <Pressable
             disabled={busy || !selected}
@@ -229,7 +331,7 @@ export function EnrollScreen() {
           >
             <Text style={[styles.ctaText, styles.ctaResetText]}>Reset face samples</Text>
           </Pressable>
-          <Text style={styles.status} numberOfLines={2}>
+          <Text style={styles.status} numberOfLines={3}>
             {message}
           </Text>
         </View>
@@ -269,8 +371,8 @@ export function EnrollScreen() {
       </Modal>
       <ConfirmModal
         visible={confirm}
-        title="Enrollment samples saved"
-        message={`${selected?.display_name || ''} now has ${samples} templates. Capture more if lighting varies.`}
+        title="Enrollment complete"
+        message={`${selected?.display_name || 'This user'} now has looking straight, left, and right samples. Clock-in is enabled.`}
         confirmLabel="Done"
         onConfirm={() => setConfirm(false)}
         onCancel={() => setConfirm(false)}
@@ -278,7 +380,7 @@ export function EnrollScreen() {
       <ConfirmModal
         visible={resetConfirm}
         title="Reset face samples?"
-        message={`This will delete all enrolled face samples for ${selected?.display_name || 'this user'}. They will need to capture new samples before clock-in works again.`}
+        message={`This will delete all enrolled face samples for ${selected?.display_name || 'this user'}. They will need to capture looking straight, left, and right before clock-in works again.`}
         confirmLabel="Reset"
         onConfirm={resetSamples}
         onCancel={() => setResetConfirm(false)}
@@ -394,6 +496,46 @@ const styles = StyleSheet.create({
   modeMenuOptionText: { color: THEME.textSecondary, fontWeight: '700', fontSize: 15 },
   modeMenuOptionTextOn: { color: '#fff' },
   empty: { color: THEME.textMuted, paddingVertical: 14, textAlign: 'center' },
+  enrollPill: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  enrollPillOn: { backgroundColor: THEME.presentBg, borderColor: THEME.presentBorder },
+  enrollPillOff: { backgroundColor: 'rgba(245, 158, 11, 0.12)', borderColor: 'rgba(245, 158, 11, 0.35)' },
+  enrollPillText: { fontSize: 11, fontWeight: '800' },
+  enrollPillTextOn: { color: THEME.presentText },
+  enrollPillTextOff: { color: THEME.amberLight },
+  enrollBanner: {
+    marginTop: 10,
+    minHeight: 36,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  enrollBannerOn: { backgroundColor: THEME.presentBg, borderColor: THEME.presentBorder },
+  enrollBannerOff: { backgroundColor: 'rgba(245, 158, 11, 0.12)', borderColor: 'rgba(245, 158, 11, 0.35)' },
+  enrollBannerText: { fontSize: 13, fontWeight: '800' },
+  enrollBannerTextOn: { color: THEME.presentText },
+  enrollBannerTextOff: { color: THEME.amberLight },
+  poseRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  poseChip: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  poseChipOn: { backgroundColor: 'rgba(6, 182, 212, 0.16)', borderColor: 'rgba(6, 182, 212, 0.45)' },
+  poseChipDone: { borderColor: 'rgba(16, 185, 129, 0.45)' },
+  poseChipText: { color: THEME.textMuted, fontWeight: '800', fontSize: 13 },
+  poseChipTextOn: { color: '#fff' },
+  prompt: { color: THEME.cyanLight, marginTop: 8, textAlign: 'center', fontSize: 13, fontWeight: '700' },
   camera: { flex: 1, marginVertical: 10 },
   cameraColumn: { flex: 0.85, marginVertical: 0, minHeight: 0 },
   cta: {

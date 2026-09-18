@@ -4,6 +4,7 @@ import { DataSource, ILike, Repository } from 'typeorm';
 import { Employee } from './employee.entity';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
+import { buildEnrollmentStatus } from '../recognition/enrollment';
 
 @Injectable()
 export class EmployeesService {
@@ -41,13 +42,19 @@ export class EmployeesService {
       where: where.length ? where : status ? { status: status as 'active' | 'inactive' } : undefined,
       order: { code: 'ASC' },
     });
-    return status && q ? list.filter((e) => e.status === status) : list;
+    const filtered = status && q ? list.filter((e) => e.status === status) : list;
+    return this.withEnrollment(filtered);
   }
 
   async get(id: string) {
     const emp = await this.repo.findOne({ where: { id } });
     if (!emp) throw new NotFoundException('Employee not found');
     return emp;
+  }
+
+  async getWithEnrollment(id: string) {
+    const [withStatus] = await this.withEnrollment([await this.get(id)]);
+    return withStatus;
   }
 
   async getByCode(code: string) {
@@ -62,5 +69,34 @@ export class EmployeesService {
     await this.ds.query('DELETE FROM face_templates WHERE employee_id = $1', [emp.id]);
     await this.repo.remove(emp);
     return { ok: true, code: emp.code, display_name: emp.display_name };
+  }
+
+  private async withEnrollment(list: Employee[]) {
+    if (!list.length) return list;
+    const rows = await this.ds.query(
+      `SELECT employee_id, pose, features_complete
+         FROM face_templates
+        WHERE employee_id = ANY($1::uuid[])`,
+      [list.map((e) => e.id)],
+    );
+    const byEmployee = new Map<string, Array<{ pose: string | null; features_complete: boolean }>>();
+    for (const row of rows as Array<{
+      employee_id: string;
+      pose: string | null;
+      features_complete: boolean | null;
+    }>) {
+      const current = byEmployee.get(row.employee_id) || [];
+      current.push({ pose: row.pose, features_complete: !!row.features_complete });
+      byEmployee.set(row.employee_id, current);
+    }
+    return list.map((emp) => {
+      const status = buildEnrollmentStatus(byEmployee.get(emp.id) || []);
+      return Object.assign(emp, {
+        enrollment_status: status.enrollment_status,
+        enrollment_complete: status.enrollment_complete,
+        captured_poses: status.captured_poses,
+        missing_poses: status.missing_poses,
+      });
+    });
   }
 }

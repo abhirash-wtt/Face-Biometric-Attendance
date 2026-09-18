@@ -290,6 +290,28 @@
       background:rgba(6, 182, 212, 0.1); padding:4px 8px; border-radius:6px;
       text-align:center; border:1px solid rgba(6, 182, 212, 0.2);
     }
+    .enroll-badge {
+      display:inline-flex; align-items:center; justify-content:center;
+      min-height:28px; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:800;
+      letter-spacing:0.02em; margin: 4px 0 10px;
+    }
+    .enroll-badge.incomplete {
+      color:#fbbf24; background:rgba(245, 158, 11, 0.12); border:1px solid rgba(245, 158, 11, 0.35);
+    }
+    .enroll-badge.complete {
+      color:#6ee7b7; background:rgba(16, 185, 129, 0.12); border:1px solid rgba(16, 185, 129, 0.35);
+    }
+    .pose-row { display:flex; gap:8px; margin:4px 0 8px; }
+    .pose-chip {
+      flex:1 1 0; min-height:42px; margin:0; padding:8px 6px;
+      border-radius:12px; border:1px solid var(--line); background:transparent;
+      color:var(--muted); font-size:13px; font-weight:800; font-family:inherit; cursor:pointer;
+    }
+    .pose-chip.on {
+      color:#fff; background:rgba(6, 182, 212, 0.16); border-color:rgba(6, 182, 212, 0.45);
+    }
+    .pose-chip.done { color:#6ee7b7; border-color:rgba(16, 185, 129, 0.45); }
+    .emp .enroll-badge { margin:0; min-height:24px; padding:2px 8px; font-size:11px; flex:0 0 auto; }
 
     .mode-dd { position:relative; flex:0 0 auto; min-width:124px; max-width:46%; }
     .mode-dd-trigger {
@@ -487,9 +509,15 @@
         <button class="cta" id="searchBtn">Search</button>
       </div>
       <div class="list" id="empList"></div>
-      <button class="cta" id="sampleBtn">Capture sample</button>
+      <p class="enroll-badge incomplete hidden" id="enrollBadge">Enrollment incomplete</p>
+      <div class="pose-row hidden" id="poseRow">
+        <button type="button" class="pose-chip on" data-pose="straight">Straight</button>
+        <button type="button" class="pose-chip" data-pose="left">Left</button>
+        <button type="button" class="pose-chip" data-pose="right">Right</button>
+      </div>
+      <button class="cta" id="sampleBtn">Capture looking straight</button>
       <button class="cta" id="resetSamplesBtn">Reset face samples</button>
-      <p class="status" id="enrollStatus">Select an employee. Confirm your face is visible above, then capture 3–10 samples.</p>
+      <p class="status" id="enrollStatus">Select an employee. Capture looking straight, left, and right to complete enrollment.</p>
     </section>
     <section id="attendance" class="hidden">
       <h1>Attendance</h1>
@@ -585,7 +613,7 @@
         <label for="password2">Confirm password</label>
         <input id="password2" type="password" autocomplete="new-password" enterkeyhint="go" />
       </div>
-      <p class="muted hidden" id="registerHint">Creates your employee account. After that, open Enroll and capture 3–10 face samples so you can clock in.</p>
+      <p class="muted hidden" id="registerHint">Creates your employee account. After that, open Enroll and capture looking straight, left, and right so you can clock in.</p>
       <button class="cta" id="loginBtn">Login</button>
       <button class="cta hidden" id="registerBtn">Create account</button>
       <button class="alt" id="logoutBtn">Logout</button>
@@ -638,6 +666,8 @@
       employees: [],
       selected: null,
       samples: 0,
+      enrollPose: 'straight',
+      enrollment: null,
       pending: null,
       queue: JSON.parse(localStorage.getItem('offline_queue') || '[]'),
     };
@@ -931,6 +961,7 @@
     function identifyFailMessage(reason) {
       if (reason === 'identity_mismatch') return 'Face does not match this login';
       if (reason === 'no_templates') return 'No face enrolled for this login';
+      if (reason === 'enrollment_incomplete') return 'Face enrollment is incomplete';
       if (reason === 're_enroll_required') return 'Biometric model updated. Please re-enroll face';
       if (reason === 'low_similarity') return 'Face not recognized';
       if (reason === 'low_liveness') return 'Liveness check failed';
@@ -1115,6 +1146,73 @@
       return c.toDataURL('image/jpeg', 0.75).replace(/^data:image\/\w+;base64,/, '');
     }
 
+    const POSE_PROMPTS = {
+      straight: 'Look straight at the camera',
+      left: 'Turn your head left, then hold still',
+      right: 'Turn your head right, then hold still',
+    };
+    const POSE_ORDER = ['straight', 'left', 'right'];
+    function poseLabel(pose) {
+      if (pose === 'left') return 'looking left';
+      if (pose === 'right') return 'looking right';
+      return 'looking straight';
+    }
+    function applyEnrollment(res, opts) {
+      state.enrollment = res || null;
+      state.samples = (res && res.total_templates) || 0;
+      const captured = (res && res.captured_poses) || [];
+      const missing = (res && res.missing_poses) || POSE_ORDER.slice();
+      if (!opts || opts.autoPose !== false) {
+        if (missing.length) state.enrollPose = missing[0];
+      }
+      const badge = $('enrollBadge');
+      const poseRow = $('poseRow');
+      const complete = !!(res && res.enrollment_complete);
+      if (!state.selected) {
+        badge.classList.add('hidden');
+        poseRow.classList.add('hidden');
+        $('sampleBtn').textContent = 'Capture looking straight';
+        return complete;
+      }
+      badge.classList.remove('hidden');
+      poseRow.classList.remove('hidden');
+      badge.textContent = complete ? 'Enrollment complete' : 'Enrollment incomplete';
+      badge.classList.toggle('complete', complete);
+      badge.classList.toggle('incomplete', !complete);
+      poseRow.querySelectorAll('.pose-chip').forEach((chip) => {
+        const pose = chip.dataset.pose;
+        chip.classList.toggle('done', captured.includes(pose));
+        chip.classList.toggle('on', pose === state.enrollPose);
+      });
+      $('sampleBtn').textContent = complete
+        ? 'Recapture ' + poseLabel(state.enrollPose)
+        : 'Capture ' + poseLabel(state.enrollPose);
+      setEnrollPrompt();
+      return complete;
+    }
+    function setEnrollPrompt() {
+      if (state.tab !== 'enroll') return;
+      const prompt = POSE_PROMPTS[state.enrollPose] || POSE_PROMPTS.straight;
+      $('livenessPrompt').innerHTML = '<span class="prompt-dot"></span>' + prompt;
+    }
+    async function loadEnrollmentStatus() {
+      if (!state.selected || !state.selected.id) {
+        applyEnrollment(null);
+        return null;
+      }
+      const res = await api('/enroll/' + state.selected.id);
+      applyEnrollment(res);
+      return res;
+    }
+    function enrollStatusMessage(res) {
+      if (!res) return 'Capture looking straight, left, and right to complete enrollment.';
+      if (res.enrollment_complete) {
+        return 'Enrollment complete for ' + (state.selected && state.selected.display_name ? state.selected.display_name : 'this user') + '. Clock-in is enabled.';
+      }
+      const missing = (res.missing_poses || []).map(poseLabel);
+      return 'Enrollment incomplete. Still need: ' + (missing.join(', ') || 'straight, left, right') + '.';
+    }
+
     function prepareEnrollTab() {
       const isAdmin = jwtRole() === 'admin';
       $('enrollTitle').textContent = isAdmin ? 'Enroll faces' : 'Enroll your face';
@@ -1122,12 +1220,21 @@
       $('empList').classList.toggle('hidden', !isAdmin);
       if (isAdmin) {
         loadEmployees().catch((e) => status('enrollStatus', e.message));
+        if (state.selected) {
+          loadEnrollmentStatus()
+            .then((res) => status('enrollStatus', enrollStatusMessage(res)))
+            .catch((e) => status('enrollStatus', e.message));
+        } else {
+          applyEnrollment(null);
+          status('enrollStatus', 'Select an employee. Capture looking straight, left, and right to complete enrollment.');
+        }
         return;
       }
       const user = authUser() || {};
       const id = linkedEmployeeId();
       if (!id) {
         state.selected = null;
+        applyEnrollment(null);
         status('enrollStatus', 'This login is not linked to an employee.');
         return;
       }
@@ -1136,8 +1243,9 @@
         code: user.employee_code || '',
         display_name: user.display_name || user.email || 'your face',
       };
-      state.samples = state.samples || 0;
-      status('enrollStatus', 'Confirm your face is visible above, then capture 3–10 samples' + (state.selected.code ? ' (' + state.selected.code + ')' : '') + '.');
+      loadEnrollmentStatus()
+        .then((res) => status('enrollStatus', enrollStatusMessage(res)))
+        .catch((e) => status('enrollStatus', e.message));
     }
     document.querySelectorAll('header button').forEach((b) => {
       b.onclick = () => {
@@ -1149,7 +1257,7 @@
         ['kiosk','enroll','attendance','wfh','settings'].forEach((id) => $(id).classList.toggle('hidden', id !== state.tab));
         const camHidden = state.tab === 'settings' || state.tab === 'attendance' || state.tab === 'wfh';
         $('cameraPanel').classList.toggle('hidden', camHidden);
-        $('livenessPrompt').style.visibility = state.tab === 'kiosk' ? 'visible' : 'hidden';
+        $('livenessPrompt').style.visibility = (state.tab === 'kiosk' || state.tab === 'enroll') ? 'visible' : 'hidden';
         // Holding the camera open behind a hidden panel drains phone batteries.
         if (camHidden) stopCam();
         else if (!camActive()) ensureCam(false);
@@ -1216,7 +1324,7 @@
               status('kioskStatus', 'Duplicate entry detected.');
               rollPrompt();
               return;
-            } else if (/geofence|location is required|outside office|not linked|does not match|Face verification required|only clock in|No face enrolled/i.test(attMsg)) {
+            } else if (/geofence|location is required|outside office|not linked|does not match|Face verification required|only clock in|No face enrolled|enrollment is incomplete/i.test(attMsg)) {
               status('kioskStatus', attMsg);
               showFailureModal({
                 title: /geofence|location|outside/i.test(attMsg) ? 'Location Verification Failed' : 'Attendance Failed',
@@ -1263,9 +1371,11 @@
             detailText = 'Face not recognized. Your face did not match any active employee profile.';
           } else if (res.reason === 'identity_mismatch') {
             detailText = 'Face does not match the employee profile linked to this login.';
-          } else if (res.reason === 'no_templates') {
-            detailText = 'No biometric face templates were found for this account. Please enroll your face first.';
-          } else if (res.reason === 'low_liveness') {
+            } else if (res.reason === 'no_templates') {
+              detailText = 'No biometric face templates were found for this account. Please enroll your face first.';
+            } else if (res.reason === 'enrollment_incomplete') {
+              detailText = 'Face enrollment is incomplete. Capture looking straight, left, and right in the Enroll tab before clock-in.';
+            } else if (res.reason === 'low_liveness') {
             detailText = 'Liveness check failed. Please look straight into the camera and follow the movement prompt.';
           } else if (res.reason === 're_enroll_required') {
             detailText = 'Biometric model updated. Please re-enroll your face in the Enroll tab.';
@@ -1403,10 +1513,12 @@
       state.employees = await api('/employees' + (q ? ('?q=' + encodeURIComponent(q)) : ''));
       $('empList').innerHTML = state.employees.map((e) => {
         const mode = e.working_mode || 'onsite';
+        const enrolled = !!e.enrollment_complete;
         return (
           '<div class="emp' + (state.selected && state.selected.id === e.id ? ' on' : '') + '" data-id="' + e.id + '">' +
             '<span class="code">' + e.code + '</span>' +
             '<span class="emp-name">' + e.display_name + '</span>' +
+            '<span class="enroll-badge ' + (enrolled ? 'complete' : 'incomplete') + '">' + (enrolled ? 'Complete' : 'Incomplete') + '</span>' +
             '<div class="mode-dd" data-id="' + e.id + '">' +
               '<button type="button" class="mode-dd-trigger" aria-label="Working Mode" aria-haspopup="listbox" aria-expanded="false">' +
                 modeLabel(mode) +
@@ -1445,8 +1557,9 @@
           if (ev.target.closest('.mode-dd')) return;
           closeWorkingModeMenus();
           state.selected = state.employees.find((x) => x.id === el.dataset.id);
-          state.samples = 0;
-          status('enrollStatus', 'Enrolling ' + state.selected.display_name + ' (' + state.selected.code + ')');
+          loadEnrollmentStatus()
+            .then((res) => status('enrollStatus', 'Enrolling ' + state.selected.display_name + ' (' + state.selected.code + '). ' + enrollStatusMessage(res)))
+            .catch((e) => status('enrollStatus', e.message));
           loadEmployees().catch(() => {});
         };
       });
@@ -1468,16 +1581,38 @@
     };
     $('sampleBtn').onclick = async () => {
       if (!state.selected) return status('enrollStatus', 'Select an employee first');
-      const maxSamples = 10;
-      if ((state.samples || 0) >= maxSamples) {
-        return status('enrollStatus', 'Maximum of ' + maxSamples + ' face samples reached for this user');
-      }
       try {
-        const res = await api('/enroll', { method: 'POST', body: { employee_id: state.selected.id, image_b64: await captureB64(), liveness_score: 0.95 } });
-        state.samples = res.total_templates || ((state.samples || 0) + 1);
-        const max = res.max_templates || maxSamples;
-        status('enrollStatus', 'Saved sample ' + state.samples + ' of ' + max + ' for ' + state.selected.display_name);
+        const pose = state.enrollPose || 'straight';
+        const res = await api('/enroll', {
+          method: 'POST',
+          body: {
+            employee_id: state.selected.id,
+            image_b64: await captureB64(),
+            liveness_score: 0.95,
+            pose,
+          },
+        });
+        const wasComplete = !!(state.enrollment && state.enrollment.enrollment_complete);
+        applyEnrollment(res);
+        status('enrollStatus', 'Saved ' + poseLabel(pose) + ' sample. ' + enrollStatusMessage(res));
+        if (res.enrollment_complete && !wasComplete) {
+          $('confirmTitle').textContent = 'Enrollment complete';
+          $('confirmMsg').textContent = (state.selected.display_name || 'This user') +
+            ' now has looking straight, left, and right samples. Clock-in is enabled.';
+          $('confirm').showModal();
+          if (window._confirmTimer) clearTimeout(window._confirmTimer);
+          window._confirmTimer = setTimeout(() => {
+            if ($('confirm').open) $('confirm').close();
+          }, 2500);
+        }
+        if (jwtRole() === 'admin') loadEmployees().catch(() => {});
       } catch (e) { status('enrollStatus', e.message); }
+    };
+    $('poseRow').onclick = (ev) => {
+      const chip = ev.target.closest && ev.target.closest('.pose-chip');
+      if (!chip || !state.selected) return;
+      state.enrollPose = chip.dataset.pose;
+      applyEnrollment(state.enrollment || { captured_poses: [], missing_poses: POSE_ORDER.slice(), enrollment_complete: false }, { autoPose: false });
     };
     $('resetSamplesBtn').onclick = () => {
       if (!state.selected) return status('enrollStatus', 'Select an employee first');
@@ -1493,13 +1628,14 @@
       if (!emp) return status('enrollStatus', 'Select an employee first');
       try {
         const res = await api('/enroll/' + emp.id, { method: 'DELETE' });
-        state.samples = 0;
+        applyEnrollment(res);
         status(
           'enrollStatus',
           res.templates_removed
-            ? 'Reset ' + res.templates_removed + ' sample(s) for ' + emp.display_name + '. Capture new face samples.'
-            : 'No samples to reset for ' + emp.display_name + '. Capture new face samples.',
+            ? 'Reset ' + res.templates_removed + ' sample(s) for ' + emp.display_name + '. Capture looking straight, left, and right again.'
+            : 'No samples to reset for ' + emp.display_name + '. Capture looking straight, left, and right.',
         );
+        if (jwtRole() === 'admin') loadEmployees().catch(() => {});
       } catch (e) { status('enrollStatus', e.message); }
     };
 
@@ -1865,7 +2001,7 @@
         if (canEnroll()) {
           const enrollTab = document.querySelector('header button[data-tab="enroll"]');
           if (enrollTab) enrollTab.click();
-          status('enrollStatus', 'Account created. Capture 3–10 samples of your face.');
+          status('enrollStatus', 'Account created. Capture looking straight, left, and right to complete enrollment.');
         }
       } catch (e) { status('settingsStatus', e.message); }
     };
