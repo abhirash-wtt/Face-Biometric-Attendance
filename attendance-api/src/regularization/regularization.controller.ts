@@ -20,7 +20,7 @@ export class RegularizationController {
   @Post()
   @Roles('user')
   @ApiOperation({
-    summary: 'Submit a regularization request (WFH, On Duty, or Late in)',
+    summary: 'Submit a regularization request (WFH, On Duty, Late in, or Early Out)',
   })
   create(@Body() dto: CreateWfhRequestDto, @CurrentUser() user: JwtUser) {
     return this.regularization.create(dto, user);

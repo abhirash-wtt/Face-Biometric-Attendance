@@ -176,6 +176,7 @@ function StatusPill({ status }: { status: string }) {
 function typeLabel(type?: RegularizationRequestType) {
   if (type === 'mark_present') return 'On Duty';
   if (type === 'late_in') return 'Late in';
+  if (type === 'early_out') return 'Early Out';
   return 'Work From Home';
 }
 
@@ -194,6 +195,14 @@ function typeCopy(type: RegularizationRequestType) {
       dateLabel: 'Date',
       placeholder: 'Why you will be late (required)',
       submitted: 'Late in request submitted',
+    };
+  }
+  if (type === 'early_out') {
+    return {
+      hint: 'Tell admin you need to leave early, with a genuine reason. Approval acknowledges the early departure and does not change clock times.',
+      dateLabel: 'Date',
+      placeholder: 'Why you need to leave early (required)',
+      submitted: 'Early Out request submitted',
     };
   }
   return {
@@ -298,7 +307,9 @@ export function RegularizationScreen({ role }: { role: 'admin' | 'user' | '' }) 
   const selectType = (next: RegularizationRequestType) => {
     setRequestType(next);
     const now = todayIst();
-    if ((next === 'wfh' || next === 'late_in') && workDate < now) setWorkDate(now);
+    if ((next === 'wfh' || next === 'late_in' || next === 'early_out') && workDate < now) {
+      setWorkDate(now);
+    }
     if (next === 'mark_present' && workDate > now) setWorkDate(now);
   };
 
@@ -310,8 +321,9 @@ export function RegularizationScreen({ role }: { role: 'admin' | 'user' | '' }) 
     >
       <Text style={styles.title}>Regularize</Text>
       <Text style={styles.meta}>
-        Request Late in if you will arrive late, On Duty if you forgot to clock in or out, or Work
-        From Home. Approved On Duty requests leave Clock In and Clock Out blank.
+        Request Late in if you will arrive late, Early Out if you need to leave early, On Duty if
+        you forgot to clock in or out, or Work From Home. Approved On Duty requests leave Clock In
+        and Clock Out blank.
       </Text>
       {renderForm && (
         <View style={styles.formCard}>
@@ -323,6 +335,7 @@ export function RegularizationScreen({ role }: { role: 'admin' | 'user' | '' }) 
                 ['mark_present', 'On Duty'],
                 ['wfh', 'Work From Home'],
                 ['late_in', 'Late in'],
+                ['early_out', 'Early Out'],
               ] as Array<[RegularizationRequestType, string]>
             ).map(([id, label]) => {
               const on = requestType === id;

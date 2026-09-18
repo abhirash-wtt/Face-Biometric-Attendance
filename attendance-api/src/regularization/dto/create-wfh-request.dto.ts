@@ -6,7 +6,7 @@ export class CreateWfhRequestDto {
   @ApiProperty({
     example: '2026-09-18',
     description:
-      'Request date (YYYY-MM-DD, Asia/Kolkata). WFH and Late in: today or future. On Duty: today or past.',
+      'Request date (YYYY-MM-DD, Asia/Kolkata). WFH, Late in, and Early Out: today or future. On Duty: today or past.',
   })
   @IsString()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'work_date must be YYYY-MM-DD' })
@@ -14,13 +14,13 @@ export class CreateWfhRequestDto {
 
   @ApiPropertyOptional({
     example: 'mark_present',
-    enum: ['wfh', 'mark_present', 'late_in'],
+    enum: ['wfh', 'mark_present', 'late_in', 'early_out'],
     description:
-      'wfh = skip geofence. mark_present = mark attendance Present without clock times. late_in = notify admin of a late arrival.',
+      'wfh = skip geofence. mark_present = mark attendance Present without clock times. late_in = notify admin of a late arrival. early_out = notify admin of an early departure.',
   })
   @IsOptional()
   @IsString()
-  @IsIn(['wfh', 'mark_present', 'late_in'])
+  @IsIn(['wfh', 'mark_present', 'late_in', 'early_out'])
   request_type?: RegularizationRequestType;
 
   @ApiProperty({ example: 'Client workshop from home' })

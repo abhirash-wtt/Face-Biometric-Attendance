@@ -51,7 +51,10 @@ export class RegularizationService {
 
     const requestType: RegularizationRequestType = dto.request_type || 'wfh';
     const today = localDateYmd();
-    if ((requestType === 'wfh' || requestType === 'late_in') && dto.work_date < today) {
+    if (
+      (requestType === 'wfh' || requestType === 'late_in' || requestType === 'early_out') &&
+      dto.work_date < today
+    ) {
       throw new BadRequestException(
         `${this.typeLabel(requestType)} date cannot be in the past (earliest: ${today})`,
       );
@@ -155,6 +158,7 @@ export class RegularizationService {
   private typeLabel(type: RegularizationRequestType) {
     if (type === 'mark_present') return 'On Duty';
     if (type === 'late_in') return 'Late in';
+    if (type === 'early_out') return 'Early Out';
     return 'WFH';
   }
 

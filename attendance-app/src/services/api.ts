@@ -36,7 +36,7 @@ export type AttendanceStatusRow = {
 };
 
 export type WfhRequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
-export type RegularizationRequestType = 'wfh' | 'mark_present' | 'late_in';
+export type RegularizationRequestType = 'wfh' | 'mark_present' | 'late_in' | 'early_out';
 
 export type WfhRequest = {
   id: string;

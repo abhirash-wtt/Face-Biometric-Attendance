@@ -10,7 +10,7 @@ import { Employee } from '../employees/employee.entity';
 import { User } from '../auth/user.entity';
 
 export type WfhRequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
-export type RegularizationRequestType = 'wfh' | 'mark_present' | 'late_in';
+export type RegularizationRequestType = 'wfh' | 'mark_present' | 'late_in' | 'early_out';
 
 @Entity('wfh_regularization_requests')
 export class WfhRequest {
@@ -28,7 +28,7 @@ export class WfhRequest {
   @Column({ type: 'date' })
   work_date: string;
 
-  /** `wfh` skips geofence; `mark_present` marks roster Present with blank punches; `late_in` notifies admin of a late arrival. */
+  /** `wfh` skips geofence; `mark_present` marks roster Present with blank punches; `late_in` / `early_out` notify admin of late arrival or early departure. */
   @Column({ type: 'text', default: 'wfh' })
   request_type: RegularizationRequestType;
 
