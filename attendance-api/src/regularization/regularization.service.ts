@@ -51,11 +51,13 @@ export class RegularizationService {
 
     const requestType: RegularizationRequestType = dto.request_type || 'wfh';
     const today = localDateYmd();
-    if (requestType === 'wfh' && dto.work_date < today) {
-      throw new BadRequestException(`WFH date cannot be in the past (earliest: ${today})`);
+    if ((requestType === 'wfh' || requestType === 'late_in') && dto.work_date < today) {
+      throw new BadRequestException(
+        `${this.typeLabel(requestType)} date cannot be in the past (earliest: ${today})`,
+      );
     }
     if (requestType === 'mark_present' && dto.work_date > today) {
-      throw new BadRequestException(`Present date cannot be in the future (latest: ${today})`);
+      throw new BadRequestException(`On Duty date cannot be in the future (latest: ${today})`);
     }
 
     const existing = await this.repo.findOne({
@@ -151,7 +153,9 @@ export class RegularizationService {
   }
 
   private typeLabel(type: RegularizationRequestType) {
-    return type === 'mark_present' ? 'On Duty' : 'WFH';
+    if (type === 'mark_present') return 'On Duty';
+    if (type === 'late_in') return 'Late in';
+    return 'WFH';
   }
 
   private resolveRequesterEmployeeId(user: JwtUser, requestedEmployeeId?: string): string {

@@ -168,7 +168,7 @@ export class DatabaseInitService implements OnModuleInit {
       `ALTER TABLE wfh_regularization_requests ADD COLUMN IF NOT EXISTS request_type TEXT DEFAULT 'wfh'`,
     );
     await this.ds.query(
-      `UPDATE wfh_regularization_requests SET request_type = 'wfh' WHERE request_type IS NULL OR request_type NOT IN ('wfh', 'mark_present')`,
+      `UPDATE wfh_regularization_requests SET request_type = 'wfh' WHERE request_type IS NULL OR request_type NOT IN ('wfh', 'mark_present', 'late_in')`,
     );
     await this.ds.query(
       `ALTER TABLE wfh_regularization_requests ALTER COLUMN request_type SET DEFAULT 'wfh'`,
@@ -191,7 +191,7 @@ export class DatabaseInitService implements OnModuleInit {
     `);
     try {
       await this.ds.query(
-        `ALTER TABLE wfh_regularization_requests ADD CONSTRAINT wfh_requests_type_check CHECK (request_type IN ('wfh', 'mark_present'))`,
+        `ALTER TABLE wfh_regularization_requests ADD CONSTRAINT wfh_requests_type_check CHECK (request_type IN ('wfh', 'mark_present', 'late_in'))`,
       );
     } catch (err) {
       const message = (err as Error).message || '';

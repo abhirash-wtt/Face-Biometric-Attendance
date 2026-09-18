@@ -174,7 +174,34 @@ function StatusPill({ status }: { status: string }) {
 }
 
 function typeLabel(type?: RegularizationRequestType) {
-  return type === 'mark_present' ? 'On Duty' : 'Work From Home';
+  if (type === 'mark_present') return 'On Duty';
+  if (type === 'late_in') return 'Late in';
+  return 'Work From Home';
+}
+
+function typeCopy(type: RegularizationRequestType) {
+  if (type === 'mark_present') {
+    return {
+      hint: 'Use this if you forgot Clock In and/or Clock Out. Admin approval marks you Present without filling punch times.',
+      dateLabel: 'Attendance Date',
+      placeholder: 'Why you missed clock in/out (required)',
+      submitted: 'On Duty request submitted',
+    };
+  }
+  if (type === 'late_in') {
+    return {
+      hint: 'Tell admin you will be late, with a genuine reason. Approval acknowledges the late arrival and does not change clock times.',
+      dateLabel: 'Date',
+      placeholder: 'Why you will be late (required)',
+      submitted: 'Late in request submitted',
+    };
+  }
+  return {
+    hint: 'Approved WFH dates skip geofencing when you clock in or out.',
+    dateLabel: 'WFH Date',
+    placeholder: 'Describe reason (required)',
+    submitted: 'WFH request submitted',
+  };
 }
 
 export function RegularizationScreen({ role }: { role: 'admin' | 'user' | '' }) {
@@ -188,6 +215,7 @@ export function RegularizationScreen({ role }: { role: 'admin' | 'user' | '' }) 
   const [busy, setBusy] = useState(false);
   const isAdmin = role === 'admin';
   const isPresentRequest = requestType === 'mark_present';
+  const copy = typeCopy(requestType);
 
   const load = useCallback(async () => {
     try {
@@ -219,7 +247,7 @@ export function RegularizationScreen({ role }: { role: 'admin' | 'user' | '' }) 
         request_type: requestType,
       });
       setReason('');
-      setMessage(isPresentRequest ? 'On Duty request submitted' : 'WFH request submitted');
+      setMessage(copy.submitted);
       await load();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Submit failed');
@@ -270,7 +298,7 @@ export function RegularizationScreen({ role }: { role: 'admin' | 'user' | '' }) 
   const selectType = (next: RegularizationRequestType) => {
     setRequestType(next);
     const now = todayIst();
-    if (next === 'wfh' && workDate < now) setWorkDate(now);
+    if ((next === 'wfh' || next === 'late_in') && workDate < now) setWorkDate(now);
     if (next === 'mark_present' && workDate > now) setWorkDate(now);
   };
 
@@ -282,39 +310,36 @@ export function RegularizationScreen({ role }: { role: 'admin' | 'user' | '' }) 
     >
       <Text style={styles.title}>Regularize</Text>
       <Text style={styles.meta}>
-        Request Work From Home, or ask admin to mark you On Duty if you forgot to clock in or out.
-        Approved On Duty requests leave Clock In and Clock Out blank.
+        Request Late in if you will arrive late, On Duty if you forgot to clock in or out, or Work
+        From Home. Approved On Duty requests leave Clock In and Clock Out blank.
       </Text>
       {renderForm && (
         <View style={styles.formCard}>
           <Text style={styles.sectionTitle}>New Request</Text>
           <Text style={styles.label}>Request Type</Text>
           <View style={styles.typeRow}>
-            <Pressable
-              onPress={() => selectType('mark_present')}
-              accessibilityRole="button"
-              style={[styles.typeBtn, isPresentRequest && styles.typeBtnOn]}
-            >
-              <Text style={[styles.typeBtnText, isPresentRequest && styles.typeBtnTextOn]}>
-                On Duty
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => selectType('wfh')}
-              accessibilityRole="button"
-              style={[styles.typeBtn, !isPresentRequest && styles.typeBtnOn]}
-            >
-              <Text style={[styles.typeBtnText, !isPresentRequest && styles.typeBtnTextOn]}>
-                Work From Home
-              </Text>
-            </Pressable>
+            {(
+              [
+                ['mark_present', 'On Duty'],
+                ['wfh', 'Work From Home'],
+                ['late_in', 'Late in'],
+              ] as Array<[RegularizationRequestType, string]>
+            ).map(([id, label]) => {
+              const on = requestType === id;
+              return (
+                <Pressable
+                  key={id}
+                  onPress={() => selectType(id)}
+                  accessibilityRole="button"
+                  style={[styles.typeBtn, on && styles.typeBtnOn]}
+                >
+                  <Text style={[styles.typeBtnText, on && styles.typeBtnTextOn]}>{label}</Text>
+                </Pressable>
+              );
+            })}
           </View>
-          <Text style={styles.hint}>
-            {isPresentRequest
-              ? 'Use this if you forgot Clock In and/or Clock Out. Admin approval marks you Present without filling punch times.'
-              : 'Approved WFH dates skip geofencing when you clock in or out.'}
-          </Text>
-          <Text style={styles.label}>{isPresentRequest ? 'Attendance Date' : 'WFH Date'}</Text>
+          <Text style={styles.hint}>{copy.hint}</Text>
+          <Text style={styles.label}>{copy.dateLabel}</Text>
           <DatePickerField
             value={workDate}
             onChange={setWorkDate}
@@ -325,11 +350,7 @@ export function RegularizationScreen({ role }: { role: 'admin' | 'user' | '' }) 
           <TextInput
             value={reason}
             onChangeText={setReason}
-            placeholder={
-              isPresentRequest
-                ? 'Why you missed clock in/out (required)'
-                : 'Describe reason (required)'
-            }
+            placeholder={copy.placeholder}
             placeholderTextColor={THEME.textSubtle}
             multiline
             numberOfLines={3}
@@ -425,9 +446,10 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   sectionTitle: { color: THEME.cyan, fontSize: 16, fontWeight: '800', marginBottom: 12 },
-  typeRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+  typeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
   typeBtn: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: 96,
     minHeight: TAP_TARGET,
     borderRadius: 12,
     borderWidth: 1,

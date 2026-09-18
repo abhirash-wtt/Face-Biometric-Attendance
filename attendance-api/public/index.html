@@ -201,6 +201,8 @@
     }
     button.toggle { flex:1 1 120px; background:transparent; border:1px solid var(--line); color:var(--muted); }
     button.toggle.on { background:var(--ok); border-color:var(--ok); color:#fff; }
+    .reg-type-row { display:flex; flex-wrap:wrap; gap:8px; margin:4px 0 10px; }
+    .reg-type-row > button.toggle { flex:1 1 90px; min-width:0; width:auto; margin:0; padding:12px 8px; font-size:13px; }
     button:disabled { opacity:.55; cursor:not-allowed; transform:none !important; box-shadow:none !important; }
 
     .clock-actions { margin-top:14px; }
@@ -495,13 +497,14 @@
     </section>
     <section id="wfh" class="hidden">
       <h1>Regularize</h1>
-      <p id="wfhMeta">Request Work From Home, or ask admin to mark you On Duty if you forgot to clock in or out. Approved On Duty requests leave Clock In and Clock Out blank.</p>
+      <p id="wfhMeta">Request Late in if you will arrive late, On Duty if you forgot to clock in or out, or Work From Home. Approved On Duty requests leave Clock In and Clock Out blank.</p>
       <div id="wfhRequestForm" class="hidden">
         <p class="section-title" style="margin-top:4px">New request</p>
         <label>Request type</label>
-        <div class="row" style="margin:4px 0 10px">
+        <div class="reg-type-row">
           <button type="button" class="toggle" id="regTypePresent">On Duty</button>
           <button type="button" class="toggle on" id="regTypeWfh">Work From Home</button>
+          <button type="button" class="toggle" id="regTypeLate">Late in</button>
         </div>
         <p id="regTypeHint" class="muted" style="margin:0 0 10px;font-size:13px;line-height:1.4">Approved WFH dates skip geofencing when you clock in or out.</p>
         <div class="date-picker" style="margin:4px 0 10px">
@@ -517,7 +520,7 @@
         <textarea id="wfhReason" rows="3" placeholder="Reason (required)"></textarea>
         <button class="cta" id="wfhSubmitBtn">Submit request</button>
       </div>
-      <p id="wfhAdminHint" class="hidden">Employees submit WFH or missed clock-in/out requests after logging in. As admin, approve or reject pending requests below. Approving On Duty sets attendance to Present without filling Clock In or Clock Out.</p>
+      <p id="wfhAdminHint" class="hidden">Employees submit Late in, On Duty, or WFH requests after logging in. As admin, approve or reject pending requests below. Approving On Duty sets attendance to Present without filling Clock In or Clock Out. Late in informs you that the employee will arrive late.</p>
       <div class="roster-toolbar">
         <p class="section-title" id="wfhListTitle" style="margin:0;flex:1">My requests</p>
       </div>
@@ -678,24 +681,36 @@
       });
     }
     function regularizationType() {
-      return $('regTypePresent').classList.contains('on') ? 'mark_present' : 'wfh';
+      if ($('regTypePresent').classList.contains('on')) return 'mark_present';
+      if ($('regTypeLate').classList.contains('on')) return 'late_in';
+      return 'wfh';
     }
     function regularizationTypeLabel(type) {
-      return type === 'mark_present' ? 'On Duty' : 'Work From Home';
+      if (type === 'mark_present') return 'On Duty';
+      if (type === 'late_in') return 'Late in';
+      return 'Work From Home';
     }
     function syncRegFormCopy() {
-      const present = regularizationType() === 'mark_present';
-      $('wfhDateFieldLabel').textContent = present ? 'Attendance date' : 'WFH date';
-      $('regTypeHint').textContent = present
-        ? 'Use this if you forgot Clock In and/or Clock Out. Admin approval marks you Present without filling punch times.'
-        : 'Approved WFH dates skip geofencing when you clock in or out.';
-      $('wfhReason').placeholder = present
-        ? 'Why you missed clock in/out (required)'
-        : 'Reason (required)';
+      const type = regularizationType();
+      $('wfhDateFieldLabel').textContent =
+        type === 'mark_present' ? 'Attendance date' : type === 'late_in' ? 'Date' : 'WFH date';
+      $('regTypeHint').textContent =
+        type === 'mark_present'
+          ? 'Use this if you forgot Clock In and/or Clock Out. Admin approval marks you Present without filling punch times.'
+          : type === 'late_in'
+            ? 'Tell admin you will be late, with a genuine reason. Approval acknowledges the late arrival and does not change clock times.'
+            : 'Approved WFH dates skip geofencing when you clock in or out.';
+      $('wfhReason').placeholder =
+        type === 'mark_present'
+          ? 'Why you missed clock in/out (required)'
+          : type === 'late_in'
+            ? 'Why you will be late (required)'
+            : 'Reason (required)';
     }
     function setRegType(type) {
-      $('regTypeWfh').classList.toggle('on', type !== 'mark_present');
+      $('regTypeWfh').classList.toggle('on', type === 'wfh');
       $('regTypePresent').classList.toggle('on', type === 'mark_present');
+      $('regTypeLate').classList.toggle('on', type === 'late_in');
       syncRegFormCopy();
       setWfhDate($('wfhDate').value || todayYmd());
     }
@@ -1488,9 +1503,9 @@
     function setWfhDate(ymd) {
       const today = todayYmd();
       let next = ymd || today;
-      if (regularizationType() === 'wfh') {
-        if (next < today) next = today;
-      } else if (next > today) {
+      if (regularizationType() === 'mark_present') {
+        if (next > today) next = today;
+      } else if (next < today) {
         next = today;
       }
       $('wfhDate').value = next;
@@ -1608,6 +1623,10 @@
       e.preventDefault();
       setRegType('mark_present');
     };
+    $('regTypeLate').onclick = (e) => {
+      e.preventDefault();
+      setRegType('late_in');
+    };
     document.addEventListener('click', closeAllCalendars);
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') closeAllCalendars();
@@ -1720,7 +1739,11 @@
         if (reason.length < 3) return status('wfhStatus', 'Enter a reason (at least 3 characters)');
         await api('/wfh-requests', { method: 'POST', body: { work_date, reason, request_type } });
         $('wfhReason').value = '';
-        status('wfhStatus', request_type === 'mark_present' ? 'On Duty request submitted' : 'WFH request submitted');
+        status('wfhStatus', request_type === 'mark_present'
+          ? 'On Duty request submitted'
+          : request_type === 'late_in'
+            ? 'Late in request submitted'
+            : 'WFH request submitted');
         await loadWfhRequests();
       } catch (e) {
         status('wfhStatus', e.message);
