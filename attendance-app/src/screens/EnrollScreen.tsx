@@ -175,6 +175,8 @@ export function EnrollScreen() {
             data={employees}
             keyExtractor={(item) => item.id}
             keyboardShouldPersistTaps="handled"
+            indicatorStyle="white"
+            persistentScrollbar={false}
             ListEmptyComponent={<Text style={styles.empty}>No employees found</Text>}
             renderItem={({ item }) => {
               const mode = item.working_mode || 'onsite';

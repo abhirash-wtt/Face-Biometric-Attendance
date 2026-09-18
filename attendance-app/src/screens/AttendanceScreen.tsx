@@ -237,6 +237,8 @@ export function AttendanceScreen() {
         refreshControl={<RefreshControl refreshing={busy} onRefresh={() => load(date)} tintColor={THEME.cyan} />}
         ListEmptyComponent={<Text style={styles.empty}>No employees found</Text>}
         contentContainerStyle={styles.listContent}
+        indicatorStyle="white"
+        persistentScrollbar={false}
         renderItem={({ item }) =>
           layout.stackRows ? (
             <View style={styles.card}>

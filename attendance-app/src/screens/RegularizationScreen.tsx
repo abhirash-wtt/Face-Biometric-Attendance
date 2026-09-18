@@ -388,6 +388,8 @@ export function RegularizationScreen({ role }: { role: 'admin' | 'user' | '' }) 
         refreshControl={<RefreshControl refreshing={busy} onRefresh={load} tintColor={THEME.cyan} />}
         ListEmptyComponent={<Text style={styles.empty}>No requests yet</Text>}
         contentContainerStyle={styles.listContent}
+        indicatorStyle="white"
+        persistentScrollbar={false}
         renderItem={({ item }) => {
           const who = item.employee
             ? `${item.employee.display_name} (${item.employee.code})`

@@ -101,6 +101,8 @@ export function SettingsScreen({ onAuthChange }: { onAuthChange?: () => void }) 
         ]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
+        indicatorStyle="white"
+        persistentScrollbar={false}
       >
         <Text style={styles.title}>Settings</Text>
         <View style={styles.roleHeader}>
