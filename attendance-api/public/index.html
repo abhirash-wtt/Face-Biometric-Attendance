@@ -495,13 +495,13 @@
     </section>
     <section id="wfh" class="hidden">
       <h1>Regularize</h1>
-      <p id="wfhMeta">Request Work From Home, or ask admin to mark you Present if you forgot to clock in or out. Approved Present requests leave Clock In and Clock Out blank.</p>
+      <p id="wfhMeta">Request Work From Home, or ask admin to mark you On Duty if you forgot to clock in or out. Approved On Duty requests leave Clock In and Clock Out blank.</p>
       <div id="wfhRequestForm" class="hidden">
         <p class="section-title" style="margin-top:4px">New request</p>
         <label>Request type</label>
         <div class="row" style="margin:4px 0 10px">
+          <button type="button" class="toggle" id="regTypePresent">On Duty</button>
           <button type="button" class="toggle on" id="regTypeWfh">Work From Home</button>
-          <button type="button" class="toggle" id="regTypePresent">Mark Present</button>
         </div>
         <p id="regTypeHint" class="muted" style="margin:0 0 10px;font-size:13px;line-height:1.4">Approved WFH dates skip geofencing when you clock in or out.</p>
         <div class="date-picker" style="margin:4px 0 10px">
@@ -517,7 +517,7 @@
         <textarea id="wfhReason" rows="3" placeholder="Reason (required)"></textarea>
         <button class="cta" id="wfhSubmitBtn">Submit request</button>
       </div>
-      <p id="wfhAdminHint" class="hidden">Employees submit WFH or missed clock-in/out requests after logging in. As admin, approve or reject pending requests below. Approving Mark Present sets attendance to Present without filling Clock In or Clock Out.</p>
+      <p id="wfhAdminHint" class="hidden">Employees submit WFH or missed clock-in/out requests after logging in. As admin, approve or reject pending requests below. Approving On Duty sets attendance to Present without filling Clock In or Clock Out.</p>
       <div class="roster-toolbar">
         <p class="section-title" id="wfhListTitle" style="margin:0;flex:1">My requests</p>
       </div>
@@ -681,7 +681,7 @@
       return $('regTypePresent').classList.contains('on') ? 'mark_present' : 'wfh';
     }
     function regularizationTypeLabel(type) {
-      return type === 'mark_present' ? 'Mark Present' : 'Work From Home';
+      return type === 'mark_present' ? 'On Duty' : 'Work From Home';
     }
     function syncRegFormCopy() {
       const present = regularizationType() === 'mark_present';
@@ -1720,7 +1720,7 @@
         if (reason.length < 3) return status('wfhStatus', 'Enter a reason (at least 3 characters)');
         await api('/wfh-requests', { method: 'POST', body: { work_date, reason, request_type } });
         $('wfhReason').value = '';
-        status('wfhStatus', request_type === 'mark_present' ? 'Present request submitted' : 'WFH request submitted');
+        status('wfhStatus', request_type === 'mark_present' ? 'On Duty request submitted' : 'WFH request submitted');
         await loadWfhRequests();
       } catch (e) {
         status('wfhStatus', e.message);

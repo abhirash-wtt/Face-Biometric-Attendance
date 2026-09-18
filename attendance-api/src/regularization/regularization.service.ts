@@ -151,7 +151,7 @@ export class RegularizationService {
   }
 
   private typeLabel(type: RegularizationRequestType) {
-    return type === 'mark_present' ? 'present' : 'WFH';
+    return type === 'mark_present' ? 'On Duty' : 'WFH';
   }
 
   private resolveRequesterEmployeeId(user: JwtUser, requestedEmployeeId?: string): string {

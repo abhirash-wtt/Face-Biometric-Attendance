@@ -6,7 +6,7 @@ export class CreateWfhRequestDto {
   @ApiProperty({
     example: '2026-09-18',
     description:
-      'Request date (YYYY-MM-DD, Asia/Kolkata). WFH: today or future. Mark Present: today or past.',
+      'Request date (YYYY-MM-DD, Asia/Kolkata). WFH: today or future. On Duty: today or past.',
   })
   @IsString()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'work_date must be YYYY-MM-DD' })

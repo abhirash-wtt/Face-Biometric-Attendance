@@ -174,7 +174,7 @@ function StatusPill({ status }: { status: string }) {
 }
 
 function typeLabel(type?: RegularizationRequestType) {
-  return type === 'mark_present' ? 'Mark Present' : 'Work From Home';
+  return type === 'mark_present' ? 'On Duty' : 'Work From Home';
 }
 
 export function RegularizationScreen({ role }: { role: 'admin' | 'user' | '' }) {
@@ -219,7 +219,7 @@ export function RegularizationScreen({ role }: { role: 'admin' | 'user' | '' }) 
         request_type: requestType,
       });
       setReason('');
-      setMessage(isPresentRequest ? 'Present request submitted' : 'WFH request submitted');
+      setMessage(isPresentRequest ? 'On Duty request submitted' : 'WFH request submitted');
       await load();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Submit failed');
@@ -282,8 +282,8 @@ export function RegularizationScreen({ role }: { role: 'admin' | 'user' | '' }) 
     >
       <Text style={styles.title}>Regularize</Text>
       <Text style={styles.meta}>
-        Request Work From Home, or ask admin to mark you Present if you forgot to clock in or out.
-        Approved Present requests leave Clock In and Clock Out blank.
+        Request Work From Home, or ask admin to mark you On Duty if you forgot to clock in or out.
+        Approved On Duty requests leave Clock In and Clock Out blank.
       </Text>
       {renderForm && (
         <View style={styles.formCard}>
@@ -291,21 +291,21 @@ export function RegularizationScreen({ role }: { role: 'admin' | 'user' | '' }) 
           <Text style={styles.label}>Request Type</Text>
           <View style={styles.typeRow}>
             <Pressable
+              onPress={() => selectType('mark_present')}
+              accessibilityRole="button"
+              style={[styles.typeBtn, isPresentRequest && styles.typeBtnOn]}
+            >
+              <Text style={[styles.typeBtnText, isPresentRequest && styles.typeBtnTextOn]}>
+                On Duty
+              </Text>
+            </Pressable>
+            <Pressable
               onPress={() => selectType('wfh')}
               accessibilityRole="button"
               style={[styles.typeBtn, !isPresentRequest && styles.typeBtnOn]}
             >
               <Text style={[styles.typeBtnText, !isPresentRequest && styles.typeBtnTextOn]}>
                 Work From Home
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => selectType('mark_present')}
-              accessibilityRole="button"
-              style={[styles.typeBtn, isPresentRequest && styles.typeBtnOn]}
-            >
-              <Text style={[styles.typeBtnText, isPresentRequest && styles.typeBtnTextOn]}>
-                Mark Present
               </Text>
             </Pressable>
           </View>
