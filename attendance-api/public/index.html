@@ -150,12 +150,12 @@
       border:1px solid var(--card-border);
       box-shadow: 0 12px 32px -4px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
     }
-    .cam-stage video, .cam-stage canvas {
+    .cam-stage video, .cam-stage canvas, .cam-stage img {
       display:block; width:100%; height:clamp(220px, 44dvh, 380px);
       object-fit:cover; background:#090f1d;
     }
     /* Selfie preview reads as a mirror; the captured frame stays unmirrored. */
-    #cam { transform:scaleX(-1); }
+    #cam, #camFeed { transform:scaleX(-1); }
     .scan-laser {
       position:absolute; top:0; left:0; right:0; height:3px;
       background:linear-gradient(90deg, transparent, var(--accent), #fff, var(--accent), transparent);
@@ -487,6 +487,7 @@
       <div class="cam-stage">
         <div class="scan-laser"></div>
         <video id="cam" autoplay playsinline webkit-playsinline muted disablepictureinpicture></video>
+        <img id="camFeed" alt="" class="hidden">
         <div class="face-guide" aria-hidden="true">
           <div class="face-guide-ring"></div>
         </div>
@@ -1045,24 +1046,333 @@
         return 'Camera access was blocked. Allow the camera for this site in your browser settings, then retry.';
       }
       if (name === 'NotFoundError' || name === 'OverconstrainedError') return 'No camera was found on this device.';
-      if (name === 'NotReadableError' || name === 'AbortError') {
-        return 'Another app is using the camera. Close it, then retry.';
+      if (name === 'NotReadableError' || name === 'AbortError' || name === 'TrackStartError') {
+        return 'Another application is using the camera exclusively. This page will take over automatically when it is released.';
       }
       return (err && err.message) || 'Unable to open the camera.';
     }
+    // One open at a time. A second getUserMedia while the first is still negotiating
+    // makes Windows report the camera as busy and adds another multi-second wait.
+    let camGeneration = 0;
+    let camChain = Promise.resolve();
+    let camOpening = false;
+    let camBusy = false;
+    let camHeldByPeer = false;
+    let camYieldedToPeer = false;
+    let camBroker = false;
+    let camTakingOver = false;
+    let lastCamRetryAt = 0;
+    let camPollTimer = null;
+    const camClientId = Math.random().toString(36).slice(2);
+    const camChannel = typeof BroadcastChannel === 'function' ? new BroadcastChannel('face-kiosk-camera') : null;
+    function delay(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+    function openUserMedia(constraints, ms) {
+      return new Promise((resolve, reject) => {
+        let settled = false;
+        const timer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          const err = new Error('camera busy');
+          err.name = 'NotReadableError';
+          reject(err);
+        }, ms || 1200);
+        navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
+          if (settled) {
+            stream.getTracks().forEach((track) => track.stop());
+            return;
+          }
+          settled = true;
+          clearTimeout(timer);
+          resolve(stream);
+        }, (err) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          reject(err);
+        });
+      });
+    }
+    function postCam(msg) {
+      if (!camChannel) return;
+      try { camChannel.postMessage(Object.assign({ clientId: camClientId }, msg)); } catch { /* closed */ }
+    }
+    function prefersFrontCamera() {
+      const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+      const noHover = window.matchMedia && window.matchMedia('(hover: none)').matches;
+      return !!(coarse && noHover);
+    }
+    // facingMode and 1280x720 force Chrome to probe every camera and mode-switch the
+    // sensor before the first frame. Captures are downscaled to 640px, and an
+    // unconstrained stream can join a camera another app already has open.
+    function primaryConstraints() {
+      if (prefersFrontCamera()) return { audio: false, video: { facingMode: 'user' } };
+      return { audio: false, video: true };
+    }
+    function isHardDeny(err) {
+      const name = err && err.name;
+      return name === 'NotAllowedError' || name === 'SecurityError';
+    }
+    function isBusyError(err) {
+      const name = err && err.name;
+      return name === 'NotReadableError' || name === 'AbortError' || name === 'TrackStartError';
+    }
+    function brokerLive() {
+      const feed = $('camFeed');
+      return !!(camBroker && feed && feed.naturalWidth > 0 && !feed.classList.contains('hidden'));
+    }
+    function stopBrokerFeed() {
+      camBroker = false;
+      const feed = $('camFeed');
+      if (!feed) return;
+      feed.dataset.token = '';
+      feed.onload = null;
+      feed.onerror = null;
+      feed.removeAttribute('src');
+      feed.classList.add('hidden');
+      $('cam').classList.remove('hidden');
+    }
+    async function takeOverCamera(generation) {
+      $('camHint').textContent = 'Taking over the camera… If Windows asks for approval, choose Yes.';
+      $('camOverlay').classList.remove('hidden');
+      camTakingOver = true;
+      stopCamPoll();
+      stopCamTracks();
+      try {
+        let response;
+        try {
+          response = await fetch('/camera/release', { method: 'POST' });
+        } catch (e) {
+          return false;
+        }
+        if (!response.ok || generation !== camGeneration) return false;
+        const v = $('cam');
+        let lastErr = null;
+        for (let attempt = 0; attempt < 20; attempt++) {
+          if (generation !== camGeneration) return false;
+          if (attempt) await delay(300);
+          try {
+            if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+              const cams = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput');
+              if (!cams.length) continue;
+            }
+            const stream = await openUserMedia({ audio: false, video: true }, 2000);
+            if (generation !== camGeneration) {
+              stream.getTracks().forEach((track) => track.stop());
+              return false;
+            }
+            attachStream(v, stream, generation);
+            return true;
+          } catch (err) {
+            lastErr = err;
+            const name = err && err.name;
+            if (name === 'NotAllowedError' || name === 'SecurityError') throw err;
+            if (!(isBusyError(err) || name === 'NotFoundError' || name === 'OverconstrainedError')) throw err;
+          }
+        }
+        if (lastErr) throw lastErr;
+        return false;
+      } finally {
+        if (generation === camGeneration) camTakingOver = false;
+      }
+    }
+    function startBrokerFeed() {
+      const feed = $('camFeed');
+      if (!feed) return Promise.resolve(false);
+      const token = String(Date.now());
+      feed.dataset.token = token;
+      $('camHint').textContent = 'Taking over the camera… If Windows asks for approval, choose Yes.';
+      $('camOverlay').classList.remove('hidden');
+      return new Promise((resolve) => {
+        let settled = false;
+        let poll = null;
+        const finish = (ok) => {
+          if (settled) return;
+          settled = true;
+          if (poll) clearInterval(poll);
+          resolve(ok);
+        };
+        const arm = () => {
+          if (feed.dataset.token !== token || !(feed.naturalWidth > 0)) return false;
+          camBroker = true;
+          camBusy = false;
+          stopCamPoll();
+          $('cam').classList.add('hidden');
+          feed.classList.remove('hidden');
+          hideCamOverlay();
+          finish(true);
+          return true;
+        };
+        feed.onload = () => { arm(); };
+        feed.onerror = () => finish(false);
+        poll = setInterval(() => { arm(); }, 200);
+        setTimeout(() => finish(arm()), 120000);
+        feed.src = '/camera/mjpeg?t=' + Date.now();
+      });
+    }
     function camActive() {
+      if (brokerLive()) return true;
       const v = $('cam');
       const stream = v.srcObject;
       if (!stream || !stream.getVideoTracks) return false;
       return stream.getVideoTracks().some((t) => t.readyState === 'live');
     }
-    function stopCam() {
+    function stopCamTracks() {
       const v = $('cam');
       const stream = v.srcObject;
-      if (stream && stream.getTracks) stream.getTracks().forEach((t) => t.stop());
+      if (stream && stream.getTracks) {
+        stream.getTracks().forEach((track) => {
+          track.onended = null;
+          track.stop();
+        });
+      }
       v.srcObject = null;
     }
-    async function startCam() {
+    function stopCam(opts) {
+      camGeneration += 1;
+      camOpening = false;
+      const wasActive = camActive();
+      stopCamTracks();
+      stopBrokerFeed();
+      if (wasActive && !(opts && opts.silent)) postCam({ type: 'idle' });
+    }
+    function cameraPanelHidden() {
+      return state.tab === 'settings' || state.tab === 'attendance' || state.tab === 'wfh' || document.visibilityState === 'hidden';
+    }
+    function stopCamPoll() {
+      if (camPollTimer) clearTimeout(camPollTimer);
+      camPollTimer = null;
+    }
+    // devicechange often does not fire when another app simply closes the camera,
+    // so a busy page keeps trying. Failures return in well under a second; the wait
+    // sits between attempts so a slow driver is not opened again until it finishes.
+    function scheduleCamPoll() {
+      if (camPollTimer) return;
+      camPollTimer = setTimeout(() => {
+        camPollTimer = null;
+        if (camActive() || !camBusy || camTakingOver || camHeldByPeer || camYieldedToPeer || cameraPanelHidden()) return;
+        ensureCam(false).finally(() => {
+          if (camBusy && !camActive() && !camTakingOver && !camHeldByPeer && !camYieldedToPeer) scheduleCamPoll();
+        });
+      }, 1500);
+    }
+    function retryCamSoon() {
+      if (camTakingOver || camHeldByPeer || camYieldedToPeer || cameraPanelHidden()) return;
+      const now = Date.now();
+      if (now - lastCamRetryAt < 1200) return;
+      lastCamRetryAt = now;
+      setTimeout(() => {
+        if (camTakingOver || camHeldByPeer || camYieldedToPeer || camActive() || cameraPanelHidden()) return;
+        $('camHint').textContent = 'Taking over the camera…';
+        ensureCam(false);
+      }, 250);
+    }
+    function requestPeerRelease() {
+      if (!camChannel) return Promise.resolve(false);
+      return new Promise((resolve) => {
+        let released = false;
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          camChannel.removeEventListener('message', onMsg);
+          resolve(released);
+        };
+        const timer = setTimeout(finish, 50);
+        function onMsg(event) {
+          const msg = event.data || {};
+          if (!msg || msg.clientId === camClientId || msg.type !== 'released' || !msg.held) return;
+          released = true;
+          clearTimeout(timer);
+          setTimeout(finish, 50);
+        }
+        camChannel.addEventListener('message', onMsg);
+        postCam({ type: 'release' });
+      });
+    }
+    function isUtilityCamera(device) {
+      return /infrared|\bir\b|depth|virtual/.test((device.label || '').toLowerCase());
+    }
+    async function openAlternateCamera() {
+      if (!navigator.mediaDevices.enumerateDevices) return null;
+      let devices = [];
+      try { devices = await navigator.mediaDevices.enumerateDevices(); } catch { return null; }
+      const cameras = devices.filter((device) => device.kind === 'videoinput' && device.deviceId && !isUtilityCamera(device));
+      if (cameras.length < 2) return null;
+      for (const camera of cameras) {
+        const attemptStarted = Date.now();
+        try {
+          return await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: { deviceId: { exact: camera.deviceId } },
+          });
+        } catch (err) {
+          if (isHardDeny(err)) throw err;
+          if (Date.now() - attemptStarted > 900) return null;
+        }
+      }
+      return null;
+    }
+    async function acquireStream() {
+      const primary = primaryConstraints();
+      const started = Date.now();
+      let err;
+      try {
+        return await openUserMedia(primary, 1200);
+      } catch (e) {
+        err = e;
+      }
+      if (isHardDeny(err)) throw err;
+      if (err && (err.name === 'OverconstrainedError' || err.name === 'NotFoundError') && primary.video !== true) {
+        try {
+          return await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+        } catch (e) {
+          err = e;
+          if (isHardDeny(err)) throw err;
+        }
+      }
+      if (!isBusyError(err)) throw err;
+      camBusy = true;
+      const failedFast = Date.now() - started < 900;
+      const peerReleased = await requestPeerRelease();
+      if (peerReleased || (failedFast && primary.video !== true)) {
+        if (peerReleased) await delay(60);
+        try {
+          return await openUserMedia({ audio: false, video: true }, 1200);
+        } catch (e) {
+          if (!isBusyError(e)) throw e;
+          err = e;
+        }
+      }
+      if (failedFast) {
+        const alternate = await openAlternateCamera();
+        if (alternate) return alternate;
+      }
+      throw err;
+    }
+    function attachStream(v, stream, generation) {
+      v.srcObject = stream;
+      const play = v.play();
+      if (play && typeof play.catch === 'function') play.catch(() => {});
+      stream.getVideoTracks().forEach((track) => {
+        if ('contentHint' in track) track.contentHint = 'motion';
+        track.onended = () => {
+          if (generation !== camGeneration || v.srcObject !== stream) return;
+          camBusy = true;
+          postCam({ type: 'idle' });
+          showCamOverlay('The camera stopped. Trying to take it back…', 'Tap to restart camera');
+          retryCamSoon();
+        };
+      });
+      camBusy = false;
+      camHeldByPeer = false;
+      camYieldedToPeer = false;
+      stopCamPoll();
+      postCam({ type: 'holding' });
+      hideCamOverlay();
+    }
+    async function startCamNow(generation) {
       const v = $('cam');
       v.muted = true;
       v.autoplay = true;
@@ -1070,43 +1380,85 @@
       if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error(camError(null));
       }
-      if (camActive()) return;
-      stopCam();
-      // Phone cameras reject exact sizes far more often than desktops, so every hint stays "ideal".
-      const attempts = [
-        { video: { facingMode: { ideal: 'user' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
-        { video: { facingMode: 'user' }, audio: false },
-        { video: true, audio: false },
-      ];
-      let stream;
-      let lastErr;
-      for (const constraints of attempts) {
-        try {
-          stream = await navigator.mediaDevices.getUserMedia(constraints);
-          break;
-        } catch (err) {
-          lastErr = err;
-          if (err && (err.name === 'NotAllowedError' || err.name === 'SecurityError')) break;
-        }
-      }
-      if (!stream) throw new Error(camError(lastErr));
-      v.srcObject = stream;
-      stream.getVideoTracks().forEach((track) => {
-        track.onended = () => showCamOverlay('The camera stopped.', 'Tap to restart camera');
-      });
-      try { await v.play(); } catch { /* Chrome autoplay can reject; stream still attaches */ }
-      await waitForFrame(v, 2500);
-      hideCamOverlay();
-    }
-    async function ensureCam(showErrors) {
+      camYieldedToPeer = false;
+      camOpening = true;
+      stopCamTracks();
       try {
-        await startCam();
+        const stream = await acquireStream();
+        if (generation !== camGeneration) {
+          stream.getTracks().forEach((track) => track.stop());
+          if (!camYieldedToPeer) postCam({ type: 'idle' });
+          return false;
+        }
+        attachStream(v, stream, generation);
         return true;
       } catch (err) {
+        if (generation !== camGeneration) return false;
+        if (isBusyError(err) && !camHeldByPeer) {
+          const taken = await takeOverCamera(generation);
+          if (generation !== camGeneration) return taken;
+          if (taken) return true;
+          const brokered = await startBrokerFeed();
+          if (generation !== camGeneration) {
+            if (!brokered) stopBrokerFeed();
+            return brokered && brokerLive();
+          }
+          if (brokered) return true;
+          throw new Error('Could not take over the camera. If Windows asked for approval, choose Yes, then tap the camera to try again.');
+        }
+        camBusy = isBusyError(err) && !camHeldByPeer;
+        stopCamPoll();
+        throw new Error(camError(err));
+      } finally {
+        if (generation === camGeneration) camOpening = false;
+      }
+    }
+    function startCam() {
+      if (camActive()) return Promise.resolve(true);
+      const generation = camGeneration;
+      const run = camChain.then(() => {
+        if (generation !== camGeneration) return false;
+        if (camActive()) return true;
+        return startCamNow(generation);
+      });
+      camChain = run.then(() => {}, () => {});
+      return run;
+    }
+    async function ensureCam(showErrors) {
+      const generation = camGeneration;
+      try {
+        const ok = await startCam();
+        if (generation !== camGeneration) return camActive();
+        return !!ok;
+      } catch (err) {
+        if (generation !== camGeneration) return camActive();
         showCamOverlay(err.message || camError(err), 'Tap to enable camera');
         if (showErrors) status('kioskStatus', err.message || 'Unable to open the camera.');
         return false;
       }
+    }
+    if (camChannel) {
+      camChannel.onmessage = (event) => {
+        const msg = event.data || {};
+        if (!msg || msg.clientId === camClientId) return;
+        if (msg.type === 'holding') {
+          if (!camActive()) camHeldByPeer = true;
+          return;
+        }
+        if (msg.type === 'idle') {
+          camHeldByPeer = false;
+          if (camBusy && !camActive()) retryCamSoon();
+          return;
+        }
+        if (msg.type !== 'release') return;
+        const held = camActive() || camOpening;
+        if (held) {
+          camYieldedToPeer = true;
+          stopCam({ silent: true });
+          showCamOverlay('Another window took over the camera.', 'Use camera here');
+        }
+        postCam({ type: 'released', held: held });
+      };
     }
     $('camStartBtn').onclick = async () => {
       $('camStartBtn').disabled = true;
@@ -1117,9 +1469,16 @@
     // Mobile browsers release camera tracks when the tab is backgrounded or the screen locks.
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState !== 'visible') return;
-      if (state.tab === 'settings' || state.tab === 'attendance') return;
+      if (cameraPanelHidden()) return;
       if (!camActive()) ensureCam(false);
     });
+    window.addEventListener('pagehide', () => stopCam());
+    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', () => {
+        if (!camBusy || camActive()) return;
+        retryCamSoon();
+      });
+    }
     function frameSize(v) {
       const track = v.srcObject && v.srcObject.getVideoTracks && v.srcObject.getVideoTracks()[0];
       const s = track && track.getSettings ? track.getSettings() : {};
@@ -1131,6 +1490,7 @@
     async function waitForFrame(v, ms) {
       const deadline = Date.now() + (ms || 1200);
       while (Date.now() < deadline) {
+        if (brokerLive()) return;
         if (v.readyState >= 2 && (v.videoWidth > 0 || (v.srcObject && v.srcObject.active))) return;
         await new Promise((r) => setTimeout(r, 40));
       }
@@ -1139,8 +1499,13 @@
       const v = $('cam');
       if (!camActive()) await startCam();
       await waitForFrame(v, 1200);
-      try { if (v.paused) await v.play(); } catch {}
-      const size = frameSize(v);
+      const feed = brokerLive() ? $('camFeed') : v;
+      if (!brokerLive()) {
+        try { if (v.paused) await v.play(); } catch {}
+      }
+      const size = brokerLive()
+        ? { width: feed.naturalWidth || 640, height: feed.naturalHeight || 480 }
+        : frameSize(v);
       // Downscale before upload — server only needs ~112–160px for match/liveness.
       const maxEdge = 640;
       const scale = Math.min(1, maxEdge / Math.max(size.width, size.height));
@@ -1148,7 +1513,7 @@
       c.width = Math.max(1, Math.round(size.width * scale));
       c.height = Math.max(1, Math.round(size.height * scale));
       const ctx = c.getContext('2d');
-      ctx.drawImage(v, 0, 0, c.width, c.height);
+      ctx.drawImage(feed, 0, 0, c.width, c.height);
       const pixels = ctx.getImageData(0, 0, c.width, c.height).data;
       let sum = 0;
       const count = pixels.length / 4;

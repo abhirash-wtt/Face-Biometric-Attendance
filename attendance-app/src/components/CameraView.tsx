@@ -26,16 +26,35 @@ export function CameraView({ onReady }: Props) {
   return <NativeCamera onReady={onReady} />;
 }
 
+const CAM_CHANNEL = 'face-kiosk-camera';
+
+function cameraBusy(err: unknown) {
+  const name = err && typeof err === 'object' && 'name' in err ? String((err as { name: string }).name) : '';
+  return name === 'NotReadableError' || name === 'AbortError' || name === 'TrackStartError';
+}
+
+function cameraDenied(err: unknown) {
+  const name = err && typeof err === 'object' && 'name' in err ? String((err as { name: string }).name) : '';
+  return name === 'NotAllowedError' || name === 'SecurityError';
+}
+
+function prefersFrontCamera() {
+  return window.matchMedia('(pointer: coarse)').matches && window.matchMedia('(hover: none)').matches;
+}
+
 function WebCamera({ onReady }: Props) {
-  const videoRef = useRef<unknown>(null);
-  const streamRef = useRef<{ getTracks: () => Array<{ stop: () => void }> } | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
 
   const captureWeb = useCallback(async () => {
-    const video = videoRef.current as {
-      videoWidth: number;
-      videoHeight: number;
-    } | null;
+    const video = videoRef.current;
     if (!video) throw new Error('Camera not ready');
+    const deadline = Date.now() + 800;
+    while (Date.now() < deadline && !(video.videoWidth > 0 && video.readyState >= 2)) {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    }
     const srcW = video.videoWidth || 480;
     const srcH = video.videoHeight || 480;
     const maxEdge = 640;
@@ -45,47 +64,216 @@ function WebCamera({ onReady }: Props) {
     canvas.height = Math.max(1, Math.round(srcH * scale));
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Capture failed');
-    ctx.drawImage(video as CanvasImageSource, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     return canvas.toDataURL('image/jpeg', 0.75).replace(/^data:image\/\w+;base64,/, '');
   }, []);
 
   React.useEffect(() => {
     let cancelled = false;
-    (async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: 'user' },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
-          audio: false,
-        });
-        if (cancelled) return;
-        streamRef.current = stream;
-        const node = videoRef.current as { srcObject: unknown; play: () => Promise<void> } | null;
-        if (node) {
-          node.srcObject = stream;
-          await node.play();
-        }
-        onReady?.(captureWeb);
-      } catch {
-        onReady?.(async () => {
-          throw new Error('Camera permission denied');
-        });
+    let busy = false;
+    let heldByPeer = false;
+    const clientId = Math.random().toString(36).slice(2);
+    const channel = typeof BroadcastChannel === 'function' ? new BroadcastChannel(CAM_CHANNEL) : null;
+
+    const stopStream = () => {
+      streamRef.current?.getTracks().forEach((track) => {
+        track.onended = null;
+        track.stop();
+      });
+      streamRef.current = null;
+      if (videoRef.current) videoRef.current.srcObject = null;
+    };
+
+    const post = (msg: Record<string, unknown>) => {
+      try { channel?.postMessage({ ...msg, clientId }); } catch { /* closed */ }
+    };
+
+    const reportFailure = (err: unknown) => {
+      const message = cameraBusy(err)
+        ? 'Another application is using the camera'
+        : cameraDenied(err)
+          ? 'Camera permission denied'
+          : 'Unable to open the camera';
+      onReadyRef.current?.(async () => {
+        throw new Error(message);
+      });
+    };
+
+    const requestPeerRelease = () => new Promise<boolean>((resolve) => {
+      if (!channel) {
+        resolve(false);
+        return;
       }
-    })();
+      let released = false;
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        channel.removeEventListener('message', onMsg);
+        resolve(released);
+      };
+      const timer = window.setTimeout(finish, 50);
+      const onMsg = (event: MessageEvent) => {
+        const msg = event.data || {};
+        if (!msg || msg.clientId === clientId || msg.type !== 'released' || !msg.held) return;
+        released = true;
+        window.clearTimeout(timer);
+        window.setTimeout(finish, 50);
+      };
+      channel.addEventListener('message', onMsg);
+      post({ type: 'release' });
+    });
+
+    const attach = (stream: MediaStream) => {
+      streamRef.current = stream;
+      const node = videoRef.current;
+      if (node) {
+        node.srcObject = stream;
+        const play = node.play();
+        if (play && typeof play.catch === 'function') play.catch(() => {});
+      }
+      stream.getVideoTracks().forEach((track) => {
+        if ('contentHint' in track) track.contentHint = 'motion';
+        track.onended = () => {
+          if (streamRef.current !== stream) return;
+          busy = true;
+          post({ type: 'idle' });
+          stopStream();
+          const now = Date.now();
+          if (now - lastRetry < 1200) return;
+          lastRetry = now;
+          acquire().catch(() => {});
+        };
+      });
+      busy = false;
+      heldByPeer = false;
+      post({ type: 'holding' });
+      onReadyRef.current?.(captureWeb);
+    };
+
+    const openStream = async () => {
+      const primary: MediaStreamConstraints = prefersFrontCamera()
+        ? { audio: false, video: { facingMode: 'user' } }
+        : { audio: false, video: true };
+      const started = Date.now();
+      try {
+        return await navigator.mediaDevices.getUserMedia(primary);
+      } catch (err) {
+        if (cameraDenied(err) || !cameraBusy(err)) throw err;
+        busy = true;
+        const failedFast = Date.now() - started < 900;
+        const peerReleased = await requestPeerRelease();
+        if (cancelled) throw err;
+        if (peerReleased || (failedFast && primary.video !== true)) {
+          if (peerReleased) await new Promise((resolve) => setTimeout(resolve, 60));
+          return navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+        }
+        throw err;
+      }
+    };
+
+    let opening = false;
+    let queued = false;
+    let lastRetry = 0;
+    const acquire = async () => {
+      if (cancelled || streamRef.current) return;
+      if (opening) {
+        queued = true;
+        return;
+      }
+      opening = true;
+      try {
+        const stream = await openStream();
+        if (cancelled) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        attach(stream);
+      } catch (err) {
+        if (cancelled) return;
+        busy = cameraBusy(err) && !heldByPeer;
+        reportFailure(err);
+      } finally {
+        opening = false;
+        if (queued && !cancelled && !streamRef.current) {
+          queued = false;
+          acquire().catch(() => {});
+        } else {
+          queued = false;
+        }
+      }
+    };
+
+    if (channel) {
+      channel.onmessage = (event: MessageEvent) => {
+        const msg = event.data || {};
+        if (!msg || msg.clientId === clientId) return;
+        if (msg.type === 'holding') {
+          if (!streamRef.current) heldByPeer = true;
+          return;
+        }
+        if (msg.type === 'idle') {
+          heldByPeer = false;
+          if (busy && !streamRef.current) {
+            acquire().catch(() => {}).finally(() => {
+              if (!cancelled && busy && !heldByPeer && !streamRef.current) schedulePoll();
+            });
+          }
+          return;
+        }
+        if (msg.type !== 'release') return;
+        const held = !!streamRef.current;
+        if (held) {
+          heldByPeer = true;
+          busy = true;
+          stopStream();
+          reportFailure({ name: 'NotReadableError' });
+        }
+        post({ type: 'released', held });
+      };
+    }
+
+    const onDeviceChange = () => {
+      window.setTimeout(() => {
+        if (cancelled || !busy || heldByPeer || streamRef.current) return;
+        acquire().catch(() => {});
+      }, 250);
+    };
+    navigator.mediaDevices?.addEventListener?.('devicechange', onDeviceChange);
+    let pollTimer = 0;
+    const schedulePoll = () => {
+      if (pollTimer) return;
+      pollTimer = window.setTimeout(() => {
+        pollTimer = 0;
+        if (cancelled || !busy || heldByPeer || streamRef.current) return;
+        acquire()
+          .catch(() => {})
+          .finally(() => {
+            if (!cancelled && busy && !heldByPeer && !streamRef.current) schedulePoll();
+          });
+      }, 1500);
+    };
+    const acquireAndWatch = () => acquire().catch(() => {}).finally(() => {
+      if (!cancelled && busy && !heldByPeer && !streamRef.current) schedulePoll();
+    });
+    acquireAndWatch();
+
     return () => {
       cancelled = true;
-      streamRef.current?.getTracks().forEach((t) => t.stop());
+      if (pollTimer) window.clearTimeout(pollTimer);
+      const held = !!streamRef.current;
+      stopStream();
+      if (held) post({ type: 'idle' });
+      navigator.mediaDevices?.removeEventListener?.('devicechange', onDeviceChange);
+      channel?.close();
     };
-  }, [onReady, captureWeb]);
+  }, [captureWeb]);
 
   return (
     <View style={styles.box}>
       {React.createElement('video', {
         ref: (el: unknown) => {
-          videoRef.current = el;
+          videoRef.current = el as HTMLVideoElement | null;
         },
         autoPlay: true,
         playsInline: true,

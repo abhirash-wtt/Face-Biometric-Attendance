@@ -25,6 +25,7 @@ import { Device } from './devices/device.entity';
 import { Shift } from './shifts/shift.entity';
 import { AttendanceLog } from './attendance/attendance-log.entity';
 import { RegularizationModule } from './regularization/regularization.module';
+import { CameraModule } from './camera/camera.module';
 import { WfhRequest } from './regularization/wfh-request.entity';
 
 @Module({
@@ -60,6 +61,7 @@ import { WfhRequest } from './regularization/wfh-request.entity';
     SitesModule,
     ShiftsModule,
     RegularizationModule,
+    CameraModule,
   ],
   controllers: [HealthController],
   providers: [RetentionService],
