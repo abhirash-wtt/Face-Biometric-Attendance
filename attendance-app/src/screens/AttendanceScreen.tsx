@@ -147,12 +147,11 @@ function DatePickerField({
 }
 
 function StatusPill({ status }: { status: string }) {
-  const present = status === 'Present';
+  const tone =
+    status === 'Present' ? 'present' : status === 'Half Day' ? 'halfDay' : 'absent';
   return (
-    <View style={[styles.pill, present ? styles.present : styles.absent]}>
-      <Text style={[styles.pillText, present ? styles.presentText : styles.absentText]}>
-        {status.toUpperCase()}
-      </Text>
+    <View style={[styles.pill, styles[tone]]}>
+      <Text style={[styles.pillText, styles[`${tone}Text`]]}>{status.toUpperCase()}</Text>
     </View>
   );
 }
@@ -186,7 +185,8 @@ export function AttendanceScreen() {
 
   const totalCount = rows.length;
   const presentCount = rows.filter((r) => r.status === 'Present').length;
-  const absentCount = totalCount - presentCount;
+  const halfDayCount = rows.filter((r) => r.status === 'Half Day').length;
+  const absentCount = rows.filter((r) => r.status === 'Absent').length;
 
   return (
     <View
@@ -194,7 +194,8 @@ export function AttendanceScreen() {
     >
       <Text style={styles.title}>Attendance</Text>
       <Text style={styles.meta}>
-        Times in {timezone} for {date || 'today'}.
+        Times in {timezone} for {date || 'today'}. Status from worked hours (Present ≥9h, Half Day
+        ≥4h, Absent &lt;4h).
       </Text>
 
       {/* KPI Stats Summary Cards */}
@@ -206,6 +207,10 @@ export function AttendanceScreen() {
         <View style={[styles.kpiCard, styles.kpiCardPresent]}>
           <Text style={[styles.kpiValue, { color: THEME.emerald }]}>{presentCount}</Text>
           <Text style={styles.kpiLabel}>Present</Text>
+        </View>
+        <View style={[styles.kpiCard, styles.kpiCardHalfDay]}>
+          <Text style={[styles.kpiValue, { color: THEME.amber }]}>{halfDayCount}</Text>
+          <Text style={styles.kpiLabel}>Half Day</Text>
         </View>
         <View style={[styles.kpiCard, styles.kpiCardAbsent]}>
           <Text style={[styles.kpiValue, { color: THEME.textMuted }]}>{absentCount}</Text>
@@ -302,6 +307,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   kpiCardPresent: { borderColor: 'rgba(16, 185, 129, 0.25)', backgroundColor: 'rgba(16, 185, 129, 0.08)' },
+  kpiCardHalfDay: { borderColor: 'rgba(245, 158, 11, 0.25)', backgroundColor: 'rgba(245, 158, 11, 0.08)' },
   kpiCardAbsent: { borderColor: 'rgba(148, 163, 184, 0.2)', backgroundColor: 'rgba(148, 163, 184, 0.06)' },
   kpiValue: { fontSize: 20, fontWeight: '900', color: '#fff' },
   kpiLabel: { fontSize: 11, fontWeight: '700', color: THEME.textMuted, marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.5 },
@@ -367,7 +373,7 @@ const styles = StyleSheet.create({
   },
   colName: { flex: 1.4, paddingRight: 6 },
   colTime: { flex: 0.9 },
-  colStatus: { width: 88, alignItems: 'flex-end' },
+  colStatus: { width: 100, alignItems: 'flex-end' },
   card: {
     backgroundColor: THEME.card,
     borderWidth: 1,
@@ -407,8 +413,10 @@ const styles = StyleSheet.create({
   },
   pillText: { fontSize: 10, fontWeight: '800', textAlign: 'center', letterSpacing: 0.5 },
   present: { backgroundColor: THEME.presentBg, borderColor: THEME.presentBorder },
+  halfDay: { backgroundColor: THEME.pendingBg, borderColor: THEME.pendingBorder },
   absent: { backgroundColor: THEME.absentBg, borderColor: THEME.absentBorder },
   presentText: { color: THEME.presentText },
+  halfDayText: { color: THEME.pendingText },
   absentText: { color: THEME.absentText },
   empty: { color: THEME.textMuted, textAlign: 'center', marginTop: 24, fontSize: 15 },
   status: { color: THEME.textSecondary, textAlign: 'center', marginTop: 10, fontSize: 14, fontWeight: '600' },

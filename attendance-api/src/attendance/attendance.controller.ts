@@ -155,7 +155,8 @@ export class AttendanceController {
   @Get('attendance/status')
   @Roles('admin')
   @ApiOperation({
-    summary: 'Admin roster: clock-in, clock-out, and Present/Absent for every employee',
+    summary:
+      'Admin roster: clock-in, clock-out, and status from worked hours (Present ≥9h, Half Day 4–<9h, Absent <4h)',
   })
   status(@Query('date') date?: string) {
     return this.attendance.roster(date);

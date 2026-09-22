@@ -65,7 +65,7 @@ export type AttendanceStatusRow = {
   email: string | null;
   clock_in: string | null;
   clock_out: string | null;
-  status: 'Present' | 'Absent';
+  status: 'Present' | 'Half Day' | 'Absent';
 };
 
 export type WfhRequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
