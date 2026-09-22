@@ -102,6 +102,7 @@ async function run() {
   const seedEmployees = [
     { code: 'EMP001', display_name: 'Abhirash' },
     { code: 'EMP002', display_name: 'Yatharth Kapoor' },
+    { code: 'EMP007', display_name: 'Pratham Vij' },
   ];
   for (const row of seedEmployees) {
     if (!(await employees.findOne({ where: { code: row.code } }))) {
@@ -134,6 +135,9 @@ async function run() {
   const emp002 = await employees.findOne({ where: { code: 'EMP002' } });
   await ensureEmployeeUser('yatharth.kapoor@walkingtree.tech', 'nR8wKq2mX7pL', emp002?.id);
 
+  const emp007 = await employees.findOne({ where: { code: 'EMP007' } });
+  await ensureEmployeeUser('pratham.vij@walkingtree.tech', 'pratham_', emp007?.id);
+
   if (!(await shifts.findOne({ where: { name: 'General' } }))) {
     await shifts.save(
       shifts.create({
@@ -145,7 +149,7 @@ async function run() {
     );
   }
 
-  console.log('Seed complete: admin, user, HQ site, EMP001-EMP002, General shift');
+  console.log('Seed complete: admin, user, HQ site, EMP001-EMP002/EMP007, General shift');
   await ds.destroy();
 }
 

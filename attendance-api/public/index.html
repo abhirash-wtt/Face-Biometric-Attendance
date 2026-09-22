@@ -200,7 +200,7 @@
     }
 
     .row { display:flex; flex-wrap:wrap; gap:12px; margin-top:14px; }
-    button.cta, button.alt, button.toggle, button.danger {
+    button.cta, button.alt, button.toggle, button.danger, button.preview {
       border:0; border-radius:14px; padding:14px 18px; min-height:var(--tap);
       font-size:15px; font-weight:800; cursor:pointer; color:#fff;
       font-family:inherit; transition:all 0.2s ease;
@@ -223,6 +223,36 @@
       background:linear-gradient(135deg, #f43f5e, #e11d48);
       box-shadow:0 4px 16px rgba(244, 63, 94, 0.3);
       width:100%; margin-top:8px; color:#fff;
+    }
+    button.preview {
+      background:rgba(56, 189, 248, 0.12);
+      border:1px solid rgba(56, 189, 248, 0.35);
+      color:var(--mint);
+      box-shadow:none;
+      width:100%; margin-top:8px;
+    }
+    button.preview:hover {
+      transform:translateY(-1px);
+      background:rgba(56, 189, 248, 0.18);
+      box-shadow:0 4px 16px rgba(56, 189, 248, 0.2);
+    }
+    .preview-grid {
+      display:flex; flex-wrap:wrap; gap:12px; justify-content:center;
+      margin:12px 0 4px;
+    }
+    .preview-item {
+      width:min(148px, 42vw); text-align:center;
+    }
+    .preview-item img {
+      width:100%; aspect-ratio:1; object-fit:cover;
+      border-radius:14px; border:1px solid var(--card-border);
+      background:rgba(15, 23, 42, 0.9); display:block;
+    }
+    .preview-item .label {
+      margin-top:8px; color:var(--muted); font-size:13px; font-weight:700;
+    }
+    .preview-empty {
+      color:var(--muted); text-align:center; margin:8px 0 0; font-size:14px;
     }
     button.toggle { flex:1 1 120px; background:transparent; border:1px solid var(--line); color:var(--muted); }
     button.toggle.on { background:var(--ok); border-color:var(--ok); color:#fff; }
@@ -521,6 +551,7 @@
         <button type="button" class="pose-chip" data-pose="right">Right</button>
       </div>
       <button class="cta" id="sampleBtn">Capture looking straight</button>
+      <button class="preview" id="previewSamplesBtn" type="button">Preview face samples</button>
       <button class="cta" id="resetSamplesBtn">Reset face samples</button>
       <p class="status" id="enrollStatus">Select an employee. Capture looking straight, left, and right to complete enrollment.</p>
     </section>
@@ -647,6 +678,15 @@
     <div class="row">
       <button class="toggle" id="resetEnrollCancel">Cancel</button>
       <button class="danger" id="resetEnrollOk" style="margin:0">Reset</button>
+    </div>
+  </dialog>
+  <dialog id="previewSamples">
+    <h2>Face samples</h2>
+    <p id="previewSamplesSubtitle" class="preview-empty" style="margin-top:4px; margin-bottom:0;"></p>
+    <div class="preview-grid" id="previewSamplesGrid"></div>
+    <p class="preview-empty hidden" id="previewSamplesEmpty">No saved photos yet. Capture each pose, then preview again.</p>
+    <div class="row">
+      <button class="cta" id="previewSamplesClose" style="margin:0; width:100%;">Close</button>
     </div>
   </dialog>
   <dialog id="failureModal">
@@ -1992,6 +2032,44 @@
       state.enrollPose = chip.dataset.pose;
       applyEnrollment(state.enrollment || { captured_poses: [], missing_poses: POSE_ORDER.slice(), enrollment_complete: false }, { autoPose: false });
     };
+    function previewableSamples(enrollment) {
+      const samples = (enrollment && enrollment.samples) || [];
+      return POSE_ORDER.map((pose) => {
+        const match = samples.find((s) => s && s.pose === pose && s.image_url);
+        return match || null;
+      }).filter(Boolean);
+    }
+    function resolveMediaUrl(url) {
+      if (!url) return '';
+      if (/^https?:\/\//i.test(url)) return url;
+      const base = (state.settings.apiBase || location.origin).replace(/\/$/, '');
+      return base + '/' + String(url).replace(/^\//, '');
+    }
+    $('previewSamplesBtn').onclick = () => {
+      if (!state.selected) return status('enrollStatus', 'Select an employee first');
+      const samples = previewableSamples(state.enrollment);
+      const grid = $('previewSamplesGrid');
+      const empty = $('previewSamplesEmpty');
+      $('previewSamplesSubtitle').textContent = state.selected.display_name || 'Employee';
+      grid.innerHTML = '';
+      if (!samples.length) {
+        empty.classList.remove('hidden');
+        status('enrollStatus', 'No saved face photos to preview yet. Capture at least one pose first (or recapture if samples are older).');
+      } else {
+        empty.classList.add('hidden');
+        samples.forEach((sample) => {
+          const item = document.createElement('div');
+          item.className = 'preview-item';
+          const poseName = sample.pose === 'left' ? 'Left' : sample.pose === 'right' ? 'Right' : 'Straight';
+          item.innerHTML =
+            '<img src="' + esc(resolveMediaUrl(sample.image_url)) + '" alt="' + esc(poseName) + ' sample" />' +
+            '<div class="label">' + esc(poseName) + '</div>';
+          grid.appendChild(item);
+        });
+      }
+      $('previewSamples').showModal();
+    };
+    $('previewSamplesClose').onclick = () => $('previewSamples').close();
     $('resetSamplesBtn').onclick = () => {
       if (!state.selected) return status('enrollStatus', 'Select an employee first');
       $('resetEnrollMsg').textContent =

@@ -19,6 +19,15 @@ export type WorkingMode = 'onsite' | 'remote';
 
 export type EnrollPose = 'straight' | 'left' | 'right';
 
+export type EnrollmentSample = {
+  pose: EnrollPose | string | null;
+  features_complete?: boolean;
+  features_coverage?: number | null;
+  liveness_score?: number | null;
+  image_url?: string | null;
+  created_at?: string | null;
+};
+
 export type EnrollmentStatus = {
   employee_id: string;
   employee_code?: string;
@@ -34,6 +43,7 @@ export type EnrollmentStatus = {
   missing_poses: EnrollPose[];
   required_samples: number;
   pose?: EnrollPose;
+  samples?: EnrollmentSample[];
 };
 
 export type Employee = {

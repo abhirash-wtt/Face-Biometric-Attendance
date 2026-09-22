@@ -15,6 +15,7 @@ export type EnrollmentSample = {
   features_complete?: boolean | null;
   features_coverage?: number | null;
   liveness_score?: number | null;
+  image_url?: string | null;
   created_at?: Date | string | null;
 };
 

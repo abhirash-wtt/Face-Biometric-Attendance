@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   FlatList,
+  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -12,7 +14,7 @@ import {
 } from 'react-native';
 import { CameraView } from '../components/CameraView';
 import { ConfirmModal } from '../components/ConfirmModal';
-import { api, Employee, EnrollPose, EnrollmentStatus, WorkingMode } from '../services/api';
+import { api, Employee, EnrollPose, EnrollmentSample, EnrollmentStatus, WorkingMode } from '../services/api';
 import { storage } from '../services/storage';
 import { TAP_TARGET, useLayout } from '../theme/responsive';
 import { THEME } from '../theme/colors';
@@ -43,6 +45,19 @@ function statusMessage(res: EnrollmentStatus | null, name?: string) {
   return `Enrollment incomplete. Still need: ${missing.join(', ') || 'straight, left, right'}.`;
 }
 
+function resolveMediaUrl(apiBase: string, url: string) {
+  if (/^https?:\/\//i.test(url)) return url;
+  return `${apiBase.replace(/\/$/, '')}/${url.replace(/^\//, '')}`;
+}
+
+function previewSamples(enrollment: EnrollmentStatus | null): EnrollmentSample[] {
+  const samples = enrollment?.samples || [];
+  return POSES.map((pose) => {
+    const match = samples.find((s) => s.pose === pose.id && s.image_url);
+    return match || null;
+  }).filter((s): s is EnrollmentSample => !!s);
+}
+
 export function EnrollScreen() {
   const layout = useLayout();
   const [q, setQ] = useState('');
@@ -59,6 +74,8 @@ export function EnrollScreen() {
   const [modeMenuFor, setModeMenuFor] = useState<Employee | null>(null);
   const [confirm, setConfirm] = useState(false);
   const [resetConfirm, setResetConfirm] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewUrls, setPreviewUrls] = useState<Array<{ pose: EnrollPose | string; uri: string; label: string }>>([]);
   const captureRef = React.useRef<() => Promise<string>>(async () => {
     throw new Error('Camera not ready');
   });
@@ -181,6 +198,31 @@ export function EnrollScreen() {
       setMessage(err instanceof Error ? err.message : 'Enroll failed');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const openPreview = async () => {
+    const samples = previewSamples(enrollment);
+    if (!selected) {
+      setMessage('Select an employee first');
+      return;
+    }
+    if (!samples.length) {
+      setMessage('No saved face photos to preview yet. Capture at least one pose first (or recapture if samples are older).');
+      return;
+    }
+    try {
+      const settings = await storage.getSettings();
+      setPreviewUrls(
+        samples.map((sample) => ({
+          pose: sample.pose || 'straight',
+          label: POSES.find((p) => p.id === sample.pose)?.label || String(sample.pose || 'Sample'),
+          uri: resolveMediaUrl(settings.apiBase, sample.image_url!),
+        })),
+      );
+      setPreviewOpen(true);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Unable to open preview');
     }
   };
 
@@ -325,6 +367,14 @@ export function EnrollScreen() {
           </Pressable>
           <Pressable
             disabled={busy || !selected}
+            onPress={openPreview}
+            accessibilityRole="button"
+            style={[styles.cta, styles.ctaPreview, styles.ctaSpaced, (busy || !selected) && styles.ctaBusy]}
+          >
+            <Text style={[styles.ctaText, styles.ctaPreviewText]}>Preview face samples</Text>
+          </Pressable>
+          <Pressable
+            disabled={busy || !selected}
             onPress={() => setResetConfirm(true)}
             accessibilityRole="button"
             style={[styles.cta, styles.ctaReset, styles.ctaSpaced, (busy || !selected) && styles.ctaBusy]}
@@ -368,6 +418,40 @@ export function EnrollScreen() {
             })}
           </View>
         </Pressable>
+      </Modal>
+      <Modal
+        visible={previewOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPreviewOpen(false)}
+      >
+        <View style={styles.previewBackdrop}>
+          <View style={styles.previewCard}>
+            <Text style={styles.previewTitle}>Face samples</Text>
+            <Text style={styles.previewSubtitle} numberOfLines={1}>
+              {selected?.display_name || 'Employee'}
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.previewRow}
+            >
+              {previewUrls.map((item) => (
+                <View key={`${item.pose}-${item.uri}`} style={styles.previewItem}>
+                  <Image source={{ uri: item.uri }} style={styles.previewImage} resizeMode="cover" />
+                  <Text style={styles.previewLabel}>{item.label}</Text>
+                </View>
+              ))}
+            </ScrollView>
+            <Pressable
+              onPress={() => setPreviewOpen(false)}
+              accessibilityRole="button"
+              style={styles.previewClose}
+            >
+              <Text style={styles.previewCloseText}>Close</Text>
+            </Pressable>
+          </View>
+        </View>
       </Modal>
       <ConfirmModal
         visible={confirm}
@@ -553,6 +637,12 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
+  ctaPreview: {
+    backgroundColor: 'rgba(56, 189, 248, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.35)',
+  },
+  ctaPreviewText: { color: THEME.cyanLight },
   ctaReset: {
     backgroundColor: 'rgba(244, 63, 94, 0.1)',
     borderWidth: 1,
@@ -563,5 +653,41 @@ const styles = StyleSheet.create({
   ctaText: { color: '#fff', fontWeight: '800', fontSize: 15 },
   ctaSpaced: { marginTop: 8 },
   status: { color: THEME.textSecondary, marginTop: 10, textAlign: 'center', fontSize: 14, fontWeight: '600' },
+  previewBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(4, 10, 22, 0.85)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  previewCard: {
+    backgroundColor: THEME.cardSolid,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    padding: 18,
+  },
+  previewTitle: { color: '#fff', fontSize: 18, fontWeight: '800' },
+  previewSubtitle: { color: THEME.textMuted, marginTop: 4, marginBottom: 14, fontSize: 14 },
+  previewRow: { gap: 12, paddingRight: 4 },
+  previewItem: { width: 148, alignItems: 'center' },
+  previewImage: {
+    width: 148,
+    height: 148,
+    borderRadius: 14,
+    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+    borderWidth: 1,
+    borderColor: THEME.border,
+  },
+  previewLabel: { color: THEME.textSecondary, marginTop: 8, fontWeight: '700', fontSize: 13 },
+  previewClose: {
+    marginTop: 16,
+    minHeight: TAP_TARGET - 4,
+    borderRadius: 12,
+    backgroundColor: 'rgba(6, 182, 212, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(6, 182, 212, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  previewCloseText: { color: THEME.cyan, fontWeight: '800', fontSize: 15 },
 });
-

@@ -49,27 +49,66 @@ export class StorageService implements OnModuleInit {
       await this.minio.putObject(this.bucket, key, buffer, buffer.length, {
         'Content-Type': contentType,
       });
-      return `minio://${this.bucket}/${key}`;
+    } else {
+      const full = path.join(this.localDir, key);
+      fs.mkdirSync(path.dirname(full), { recursive: true });
+      fs.writeFileSync(full, buffer);
     }
-    const full = path.join(this.localDir, key);
-    fs.mkdirSync(path.dirname(full), { recursive: true });
-    fs.writeFileSync(full, buffer);
     return `/evidence/${key}`;
   }
 
   async get(url: string): Promise<Buffer | null> {
+    const key = this.objectKey(url);
+    if (!key) return null;
+
     if (url.startsWith('minio://') && this.minio) {
-      const key = url.replace(`minio://${this.bucket}/`, '');
-      const stream = await this.minio.getObject(this.bucket, key);
-      const chunks: Buffer[] = [];
-      for await (const chunk of stream) chunks.push(chunk as Buffer);
-      return Buffer.concat(chunks);
+      return this.readMinio(key);
     }
-    if (url.startsWith('/evidence/')) {
-      const full = path.join(this.localDir, url.replace('/evidence/', ''));
-      if (fs.existsSync(full)) return fs.readFileSync(full);
+
+    const full = path.join(this.localDir, key);
+    if (fs.existsSync(full)) return fs.readFileSync(full);
+
+    if (this.minio) {
+      try {
+        return await this.readMinio(key);
+      } catch {
+        return null;
+      }
     }
     return null;
+  }
+
+  async remove(url: string | null | undefined): Promise<void> {
+    if (!url) return;
+    const key = this.objectKey(url);
+    if (!key) return;
+    try {
+      if (this.minio && (this.provider === 'minio' || url.startsWith('minio://'))) {
+        await this.minio.removeObject(this.bucket, key);
+      }
+      const full = path.join(this.localDir, key);
+      if (fs.existsSync(full)) fs.unlinkSync(full);
+    } catch (err) {
+      this.logger.warn(`Failed to remove ${url}: ${(err as Error).message}`);
+    }
+  }
+
+  private objectKey(url: string): string | null {
+    if (url.startsWith('minio://')) {
+      return url.replace(`minio://${this.bucket}/`, '');
+    }
+    if (url.startsWith('/evidence/')) {
+      return url.replace('/evidence/', '');
+    }
+    return null;
+  }
+
+  private async readMinio(key: string): Promise<Buffer> {
+    if (!this.minio) throw new Error('MinIO unavailable');
+    const stream = await this.minio.getObject(this.bucket, key);
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) chunks.push(chunk as Buffer);
+    return Buffer.concat(chunks);
   }
 
   async deleteOlderThan(days: number): Promise<number> {

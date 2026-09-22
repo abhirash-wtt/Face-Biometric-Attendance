@@ -35,6 +35,9 @@ export class FaceTemplate {
   @Column({ type: 'boolean', default: false })
   features_complete: boolean;
 
+  @Column({ type: 'text', nullable: true })
+  image_url?: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   created_at: Date;
 }

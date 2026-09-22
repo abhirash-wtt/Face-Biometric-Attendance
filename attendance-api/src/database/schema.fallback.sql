@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS face_templates (
   pose TEXT CHECK (pose IS NULL OR pose IN ('straight', 'left', 'right')),
   features_coverage REAL,
   features_complete BOOLEAN DEFAULT FALSE,
+  image_url TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 

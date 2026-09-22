@@ -215,6 +215,7 @@ export class DatabaseInitService implements OnModuleInit {
     await this.ds.query(
       `ALTER TABLE face_templates ADD COLUMN IF NOT EXISTS features_complete BOOLEAN DEFAULT FALSE`,
     );
+    await this.ds.query(`ALTER TABLE face_templates ADD COLUMN IF NOT EXISTS image_url TEXT`);
     await this.ds.query(
       `UPDATE face_templates SET features_complete = FALSE WHERE features_complete IS NULL`,
     );

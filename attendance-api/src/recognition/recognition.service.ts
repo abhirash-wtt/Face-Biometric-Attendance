@@ -13,6 +13,7 @@ import {
 } from './enrollment';
 import { cosineSimilarity, parsePgVector, toPgVector } from '../common/math';
 import { DatabaseInitService } from '../database/database-init.service';
+import { StorageService } from '../storage/storage.service';
 
 const POSE_DIVERSITY_MAX_SIM = 0.992;
 
@@ -38,6 +39,7 @@ export class RecognitionService {
     private readonly liveness: LivenessService,
     private readonly compreface: ComprefaceService,
     private readonly faceQuality: FaceQualityService,
+    private readonly storage: StorageService,
     private readonly ds: DataSource,
     private readonly dbInit: DatabaseInitService,
   ) {}
@@ -65,13 +67,14 @@ export class RecognitionService {
         features_complete: boolean;
         features_coverage: number | null;
         liveness_score: number | null;
+        image_url: string | null;
         created_at: Date | string | null;
       }>;
       total_templates: number;
     }
   > {
     const rows = await this.ds.query(
-      `SELECT pose, features_complete, features_coverage, liveness_score, created_at
+      `SELECT pose, features_complete, features_coverage, liveness_score, image_url, created_at
          FROM face_templates
         WHERE employee_id = $1
         ORDER BY created_at ASC`,
@@ -83,12 +86,14 @@ export class RecognitionService {
         features_complete: boolean | null;
         features_coverage: number | null;
         liveness_score: number | null;
+        image_url: string | null;
         created_at: Date | string | null;
       }) => ({
         pose: row.pose,
         features_complete: !!row.features_complete,
         features_coverage: row.features_coverage == null ? null : Number(row.features_coverage),
         liveness_score: row.liveness_score == null ? null : Number(row.liveness_score),
+        image_url: row.image_url || null,
         created_at: row.created_at,
       }),
     );
@@ -128,25 +133,40 @@ export class RecognitionService {
     if (this.compreface.enabled()) {
       await this.compreface.enroll(employeeCode, imageBuf);
     }
+
+    const existing = await this.ds.query(
+      `SELECT image_url FROM face_templates WHERE employee_id = $1 AND pose = $2 LIMIT 1`,
+      [employeeId, pose],
+    );
+    const image_url = await this.storage.put(imageBuf, 'image/jpeg', 'enroll');
+
     await this.ds.query(
       `INSERT INTO face_templates
-         (employee_id, embedding, liveness_score, pose, features_coverage, features_complete)
-       VALUES ($1, $2, $3, $4, $5, TRUE)
+         (employee_id, embedding, liveness_score, pose, features_coverage, features_complete, image_url)
+       VALUES ($1, $2, $3, $4, $5, TRUE, $6)
        ON CONFLICT (employee_id, pose) WHERE pose IS NOT NULL
        DO UPDATE SET
          embedding = EXCLUDED.embedding,
          liveness_score = EXCLUDED.liveness_score,
          features_coverage = EXCLUDED.features_coverage,
          features_complete = TRUE,
+         image_url = EXCLUDED.image_url,
          created_at = now()`,
-      [employeeId, toPgVector(embedding), liveness_score, pose, quality.coverage],
+      [employeeId, toPgVector(embedding), liveness_score, pose, quality.coverage, image_url],
     );
+
+    const previousUrl = existing?.[0]?.image_url as string | undefined;
+    if (previousUrl && previousUrl !== image_url) {
+      await this.storage.remove(previousUrl);
+    }
+
     return {
       liveness_score,
       pose,
       features_coverage: quality.coverage,
       features_complete: true,
       features_present: quality.present,
+      image_url,
     };
   }
 
@@ -174,7 +194,14 @@ export class RecognitionService {
     if (this.compreface.enabled()) {
       await this.compreface.deleteSubject(employeeCode);
     }
+    const rows = await this.ds.query(
+      `SELECT image_url FROM face_templates WHERE employee_id = $1 AND image_url IS NOT NULL`,
+      [employeeId],
+    );
     await this.ds.query('DELETE FROM face_templates WHERE employee_id = $1', [employeeId]);
+    for (const row of rows as Array<{ image_url: string }>) {
+      await this.storage.remove(row.image_url);
+    }
   }
 
   async identify(
