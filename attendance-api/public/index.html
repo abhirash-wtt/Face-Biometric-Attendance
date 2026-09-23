@@ -787,6 +787,9 @@
     function isEmployeeLike(role) {
       return role === 'employee' || role === 'manager' || role === 'hr';
     }
+    function canAccessAttendance(role) {
+      return role === 'admin' || role === 'bu' || role === 'manager' || role === 'hr';
+    }
     function authUser() {
       try { return JSON.parse(localStorage.getItem('auth_user') || 'null'); } catch { return null; }
     }
@@ -932,6 +935,7 @@
     function applyAccess() {
       const role = jwtRole();
       const adminLike = isAdminLike(role);
+      const attendanceOk = canAccessAttendance(role);
       const loggedIn = !!role;
       const user = authUser();
       const wfhOk = canUseWfh();
@@ -939,7 +943,7 @@
       // Admin/BU manage attendance/regularization — hide shared kiosk clock-in.
       $('kioskTabBtn').classList.toggle('rbac-hide', adminLike);
       $('enrollTabBtn').classList.toggle('rbac-hide', !enrollOk);
-      $('attendanceTabBtn').classList.toggle('rbac-hide', !adminLike);
+      $('attendanceTabBtn').classList.toggle('rbac-hide', !attendanceOk);
       $('wfhTabBtn').classList.toggle('rbac-hide', !wfhOk);
       $('adminBindBlock').classList.toggle('rbac-hide', isEmployeeLike(role));
       $('bindBtn').classList.toggle('rbac-hide', isEmployeeLike(role));
@@ -958,8 +962,8 @@
       }
       let fallback = '';
       if (adminLike && state.tab === 'kiosk') fallback = 'attendance';
-      else if ((state.tab === 'attendance' && !adminLike) || (state.tab === 'enroll' && !enrollOk) || (state.tab === 'wfh' && !wfhOk)) {
-        fallback = adminLike ? 'attendance' : 'kiosk';
+      else if ((state.tab === 'attendance' && !attendanceOk) || (state.tab === 'enroll' && !enrollOk) || (state.tab === 'wfh' && !wfhOk)) {
+        fallback = attendanceOk ? 'attendance' : 'kiosk';
       }
       if (fallback) {
         state.tab = fallback;
@@ -1710,7 +1714,7 @@
     document.querySelectorAll('header button').forEach((b) => {
       b.onclick = () => {
         if (b.dataset.tab === 'kiosk' && isAdminLike(jwtRole())) return;
-        if (b.dataset.tab === 'attendance' && !isAdminLike(jwtRole())) return;
+        if (b.dataset.tab === 'attendance' && !canAccessAttendance(jwtRole())) return;
         if (b.dataset.tab === 'enroll' && !canEnroll()) return;
         if (b.dataset.tab === 'wfh' && !canUseWfh()) return;
         state.tab = b.dataset.tab;

@@ -56,13 +56,17 @@ export const storage = {
       return '';
     }
   },
-  /** Admin and BU share management privileges (roster, devices, regularization review). */
+  /** Admin and BU share management privileges (devices, regularization review). */
   isAdminLike(role: AppRole | string | null | undefined): boolean {
     return role === 'admin' || role === 'bu';
   },
-  /** Employee, manager, and HR share the same non-management privileges. */
+  /** Employee, manager, and HR share the same non-management privileges (except attendance). */
   isEmployeeLike(role: AppRole | string | null | undefined): boolean {
     return !!role && EMPLOYEE_LIKE_ROLES.has(role);
+  },
+  /** Roster / attendance reports: admin, BU, manager, and HR. */
+  canAccessAttendance(role: AppRole | string | null | undefined): boolean {
+    return role === 'admin' || role === 'bu' || role === 'manager' || role === 'hr';
   },
   /** Only true admins may enroll any employee; BU is limited to their own face. */
   canEnrollAnyEmployee(role: AppRole | string | null | undefined): boolean {

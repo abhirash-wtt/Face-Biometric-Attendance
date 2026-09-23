@@ -80,8 +80,8 @@ Seeded users:
 - `admin@attendance.local` / `Admin@123` (admin — full access, including enroll any face, device bind, and viewing every employee’s clock-in/out and Present/Absent status)
 - `bu@attendance.local` / `Bu@123` (bu — same as admin for attendance, devices, and regularization review; enroll is employee-scoped and requires a linked `users.employee_id`)
 - `user@attendance.local` / `User@123` (employee — not linked to an employee record; cannot clock in until an admin sets `users.employee_id`)
-- `hrrole@gmail.com` / `vrSzijkmZf` (hr — same access as employee; linked to EMPHR for own-face enroll)
-- `managerrole@gmail.com` / `V9wbSaSeEt` (manager — same access as employee; linked to EMPMGR for own-face enroll)
+- `hrrole@gmail.com` / `vrSzijkmZf` (hr — Attendance roster/reports like admin; otherwise employee-scoped; linked to EMPHR)
+- `managerrole@gmail.com` / `V9wbSaSeEt` (manager — Attendance roster/reports like admin; otherwise employee-scoped; linked to EMPMGR)
 - `abhirash.garg@walkingtree.tech` / `faZWGpjhmB` (employee — EMP001 Abhirash; clock-in requires Abhirash’s enrolled face)
 - `yatharth.kapoor@walkingtree.tech` / `nR8wKq2mX7pL` (employee — EMP002 Yatharth Kapoor; clock-in requires Yatharth’s enrolled face)
 
@@ -104,7 +104,7 @@ On a device/emulator, set **Settings → API URL**:
 The native app talks to plain HTTP happily; the secure-context rule above applies only to
 browsers, so there is no need to point the app at the HTTPS port.
 
-Then **Login** (admin), **Register** with a `@walkingtree.tech` email and the emailed OTP, or **Register this device**. After self-register, open **Enroll** and capture looking straight, left, and right. Clock-in is blocked until enrollment is complete. Admins can open **Attendance** to see any user’s clock-in time, clock-out time, and Present/Absent status.
+Then **Login** (admin), **Register** with a `@walkingtree.tech` email and the emailed OTP, or **Register this device**. After self-register, open **Enroll** and capture looking straight, left, and right. Clock-in is blocked until enrollment is complete. Admins, BU, managers, and HR can open **Attendance** to see any user’s clock-in time, clock-out time, and Present/Absent status.
 
 Camera: `react-native-vision-camera`. Active liveness prompts: blink, turn left/right, smile.
 

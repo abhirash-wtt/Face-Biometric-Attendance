@@ -153,18 +153,18 @@ export class AttendanceController {
   }
 
   @Get('attendance/status')
-  @Roles('admin')
+  @Roles('admin', 'manager', 'hr')
   @ApiOperation({
     summary:
-      'Admin roster: clock-in, clock-out, and status from worked hours (Present ≥9h, Half Day 4–<9h, Absent <4h)',
+      'Roster: clock-in, clock-out, and status from worked hours (Present ≥9h, Half Day 4–<9h, Absent <4h). Admin, BU, manager, HR.',
   })
   status(@Query('date') date?: string) {
     return this.attendance.roster(date);
   }
 
   @Get('attendance')
-  @Roles('admin')
-  @ApiOperation({ summary: 'Reports / export. format=json|csv|payroll' })
+  @Roles('admin', 'manager', 'hr')
+  @ApiOperation({ summary: 'Reports / export. format=json|csv|payroll. Admin, BU, manager, HR.' })
   async list(
     @Query('from') from: string,
     @Query('to') to: string,

@@ -28,15 +28,16 @@ function Shell() {
     const wfh = await storage.canUseRegularization();
     const enroll = await storage.canEnroll();
     const adminLike = storage.isAdminLike(next);
+    const canAttendance = storage.canAccessAttendance(next);
     setRole(next);
     setCanWfh(wfh);
     setCanEnroll(enroll);
     setTab((current) => {
       // Admin/BU do not use kiosk; send them to a management tab.
       if (adminLike && current === 'kiosk') return 'attendance';
-      if (!adminLike && current === 'attendance') return 'kiosk';
-      if (!enroll && current === 'enroll') return adminLike ? 'attendance' : 'kiosk';
-      if (!wfh && current === 'wfh') return adminLike ? 'attendance' : 'kiosk';
+      if (current === 'attendance' && !canAttendance) return 'kiosk';
+      if (!enroll && current === 'enroll') return canAttendance ? 'attendance' : 'kiosk';
+      if (!wfh && current === 'wfh') return canAttendance ? 'attendance' : 'kiosk';
       return current;
     });
   }, []);
@@ -46,6 +47,7 @@ function Shell() {
   }, [refreshRole]);
 
   const adminLike = storage.isAdminLike(role);
+  const canAttendance = storage.canAccessAttendance(role);
   const tabs: Array<[Tab, string]> = adminLike
     ? [
         ...(canEnroll ? [['enroll', 'Enroll'] as [Tab, string]] : []),
@@ -56,6 +58,7 @@ function Shell() {
     : [
         ['kiosk', 'Kiosk'],
         ...(canEnroll ? [['enroll', 'Enroll'] as [Tab, string]] : []),
+        ...(canAttendance ? [['attendance', 'Attend'] as [Tab, string]] : []),
         ...(canWfh ? [['wfh', 'Regularize'] as [Tab, string]] : []),
         ['settings', 'Settings'],
       ];
@@ -96,7 +99,7 @@ function Shell() {
       >
         {tab === 'kiosk' && !storage.isAdminLike(role) && <KioskScreen />}
         {tab === 'enroll' && canEnroll && <EnrollScreen />}
-        {tab === 'attendance' && storage.isAdminLike(role) && <AttendanceScreen />}
+        {tab === 'attendance' && canAttendance && <AttendanceScreen />}
         {tab === 'wfh' && canWfh && <RegularizationScreen role={role} />}
         {tab === 'settings' && <SettingsScreen onAuthChange={refreshRole} />}
       </View>
