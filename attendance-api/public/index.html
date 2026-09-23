@@ -904,6 +904,7 @@
     function applyAccess() {
       const role = jwtRole();
       const isAdmin = role === 'admin';
+      const loggedIn = !!role;
       const user = authUser();
       const wfhOk = canUseWfh();
       $('enrollTabBtn').classList.toggle('rbac-hide', !canEnroll());
@@ -914,6 +915,8 @@
       $('wfhRequestForm').classList.toggle('hidden', role !== 'user');
       $('wfhAdminHint').classList.toggle('hidden', !isAdmin);
       $('wfhListTitle').textContent = isAdmin ? 'All requests' : 'My requests';
+      $('loginBtn').classList.toggle('hidden', loggedIn || $('authHeading').textContent === 'Register');
+      $('logoutBtn').classList.toggle('hidden', !loggedIn);
       if (role && user && user.email) {
         $('roleBadge').textContent = 'Signed in as ' + user.email + ' (' + role + ')';
       } else if (role) {
@@ -2467,14 +2470,16 @@
     }
     function setAuthMode(mode) {
       const register = mode === 'register';
+      const loggedIn = !!jwtRole();
       $('authModeLogin').classList.toggle('on', !register);
       $('authModeRegister').classList.toggle('on', register);
       $('authHeading').textContent = register ? 'Register' : 'Login';
       $('registerNameBlock').classList.toggle('hidden', !register);
       $('registerConfirmBlock').classList.toggle('hidden', !register);
       $('registerHint').classList.toggle('hidden', !register);
-      $('loginBtn').classList.toggle('hidden', register);
+      $('loginBtn').classList.toggle('hidden', register || loggedIn);
       $('registerBtn').classList.toggle('hidden', !register);
+      $('logoutBtn').classList.toggle('hidden', !loggedIn);
       $('email').autocomplete = register ? 'email' : 'username';
       $('email').placeholder = register ? 'you@walkingtree.tech' : '';
       $('password').autocomplete = register ? 'new-password' : 'current-password';
@@ -2547,8 +2552,11 @@
         $('verifyOtpBtn').onclick();
         return;
       }
-      if ($('registerBtn').classList.contains('hidden')) $('loginBtn').onclick();
-      else $('registerBtn').onclick();
+      if ($('registerBtn').classList.contains('hidden')) {
+        if (!$('loginBtn').classList.contains('hidden')) $('loginBtn').onclick();
+      } else {
+        $('registerBtn').onclick();
+      }
     }
     $('password').onkeydown = (e) => {
       if (e.key !== 'Enter') return;
@@ -2559,6 +2567,7 @@
           return;
         }
       }
+      if ($('loginBtn').classList.contains('hidden')) return;
       e.target.blur();
       $('loginBtn').onclick();
     };

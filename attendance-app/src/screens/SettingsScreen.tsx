@@ -77,6 +77,7 @@ export function SettingsScreen({ onAuthChange }: { onAuthChange?: () => void }) 
     setMessage('Signed out');
   };
 
+  const isLoggedIn = !!role;
   const showBind = role !== 'user';
 
   const flush = async () => {
@@ -150,14 +151,24 @@ export function SettingsScreen({ onAuthChange }: { onAuthChange?: () => void }) 
             onChange={setPassword}
             secure
             returnKeyType="go"
-            onSubmit={login}
+            onSubmit={isLoggedIn ? undefined : login}
           />
           <View style={styles.btnRow}>
-            <Pressable onPress={login} accessibilityRole="button" style={[styles.btnPrimary, styles.flexBtn]}>
-              <Text style={styles.btnText}>Login</Text>
-            </Pressable>
-            {!!role && (
-              <Pressable onPress={logout} accessibilityRole="button" style={[styles.btnDanger, styles.flexBtn]}>
+            {!isLoggedIn && (
+              <Pressable
+                onPress={login}
+                accessibilityRole="button"
+                style={[styles.btnPrimary, styles.flexBtn]}
+              >
+                <Text style={styles.btnText}>Login</Text>
+              </Pressable>
+            )}
+            {isLoggedIn && (
+              <Pressable
+                onPress={logout}
+                accessibilityRole="button"
+                style={[styles.btnDanger, styles.flexBtn]}
+              >
                 <Text style={styles.btnText}>Logout</Text>
               </Pressable>
             )}
