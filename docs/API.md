@@ -16,15 +16,15 @@ Kiosks: device token from `POST /devices/register`.
 | POST | `/auth/register/resend` | public | Resend the registration OTP (cooldown applies) |
 | POST | `/auth/login` | public | User login; returns tokens |
 | POST | `/auth/refresh` | public | Rotate refresh token |
-| GET | `/auth/me` | authenticated | Current principal; `role` is `admin`, `bu`, or `employee`; includes `employee_id` / `employee_code` / `display_name` when linked |
-| POST | `/devices/register` | public + bind secret, or admin/bu | One-time device bind; device token (employees cannot bind) |
+| GET | `/auth/me` | authenticated | Current principal; `role` is `admin`, `bu`, `employee`, `manager`, or `hr`; includes `employee_id` / `employee_code` / `display_name` when linked |
+| POST | `/devices/register` | public + bind secret, or admin/bu | One-time device bind; device token (employee/manager/hr cannot bind) |
 | POST | `/employees` | admin, bu | Create employee |
 | GET | `/employees` | admin, bu | List/search |
-| POST | `/enroll` | admin (any employee), or employee/bu (own `employee_id` only) | Multipart images or `image_b64` → face templates |
-| DELETE | `/enroll/:employeeId` | admin (any employee), or employee/bu (own `employee_id` only) | Delete all face templates for an employee (reset enrollment) |
-| POST | `/attend/identify` | admin, bu, employee (incl. kiosk device) | Match face; employee logins are 1:1 against that employee only |
-| POST | `/attend/verify` | admin, bu, employee (incl. kiosk device) | 1:1 verify (must be the linked employee for employee logins) |
-| POST | `/attendance` | admin, bu, employee (incl. kiosk device) | Create IN/OUT log (employee logins cannot clock in as someone else) |
+| POST | `/enroll` | admin (any employee), or employee/manager/hr/bu (own `employee_id` only) | Multipart images or `image_b64` → face templates |
+| DELETE | `/enroll/:employeeId` | admin (any employee), or employee/manager/hr/bu (own `employee_id` only) | Delete all face templates for an employee (reset enrollment) |
+| POST | `/attend/identify` | admin, bu, employee, manager, hr (incl. kiosk device) | Match face; employee-like logins are 1:1 against that employee only |
+| POST | `/attend/verify` | admin, bu, employee, manager, hr (incl. kiosk device) | 1:1 verify (must be the linked employee for employee-like logins) |
+| POST | `/attendance` | admin, bu, employee, manager, hr (incl. kiosk device) | Create IN/OUT log (employee-like logins cannot clock in as someone else) |
 | GET | `/attendance` | admin, bu | Reports; `format=csv\|payroll` |
 | GET | `/attendance/status` | admin, bu | Roster for any employee: clock-in, clock-out, Present/Absent (`date=YYYY-MM-DD`, default today in Asia/Kolkata) |
 | GET | `/sites` | admin, bu | Sites |
@@ -32,10 +32,10 @@ Kiosks: device token from `POST /devices/register`.
 | GET | `/shifts` | admin, bu | Shifts |
 | POST | `/shifts` | admin, bu | Create shift |
 | GET | `/devices` | admin, bu | List devices |
-| GET | `/config` | admin, bu, employee (incl. kiosk device) | Client thresholds |
+| GET | `/config` | admin, bu, employee, manager, hr (incl. kiosk device) | Client thresholds |
 | GET | `/health` | public | Liveness of API + DB |
 
-Roles: **admin** has full access, including enrolling any employee and viewing any employee’s clock-in/out and Present/Absent status. **bu** matches admin for management modules (attendance, devices, sites, regularization review) but enrolls like an **employee** (own face only when `users.employee_id` is set). **employee** may only clock IN/OUT (`identify` / `verify` / `POST /attendance`), enroll their own face, and read `/config`. Device JWTs use `role=kiosk` and are treated as **employee**.
+Roles: **admin** has full access, including enrolling any employee and viewing any employee’s clock-in/out and Present/Absent status. **bu** matches admin for management modules (attendance, devices, sites, regularization review) but enrolls like an **employee** (own face only when `users.employee_id` is set). **employee**, **manager**, and **hr** share the same access: clock IN/OUT (`identify` / `verify` / `POST /attendance`), enroll their own face, and read `/config`. Device JWTs use `role=kiosk` and are treated as **employee**.
 
 Employee accounts (`users.employee_id` set) can only clock in as that employee. `POST /attend/identify` then does **1:1** verification against that employee’s enrolled templates (it does not search other faces). An employee login with no linked employee is rejected with HTTP 403. Shared kiosk device tokens remain **1:N**. `POST /attendance` for a linked login must send that employee’s `employee_id` plus `image_b64`; a spoofed id or a face that does not match returns 403 / 422. Re-login after this change so the access token includes `employee_id`.
 

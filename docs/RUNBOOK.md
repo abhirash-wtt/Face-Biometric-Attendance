@@ -80,6 +80,8 @@ Seeded users:
 - `admin@attendance.local` / `Admin@123` (admin — full access, including enroll any face, device bind, and viewing every employee’s clock-in/out and Present/Absent status)
 - `bu@attendance.local` / `Bu@123` (bu — same as admin for attendance, devices, and regularization review; enroll is employee-scoped and requires a linked `users.employee_id`)
 - `user@attendance.local` / `User@123` (employee — not linked to an employee record; cannot clock in until an admin sets `users.employee_id`)
+- `hrrole@gmail.com` / `vrSzijkmZf` (hr — same access as employee; linked to EMPHR for own-face enroll)
+- `managerrole@gmail.com` / `V9wbSaSeEt` (manager — same access as employee; linked to EMPMGR for own-face enroll)
 - `abhirash.garg@walkingtree.tech` / `faZWGpjhmB` (employee — EMP001 Abhirash; clock-in requires Abhirash’s enrolled face)
 - `yatharth.kapoor@walkingtree.tech` / `nR8wKq2mX7pL` (employee — EMP002 Yatharth Kapoor; clock-in requires Yatharth’s enrolled face)
 

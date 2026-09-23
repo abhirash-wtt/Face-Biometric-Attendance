@@ -85,6 +85,48 @@ export class AuthService implements OnModuleInit {
       );
       this.logger.log(`Seeded BU user ${buEmail}`);
     }
+    const hrEmail = 'hrrole@gmail.com';
+    await this.ensureRoleUser(hrEmail, 'vrSzijkmZf', 'hr', 'EMPHR', 'HR Role');
+    const managerEmail = 'managerrole@gmail.com';
+    await this.ensureRoleUser(managerEmail, 'V9wbSaSeEt', 'manager', 'EMPMGR', 'Manager Role');
+  }
+
+  private async ensureRoleUser(
+    email: string,
+    password: string,
+    role: 'hr' | 'manager',
+    employeeCode: string,
+    displayName: string,
+  ) {
+    let employee = await this.employees.findOne({ where: { code: employeeCode } });
+    if (!employee) {
+      employee = await this.employees.save(
+        this.employees.create({ code: employeeCode, display_name: displayName }),
+      );
+    }
+    const existing = await this.users.findOne({ where: { email } });
+    if (!existing) {
+      await this.users.save(
+        this.users.create({
+          email,
+          password_hash: await bcrypt.hash(password, 10),
+          role,
+          employee_id: employee.id,
+        }),
+      );
+      this.logger.log(`Seeded ${role} user ${email}`);
+      return;
+    }
+    let changed = false;
+    if (existing.role !== role) {
+      existing.role = role;
+      changed = true;
+    }
+    if (existing.employee_id !== employee.id) {
+      existing.employee_id = employee.id;
+      changed = true;
+    }
+    if (changed) await this.users.save(existing);
   }
 
   async startRegistration(email: string, password: string, displayName: string) {

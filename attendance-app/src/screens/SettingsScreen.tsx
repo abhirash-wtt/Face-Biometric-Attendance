@@ -78,7 +78,8 @@ export function SettingsScreen({ onAuthChange }: { onAuthChange?: () => void }) 
   };
 
   const isLoggedIn = !!role;
-  const showBind = role !== 'employee';
+  // Guests (bootstrap) and admin-like accounts may bind; employee/manager/hr may not.
+  const showBind = !role || storage.isAdminLike(role);
 
   const flush = async () => {
     try {

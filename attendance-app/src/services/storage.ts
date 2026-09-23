@@ -4,7 +4,7 @@ const TOKEN_KEY = 'access_token';
 const SETTINGS_KEY = 'settings';
 const QUEUE_KEY = 'offline_queue';
 
-export type AppRole = 'admin' | 'employee' | 'bu' | '';
+export type AppRole = 'admin' | 'employee' | 'bu' | 'manager' | 'hr' | '';
 
 export type Settings = {
   apiBase: string;
@@ -27,6 +27,9 @@ const defaultSettings: Settings = {
   bootstrapSecret: 'bind-device-once',
 };
 
+/** Roles with the same privileges as employee (own face / own clock-in only). */
+const EMPLOYEE_LIKE_ROLES: ReadonlySet<string> = new Set(['employee', 'manager', 'hr']);
+
 export const storage = {
   async getToken() {
     return AsyncStorage.getItem(TOKEN_KEY);
@@ -38,9 +41,15 @@ export const storage = {
   roleFromToken(token: string | null): AppRole {
     if (!token) return '';
     try {
-      const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      const part = token.split('.')[1];
+      if (!part) return '';
+      const b64 = part.replace(/-/g, '+').replace(/_/g, '/');
+      const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+      const payload = JSON.parse(atob(padded));
       if (payload.role === 'admin') return 'admin';
       if (payload.role === 'bu') return 'bu';
+      if (payload.role === 'manager') return 'manager';
+      if (payload.role === 'hr') return 'hr';
       if (payload.role) return 'employee';
       return '';
     } catch {
@@ -51,6 +60,10 @@ export const storage = {
   isAdminLike(role: AppRole | string | null | undefined): boolean {
     return role === 'admin' || role === 'bu';
   },
+  /** Employee, manager, and HR share the same non-management privileges. */
+  isEmployeeLike(role: AppRole | string | null | undefined): boolean {
+    return !!role && EMPLOYEE_LIKE_ROLES.has(role);
+  },
   /** Only true admins may enroll any employee; BU is limited to their own face. */
   canEnrollAnyEmployee(role: AppRole | string | null | undefined): boolean {
     return role === 'admin';
@@ -58,17 +71,25 @@ export const storage = {
   employeeIdFromToken(token: string | null): string {
     if (!token) return '';
     try {
-      const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      const part = token.split('.')[1];
+      if (!part) return '';
+      const b64 = part.replace(/-/g, '+').replace(/_/g, '/');
+      const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+      const payload = JSON.parse(atob(padded));
       return typeof payload.employee_id === 'string' ? payload.employee_id : '';
     } catch {
       return '';
     }
   },
-  /** True for human logins (admin/employee/bu accounts), false for kiosk device tokens. */
+  /** True for human logins (admin/employee/bu/manager/hr accounts), false for kiosk device tokens. */
   isAccountToken(token: string | null): boolean {
     if (!token) return false;
     try {
-      const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      const part = token.split('.')[1];
+      if (!part) return false;
+      const b64 = part.replace(/-/g, '+').replace(/_/g, '/');
+      const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+      const payload = JSON.parse(atob(padded));
       return payload.type !== 'device';
     } catch {
       return false;
@@ -82,7 +103,8 @@ export const storage = {
     if (!this.isAccountToken(token)) return false;
     const role = this.roleFromToken(token);
     if (this.canEnrollAnyEmployee(role)) return true;
-    return (role === 'employee' || role === 'bu') && !!this.employeeIdFromToken(token);
+    // Employee, manager, HR, and BU get the Enroll tab (own face when linked).
+    return this.isEmployeeLike(role) || role === 'bu';
   },
   async canUseRegularization(): Promise<boolean> {
     const token = await this.getToken();

@@ -776,11 +776,16 @@
       if (!payload || isJwtExpired(state.token, 0)) return '';
       if (payload.role === 'admin') return 'admin';
       if (payload.role === 'bu') return 'bu';
+      if (payload.role === 'manager') return 'manager';
+      if (payload.role === 'hr') return 'hr';
       if (payload.role) return 'employee';
       return '';
     }
     function isAdminLike(role) {
       return role === 'admin' || role === 'bu';
+    }
+    function isEmployeeLike(role) {
+      return role === 'employee' || role === 'manager' || role === 'hr';
     }
     function authUser() {
       try { return JSON.parse(localStorage.getItem('auth_user') || 'null'); } catch { return null; }
@@ -793,9 +798,9 @@
     }
     function canEnroll() {
       const role = jwtRole();
-      // Only true admins enroll any employee; BU and employees enroll their own face.
+      // Only true admins enroll any employee; employee/manager/hr/bu get the Enroll tab.
       if (role === 'admin') return true;
-      return (role === 'employee' || role === 'bu') && !!linkedEmployeeId();
+      return isEmployeeLike(role) || role === 'bu';
     }
     function isDeviceToken() {
       const payload = decodeJwt(state.token);
@@ -936,10 +941,10 @@
       $('enrollTabBtn').classList.toggle('rbac-hide', !enrollOk);
       $('attendanceTabBtn').classList.toggle('rbac-hide', !adminLike);
       $('wfhTabBtn').classList.toggle('rbac-hide', !wfhOk);
-      $('adminBindBlock').classList.toggle('rbac-hide', role === 'employee');
-      $('bindBtn').classList.toggle('rbac-hide', role === 'employee');
-      // BU reviews requests like admin; only employees submit the form.
-      $('wfhRequestForm').classList.toggle('hidden', role !== 'employee');
+      $('adminBindBlock').classList.toggle('rbac-hide', isEmployeeLike(role));
+      $('bindBtn').classList.toggle('rbac-hide', isEmployeeLike(role));
+      // BU reviews requests like admin; employee-like roles submit the form.
+      $('wfhRequestForm').classList.toggle('hidden', !isEmployeeLike(role));
       $('wfhAdminHint').classList.toggle('hidden', !adminLike);
       $('wfhListTitle').textContent = adminLike ? 'All requests' : 'My requests';
       $('loginBtn').classList.toggle('hidden', loggedIn || state.authMode === 'register');

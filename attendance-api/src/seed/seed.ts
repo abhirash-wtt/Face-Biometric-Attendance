@@ -112,6 +112,8 @@ async function run() {
     { code: 'EMP001', display_name: 'Abhirash' },
     { code: 'EMP002', display_name: 'Yatharth Kapoor' },
     { code: 'EMP007', display_name: 'Pratham Vij' },
+    { code: 'EMPHR', display_name: 'HR Role' },
+    { code: 'EMPMGR', display_name: 'Manager Role' },
   ];
   for (const row of seedEmployees) {
     if (!(await employees.findOne({ where: { code: row.code } }))) {
@@ -119,23 +121,38 @@ async function run() {
     }
   }
 
-  async function ensureEmployeeUser(email: string, password: string, employeeId?: string) {
+  async function ensureRoleUser(
+    email: string,
+    password: string,
+    role: 'hr' | 'manager' | 'employee',
+    employeeId?: string,
+  ) {
     const existing = await users.findOne({ where: { email } });
     if (!existing) {
       await users.save(
         users.create({
           email,
           password_hash: await bcrypt.hash(password, 10),
-          role: 'employee',
+          role,
           employee_id: employeeId,
         }),
       );
       return;
     }
+    let changed = false;
+    if (existing.role !== role) {
+      existing.role = role;
+      changed = true;
+    }
     if (employeeId && existing.employee_id !== employeeId) {
       existing.employee_id = employeeId;
-      await users.save(existing);
+      changed = true;
     }
+    if (changed) await users.save(existing);
+  }
+
+  async function ensureEmployeeUser(email: string, password: string, employeeId?: string) {
+    await ensureRoleUser(email, password, 'employee', employeeId);
   }
 
   const emp001 = await employees.findOne({ where: { code: 'EMP001' } });
@@ -146,6 +163,12 @@ async function run() {
 
   const emp007 = await employees.findOne({ where: { code: 'EMP007' } });
   await ensureEmployeeUser('pratham.vij@walkingtree.tech', 'pratham_', emp007?.id);
+
+  const empHr = await employees.findOne({ where: { code: 'EMPHR' } });
+  await ensureRoleUser('hrrole@gmail.com', 'vrSzijkmZf', 'hr', empHr?.id);
+
+  const empMgr = await employees.findOne({ where: { code: 'EMPMGR' } });
+  await ensureRoleUser('managerrole@gmail.com', 'V9wbSaSeEt', 'manager', empMgr?.id);
 
   if (!(await shifts.findOne({ where: { name: 'General' } }))) {
     await shifts.save(

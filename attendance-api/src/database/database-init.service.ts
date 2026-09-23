@@ -63,14 +63,14 @@ export class DatabaseInitService implements OnModuleInit {
       END $$;
     `);
     await this.ds.query(
-      `UPDATE users SET role = 'employee' WHERE role IS NULL OR role NOT IN ('admin', 'employee', 'bu')`,
+      `UPDATE users SET role = 'employee' WHERE role IS NULL OR role NOT IN ('admin', 'employee', 'bu', 'manager', 'hr')`,
     );
     await this.ds.query(`ALTER TABLE users ALTER COLUMN role SET DEFAULT 'employee'`);
     await this.ds.query(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`);
     await this.ds.query(
-      `ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'employee', 'bu'))`,
+      `ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'employee', 'bu', 'manager', 'hr'))`,
     );
-    this.logger.log('RBAC roles migrated to admin | employee | bu');
+    this.logger.log('RBAC roles migrated to admin | employee | bu | manager | hr');
   }
 
   private async migrateHqGeofence() {

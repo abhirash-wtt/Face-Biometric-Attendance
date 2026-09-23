@@ -12,7 +12,8 @@ export function canEnrollAnyEmployee(role?: string): boolean {
   return role === 'admin';
 }
 
-/** Maps JWT/DB roles onto the two privilege tiers used by @Roles(). */
+/** Maps JWT/DB roles onto the two privilege tiers used by @Roles().
+ * manager and hr map to the employee tier (same permissions as employee). */
 export function effectiveRole(role?: string): 'admin' | 'employee' {
   if (isAdminLike(role)) return 'admin';
   return 'employee';
