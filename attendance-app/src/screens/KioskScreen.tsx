@@ -235,6 +235,9 @@ export function KioskScreen() {
           accessibilityRole="button"
           style={[styles.cta, styles.ctaIn, busy && styles.ctaBusy]}
         >
+          <Text style={styles.ctaIcon} accessibilityElementsHidden>
+            📥
+          </Text>
           <Text style={styles.ctaText}>{busy ? 'Working…' : 'Clock In'}</Text>
         </Pressable>
         <Pressable
@@ -243,6 +246,9 @@ export function KioskScreen() {
           accessibilityRole="button"
           style={[styles.cta, styles.ctaOut, busy && styles.ctaBusy]}
         >
+          <Text style={styles.ctaIcon} accessibilityElementsHidden>
+            📤
+          </Text>
           <Text style={styles.ctaText}>{busy ? 'Working…' : 'Clock Out'}</Text>
         </Pressable>
       </View>
@@ -303,8 +309,11 @@ const styles = StyleSheet.create({
     minHeight: TAP_TARGET + 6,
     borderRadius: 16,
     paddingVertical: 14,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
   },
   ctaIn: {
     backgroundColor: THEME.emerald,
@@ -323,6 +332,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   ctaBusy: { opacity: 0.55 },
+  ctaIcon: { color: '#fff', fontSize: 16, fontWeight: '800', lineHeight: 20 },
   ctaText: { color: '#fff', fontSize: 17, fontWeight: '800' },
   status: {
     color: THEME.textSecondary,
