@@ -30,9 +30,11 @@ function Shell() {
     setCanWfh(wfh);
     setCanEnroll(enroll);
     setTab((current) => {
+      // Admins do not use kiosk; send them to a management tab.
+      if (next === 'admin' && current === 'kiosk') return 'attendance';
       if (next !== 'admin' && current === 'attendance') return 'kiosk';
-      if (!enroll && current === 'enroll') return 'kiosk';
-      if (!wfh && current === 'wfh') return 'kiosk';
+      if (!enroll && current === 'enroll') return next === 'admin' ? 'attendance' : 'kiosk';
+      if (!wfh && current === 'wfh') return next === 'admin' ? 'attendance' : 'kiosk';
       return current;
     });
   }, []);
@@ -44,7 +46,6 @@ function Shell() {
   const tabs: Array<[Tab, string]> =
     role === 'admin'
       ? [
-          ['kiosk', 'Kiosk'],
           ['enroll', 'Enroll'],
           ['attendance', 'Attend'],
           ['wfh', 'Regularize'],
@@ -91,7 +92,7 @@ function Shell() {
           },
         ]}
       >
-        {tab === 'kiosk' && <KioskScreen />}
+        {tab === 'kiosk' && role !== 'admin' && <KioskScreen />}
         {tab === 'enroll' && canEnroll && <EnrollScreen />}
         {tab === 'attendance' && role === 'admin' && <AttendanceScreen />}
         {tab === 'wfh' && canWfh && <RegularizationScreen role={role} />}

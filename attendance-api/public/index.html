@@ -511,7 +511,7 @@
       <span>FaceID Attend</span>
     </div>
     <div class="nav-tabs">
-      <button class="on" data-tab="kiosk">Kiosk</button>
+      <button class="on" data-tab="kiosk" id="kioskTabBtn">Kiosk</button>
       <button data-tab="enroll" id="enrollTabBtn">Enroll</button>
       <button data-tab="attendance" id="attendanceTabBtn">Attendance</button>
       <button data-tab="wfh" id="wfhTabBtn" class="rbac-hide">Regularize</button>
@@ -925,7 +925,10 @@
       const loggedIn = !!role;
       const user = authUser();
       const wfhOk = canUseWfh();
-      $('enrollTabBtn').classList.toggle('rbac-hide', !canEnroll());
+      const enrollOk = canEnroll();
+      // Admins manage enroll/attendance/regularization — hide shared kiosk clock-in.
+      $('kioskTabBtn').classList.toggle('rbac-hide', isAdmin);
+      $('enrollTabBtn').classList.toggle('rbac-hide', !enrollOk);
       $('attendanceTabBtn').classList.toggle('rbac-hide', !isAdmin);
       $('wfhTabBtn').classList.toggle('rbac-hide', !wfhOk);
       $('adminBindBlock').classList.toggle('rbac-hide', role === 'employee');
@@ -942,14 +945,20 @@
       } else {
         $('roleBadge').textContent = 'Not signed in';
       }
-      const enrollOk = canEnroll();
-      if ((state.tab === 'attendance' && !isAdmin) || (state.tab === 'enroll' && !enrollOk) || (state.tab === 'wfh' && !wfhOk)) {
-        state.tab = 'kiosk';
-        document.querySelectorAll('header button').forEach((x) => x.classList.toggle('on', x.dataset.tab === 'kiosk'));
-        ['kiosk','enroll','attendance','wfh','settings'].forEach((id) => $(id).classList.toggle('hidden', id !== 'kiosk'));
-        $('cameraPanel').classList.remove('hidden');
-        $('livenessPrompt').style.visibility = 'visible';
-        if (!camActive()) ensureCam(false);
+      let fallback = '';
+      if (isAdmin && state.tab === 'kiosk') fallback = 'attendance';
+      else if ((state.tab === 'attendance' && !isAdmin) || (state.tab === 'enroll' && !enrollOk) || (state.tab === 'wfh' && !wfhOk)) {
+        fallback = isAdmin ? 'attendance' : 'kiosk';
+      }
+      if (fallback) {
+        state.tab = fallback;
+        document.querySelectorAll('header button').forEach((x) => x.classList.toggle('on', x.dataset.tab === fallback));
+        ['kiosk','enroll','attendance','wfh','settings'].forEach((id) => $(id).classList.toggle('hidden', id !== fallback));
+        const camHidden = fallback === 'settings' || fallback === 'attendance' || fallback === 'wfh';
+        $('cameraPanel').classList.toggle('hidden', camHidden);
+        $('livenessPrompt').style.visibility = (fallback === 'kiosk' || fallback === 'enroll') ? 'visible' : 'hidden';
+        if (camHidden) stopCam();
+        else if (!camActive()) ensureCam(false);
       }
     }
     function gpsErrorMessage(code, secureContext) {
@@ -1688,6 +1697,7 @@
     }
     document.querySelectorAll('header button').forEach((b) => {
       b.onclick = () => {
+        if (b.dataset.tab === 'kiosk' && jwtRole() === 'admin') return;
         if (b.dataset.tab === 'attendance' && jwtRole() !== 'admin') return;
         if (b.dataset.tab === 'enroll' && !canEnroll()) return;
         if (b.dataset.tab === 'wfh' && !canUseWfh()) return;
