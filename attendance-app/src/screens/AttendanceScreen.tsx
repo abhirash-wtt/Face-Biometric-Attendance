@@ -16,7 +16,22 @@ import { THEME } from '../theme/colors';
 
 const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
-type StatusFilter = 'All' | 'Present' | 'Half Day' | 'Absent';
+type RoleFilter = '' | 'bu' | 'manager' | 'hr' | 'employee';
+
+const ROLE_FILTERS: Array<{ id: RoleFilter; label: string }> = [
+  { id: 'bu', label: 'BU' },
+  { id: 'manager', label: 'Manager' },
+  { id: 'hr', label: 'HR' },
+  { id: 'employee', label: 'Employee' },
+];
+
+/** Map linked user role onto the four filter buckets (unlinked → employee). */
+function matchesRoleFilter(role: string | null | undefined, filter: RoleFilter): boolean {
+  if (!filter) return true;
+  const normalized = role || 'employee';
+  if (filter === 'employee') return normalized === 'employee';
+  return normalized === filter;
+}
 
 function todayIst(): string {
   return new Intl.DateTimeFormat('en-CA', {
@@ -175,7 +190,7 @@ export function AttendanceScreen() {
   const [showSearch, setShowSearch] = useState(false);
   const [showFilter, setShowFilter] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>('');
 
   const load = useCallback(async (queryDate = date) => {
     try {
@@ -199,12 +214,12 @@ export function AttendanceScreen() {
   const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return rows.filter((r) => {
-      if (statusFilter !== 'All' && r.status !== statusFilter) return false;
+      if (!matchesRoleFilter(r.role, roleFilter)) return false;
       if (!q) return true;
-      const hay = `${r.display_name} ${r.employee_code} ${r.email || ''}`.toLowerCase();
+      const hay = `${r.display_name} ${r.employee_code} ${r.email || ''} ${r.role || ''}`.toLowerCase();
       return hay.includes(q);
     });
-  }, [rows, searchQuery, statusFilter]);
+  }, [rows, searchQuery, roleFilter]);
 
   const totalCount = rows.length;
   const presentCount = rows.filter((r) => r.status === 'Present').length;
@@ -216,12 +231,13 @@ export function AttendanceScreen() {
       setMessage('Nothing to export');
       return;
     }
-    const header = 'Employee,Code,Email,Clock In,Clock Out,Status';
+    const header = 'Employee,Code,Email,Role,Clock In,Clock Out,Status';
     const lines = filteredRows.map((r) =>
       [
         csvEscape(r.display_name),
         csvEscape(r.employee_code),
         csvEscape(r.email || ''),
+        csvEscape(r.role || 'employee'),
         csvEscape(formatPunch(r.clock_in)),
         csvEscape(formatPunch(r.clock_out)),
         csvEscape(r.status),
@@ -240,7 +256,7 @@ export function AttendanceScreen() {
     }
   };
 
-  const filterOptions: StatusFilter[] = ['All', 'Present', 'Half Day', 'Absent'];
+  const filterActive = !!roleFilter;
 
   return (
     <View
@@ -289,13 +305,13 @@ export function AttendanceScreen() {
             if (showSearch) setShowSearch(false);
           }}
           accessibilityRole="button"
-          accessibilityState={{ selected: showFilter || statusFilter !== 'All' }}
-          style={[styles.actionBtn, (showFilter || statusFilter !== 'All') && styles.actionBtnOn]}
+          accessibilityState={{ selected: showFilter || filterActive }}
+          style={[styles.actionBtn, (showFilter || filterActive) && styles.actionBtnOn]}
         >
           <Text
             style={[
               styles.actionBtnText,
-              (showFilter || statusFilter !== 'All') && styles.actionBtnTextOn,
+              (showFilter || filterActive) && styles.actionBtnTextOn,
             ]}
           >
             Filter
@@ -322,17 +338,17 @@ export function AttendanceScreen() {
 
       {showFilter && (
         <View style={styles.filterRow}>
-          {filterOptions.map((opt) => {
-            const on = statusFilter === opt;
+          {ROLE_FILTERS.map((opt) => {
+            const on = roleFilter === opt.id;
             return (
               <Pressable
-                key={opt}
-                onPress={() => setStatusFilter(opt)}
+                key={opt.id}
+                onPress={() => setRoleFilter((prev) => (prev === opt.id ? '' : opt.id))}
                 accessibilityRole="button"
                 accessibilityState={{ selected: on }}
                 style={[styles.filterChip, on && styles.filterChipOn]}
               >
-                <Text style={[styles.filterChipText, on && styles.filterChipTextOn]}>{opt}</Text>
+                <Text style={[styles.filterChipText, on && styles.filterChipTextOn]}>{opt.label}</Text>
               </Pressable>
             );
           })}

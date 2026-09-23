@@ -219,21 +219,23 @@ export class AttendanceService {
     const employees = await this.employees.findAll();
     const users = await this.users.find();
     const markedPresentIds = new Set(await this.regularization.listApprovedPresentEmployeeIds(day));
-    const emailByEmployee = new Map(
-      users
-        .filter((u) => u.employee_id)
-        .map((u) => [u.employee_id as string, u.email]),
+    const userByEmployee = new Map(
+      users.filter((u) => u.employee_id).map((u) => [u.employee_id as string, u]),
     );
     return {
       date: day,
       timezone: ATTENDANCE_TZ,
       employees: buildRoster(
-        employees.map((e) => ({
-          id: e.id,
-          code: e.code,
-          display_name: e.display_name,
-          email: emailByEmployee.get(e.id) || null,
-        })),
+        employees.map((e) => {
+          const linked = userByEmployee.get(e.id);
+          return {
+            id: e.id,
+            code: e.code,
+            display_name: e.display_name,
+            email: linked?.email || null,
+            role: linked?.role || null,
+          };
+        }),
         logs,
         markedPresentIds,
       ),

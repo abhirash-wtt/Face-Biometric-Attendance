@@ -638,10 +638,10 @@
       </div>
       <div class="roster-panel hidden" id="rosterFilterPanel">
         <div class="roster-filter-row" id="rosterFilterRow">
-          <button type="button" class="toggle on" data-status="">All</button>
-          <button type="button" class="toggle" data-status="Present">Present</button>
-          <button type="button" class="toggle" data-status="Half Day">Half Day</button>
-          <button type="button" class="toggle" data-status="Absent">Absent</button>
+          <button type="button" class="toggle" data-role="bu">BU</button>
+          <button type="button" class="toggle" data-role="manager">Manager</button>
+          <button type="button" class="toggle" data-role="hr">HR</button>
+          <button type="button" class="toggle" data-role="employee">Employee</button>
         </div>
       </div>
       <div class="roster-toolbar">
@@ -2401,14 +2401,21 @@
     }
 
     let rosterRows = [];
-    let rosterStatusFilter = '';
+    let rosterRoleFilter = '';
+
+    function matchesRoleFilter(role, filter) {
+      if (!filter) return true;
+      const normalized = role || 'employee';
+      if (filter === 'employee') return normalized === 'employee';
+      return normalized === filter;
+    }
 
     function filteredRosterRows() {
       const q = (($('rosterSearch') && $('rosterSearch').value) || '').trim().toLowerCase();
       return rosterRows.filter((r) => {
-        if (rosterStatusFilter && r.status !== rosterStatusFilter) return false;
+        if (!matchesRoleFilter(r.role, rosterRoleFilter)) return false;
         if (!q) return true;
-        const hay = ((r.display_name || '') + ' ' + (r.employee_code || '') + ' ' + (r.email || '')).toLowerCase();
+        const hay = ((r.display_name || '') + ' ' + (r.employee_code || '') + ' ' + (r.email || '') + ' ' + (r.role || '')).toLowerCase();
         return hay.includes(q);
       });
     }
@@ -2425,8 +2432,9 @@
         ? rows.map((r) => {
             const who = esc(r.display_name) + ' (' + esc(r.employee_code) + ')';
             const email = r.email ? '<div class="muted">' + esc(r.email) + '</div>' : '';
+            const role = r.role ? '<div class="muted">' + esc(String(r.role).toUpperCase()) + '</div>' : '';
             const pill = rosterStatusClass(r.status);
-            return '<tr><td data-label="Employee">' + who + email + '</td><td data-label="Clock in">' + formatPunch(r.clock_in) + '</td><td data-label="Clock out">' + formatPunch(r.clock_out) + '</td><td data-label="Status"><span class="pill ' + pill + '">' + esc(r.status) + '</span></td></tr>';
+            return '<tr><td data-label="Employee">' + who + email + role + '</td><td data-label="Clock in">' + formatPunch(r.clock_in) + '</td><td data-label="Clock out">' + formatPunch(r.clock_out) + '</td><td data-label="Status"><span class="pill ' + pill + '">' + esc(r.status) + '</span></td></tr>';
           }).join('')
         : '<tr><td colspan="4" class="muted">No employees found</td></tr>';
       const suffix = rows.length !== rosterRows.length ? ' of ' + rosterRows.length : '';
@@ -2437,11 +2445,14 @@
     function syncRosterToolButtons() {
       const searchOpen = !$('rosterSearchPanel').classList.contains('hidden');
       const filterOpen = !$('rosterFilterPanel').classList.contains('hidden');
-      const filterActive = !!rosterStatusFilter;
+      const filterActive = !!rosterRoleFilter;
       $('rosterSearchBtn').classList.toggle('on', searchOpen);
       $('rosterSearchBtn').setAttribute('aria-pressed', searchOpen ? 'true' : 'false');
       $('rosterFilterBtn').classList.toggle('on', filterOpen || filterActive);
       $('rosterFilterBtn').setAttribute('aria-pressed', (filterOpen || filterActive) ? 'true' : 'false');
+      Array.from($('rosterFilterRow').querySelectorAll('button[data-role]')).forEach((b) => {
+        b.classList.toggle('on', (b.getAttribute('data-role') || '') === rosterRoleFilter);
+      });
     }
 
     function csvEscape(value) {
@@ -2456,11 +2467,12 @@
         status('rosterStatus', 'Nothing to export');
         return;
       }
-      const header = 'Employee,Code,Email,Clock In,Clock Out,Status';
+      const header = 'Employee,Code,Email,Role,Clock In,Clock Out,Status';
       const lines = rows.map((r) => [
         csvEscape(r.display_name),
         csvEscape(r.employee_code),
         csvEscape(r.email || ''),
+        csvEscape(r.role || 'employee'),
         csvEscape(formatPunch(r.clock_in)),
         csvEscape(formatPunch(r.clock_out)),
         csvEscape(r.status),
@@ -2498,12 +2510,10 @@
     $('rosterExportBtn').onclick = () => exportRosterCsv();
     $('rosterSearch').oninput = () => renderRoster();
     $('rosterFilterRow').onclick = (e) => {
-      const btn = e.target.closest('button[data-status]');
+      const btn = e.target.closest('button[data-role]');
       if (!btn) return;
-      rosterStatusFilter = btn.getAttribute('data-status') || '';
-      Array.from($('rosterFilterRow').querySelectorAll('button[data-status]')).forEach((b) => {
-        b.classList.toggle('on', b === btn);
-      });
+      const next = btn.getAttribute('data-role') || '';
+      rosterRoleFilter = rosterRoleFilter === next ? '' : next;
       renderRoster();
     };
 

@@ -17,6 +17,7 @@ describe('attendance roster', () => {
         employee_code: 'EMP001',
         display_name: 'Abhirash',
         email: 'abhirash@example.com',
+        role: null,
         clock_in: null,
         clock_out: null,
         status: 'Absent',

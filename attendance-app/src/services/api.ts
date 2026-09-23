@@ -63,6 +63,7 @@ export type AttendanceStatusRow = {
   employee_code: string;
   display_name: string;
   email: string | null;
+  role: string | null;
   clock_in: string | null;
   clock_out: string | null;
   status: 'Present' | 'Half Day' | 'Absent';
