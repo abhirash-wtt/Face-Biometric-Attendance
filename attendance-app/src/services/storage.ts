@@ -33,12 +33,12 @@ export const storage = {
     if (token) await AsyncStorage.setItem(TOKEN_KEY, token);
     else await AsyncStorage.removeItem(TOKEN_KEY);
   },
-  roleFromToken(token: string | null): 'admin' | 'user' | '' {
+  roleFromToken(token: string | null): 'admin' | 'employee' | '' {
     if (!token) return '';
     try {
       const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
       if (payload.role === 'admin') return 'admin';
-      if (payload.role) return 'user';
+      if (payload.role) return 'employee';
       return '';
     } catch {
       return '';
@@ -53,7 +53,7 @@ export const storage = {
       return '';
     }
   },
-  /** True for human logins (admin/user accounts), false for kiosk device tokens. */
+  /** True for human logins (admin/employee accounts), false for kiosk device tokens. */
   isAccountToken(token: string | null): boolean {
     if (!token) return false;
     try {
@@ -63,7 +63,7 @@ export const storage = {
       return false;
     }
   },
-  async getRole(): Promise<'admin' | 'user' | ''> {
+  async getRole(): Promise<'admin' | 'employee' | ''> {
     return this.roleFromToken(await this.getToken());
   },
   async canEnroll(): Promise<boolean> {
@@ -71,7 +71,7 @@ export const storage = {
     if (!this.isAccountToken(token)) return false;
     const role = this.roleFromToken(token);
     if (role === 'admin') return true;
-    return role === 'user' && !!this.employeeIdFromToken(token);
+    return role === 'employee' && !!this.employeeIdFromToken(token);
   },
   async canUseRegularization(): Promise<boolean> {
     const token = await this.getToken();

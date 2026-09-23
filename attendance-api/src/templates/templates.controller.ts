@@ -68,7 +68,7 @@ export class TemplatesController {
   }
 
   @Get('enroll/:employeeId')
-  @Roles('admin', 'user')
+  @Roles('admin', 'employee')
   @ApiOperation({ summary: 'Face enrollment status: complete only after straight, left, and right samples' })
   status(@Param('employeeId') employeeId: string, @CurrentUser() user: JwtUser) {
     this.assertEnrollAccess(user, employeeId);
@@ -76,7 +76,7 @@ export class TemplatesController {
   }
 
   @Post('enroll')
-  @Roles('admin', 'user')
+  @Roles('admin', 'employee')
   @UseInterceptors(FilesInterceptor('files', 10, { storage: memoryStorage() }))
   @ApiConsumes('multipart/form-data', 'application/json')
   @ApiOperation({
@@ -112,8 +112,8 @@ export class TemplatesController {
   }
 
   @Delete('enroll/:employeeId')
-  @Roles('admin', 'user')
-  @ApiOperation({ summary: 'Delete all face templates for employee_id (users: own face only)' })
+  @Roles('admin', 'employee')
+  @ApiOperation({ summary: 'Delete all face templates for employee_id (employees: own face only)' })
   reset(@Param('employeeId') employeeId: string, @CurrentUser() user: JwtUser) {
     this.assertEnrollAccess(user, employeeId);
     return this.templates.reset(employeeId);

@@ -2,9 +2,9 @@ import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 
-export function effectiveRole(role?: string): 'admin' | 'user' {
+export function effectiveRole(role?: string): 'admin' | 'employee' {
   if (role === 'admin') return 'admin';
-  return 'user';
+  return 'employee';
 }
 
 @Injectable()

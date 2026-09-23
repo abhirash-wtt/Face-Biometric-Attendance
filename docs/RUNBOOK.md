@@ -78,9 +78,9 @@ npm run seed
 Seeded users:
 
 - `admin@attendance.local` / `Admin@123` (admin — full access, including enroll, device bind, and viewing every employee’s clock-in/out and Present/Absent status)
-- `user@attendance.local` / `User@123` (user — not linked to an employee; cannot clock in until an admin sets `users.employee_id`)
-- `abhirash.garg@walkingtree.tech` / `faZWGpjhmB` (user — EMP001 Abhirash; clock-in requires Abhirash’s enrolled face)
-- `yatharth.kapoor@walkingtree.tech` / `nR8wKq2mX7pL` (user — EMP002 Yatharth Kapoor; clock-in requires Yatharth’s enrolled face)
+- `user@attendance.local` / `User@123` (employee — not linked to an employee record; cannot clock in until an admin sets `users.employee_id`)
+- `abhirash.garg@walkingtree.tech` / `faZWGpjhmB` (employee — EMP001 Abhirash; clock-in requires Abhirash’s enrolled face)
+- `yatharth.kapoor@walkingtree.tech` / `nR8wKq2mX7pL` (employee — EMP002 Yatharth Kapoor; clock-in requires Yatharth’s enrolled face)
 
 Seeded employees: EMP001 Abhirash, EMP002 Yatharth Kapoor.  
 Site: `HQ` — Walking Tree Technologies, Agra (rectangular building geofence). Device bind secret: `bind-device-once`.

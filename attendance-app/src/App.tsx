@@ -16,7 +16,7 @@ type Tab = 'kiosk' | 'enroll' | 'attendance' | 'wfh' | 'settings';
 
 function Shell() {
   const [tab, setTab] = useState<Tab>('kiosk');
-  const [role, setRole] = useState<'admin' | 'user' | ''>('');
+  const [role, setRole] = useState<'admin' | 'employee' | ''>('');
   const [canWfh, setCanWfh] = useState(false);
   const [canEnroll, setCanEnroll] = useState(false);
   const insets = useSafeAreaInsets();

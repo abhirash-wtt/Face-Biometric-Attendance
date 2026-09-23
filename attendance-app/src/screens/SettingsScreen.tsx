@@ -26,7 +26,7 @@ export function SettingsScreen({ onAuthChange }: { onAuthChange?: () => void }) 
   const [email, setEmail] = useState('admin@attendance.local');
   const [password, setPassword] = useState('Admin@123');
   const [message, setMessage] = useState('');
-  const [role, setRole] = useState<'admin' | 'user' | ''>('');
+  const [role, setRole] = useState<'admin' | 'employee' | ''>('');
 
   useEffect(() => {
     storage.getSettings().then(setSettings);
@@ -78,7 +78,7 @@ export function SettingsScreen({ onAuthChange }: { onAuthChange?: () => void }) 
   };
 
   const isLoggedIn = !!role;
-  const showBind = role !== 'user';
+  const showBind = role !== 'employee';
 
   const flush = async () => {
     try {

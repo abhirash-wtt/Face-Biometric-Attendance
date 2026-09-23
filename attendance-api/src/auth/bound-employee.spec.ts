@@ -7,11 +7,11 @@ describe('boundClockInEmployeeId', () => {
   const admin: JwtUser = { sub: 'a1', role: 'admin', type: 'user' };
   const linked: JwtUser = {
     sub: 'u1',
-    role: 'user',
+    role: 'employee',
     type: 'user',
     employee_id: '11111111-1111-1111-1111-111111111111',
   };
-  const unlinked: JwtUser = { sub: 'u2', role: 'user', type: 'user' };
+  const unlinked: JwtUser = { sub: 'u2', role: 'employee', type: 'user' };
 
   it('leaves shared kiosk devices unbound (1:N)', () => {
     expect(boundClockInEmployeeId(device)).toBeUndefined();
@@ -25,7 +25,7 @@ describe('boundClockInEmployeeId', () => {
     expect(boundClockInEmployeeId(linked)).toBe(linked.employee_id);
   });
 
-  it('rejects user logins that are not linked to an employee', () => {
+  it('rejects employee logins that are not linked to an employee', () => {
     expect(() => boundClockInEmployeeId(unlinked)).toThrow(ForbiddenException);
   });
 });

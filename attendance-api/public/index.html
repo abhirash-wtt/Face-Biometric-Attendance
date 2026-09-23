@@ -775,7 +775,7 @@
       const payload = decodeJwt(state.token);
       if (!payload || isJwtExpired(state.token, 0)) return '';
       if (payload.role === 'admin') return 'admin';
-      if (payload.role) return 'user';
+      if (payload.role) return 'employee';
       return '';
     }
     function authUser() {
@@ -790,7 +790,7 @@
     function canEnroll() {
       const role = jwtRole();
       if (role === 'admin') return true;
-      return role === 'user' && !!linkedEmployeeId();
+      return role === 'employee' && !!linkedEmployeeId();
     }
     function isDeviceToken() {
       const payload = decodeJwt(state.token);
@@ -928,9 +928,9 @@
       $('enrollTabBtn').classList.toggle('rbac-hide', !canEnroll());
       $('attendanceTabBtn').classList.toggle('rbac-hide', !isAdmin);
       $('wfhTabBtn').classList.toggle('rbac-hide', !wfhOk);
-      $('adminBindBlock').classList.toggle('rbac-hide', role === 'user');
-      $('bindBtn').classList.toggle('rbac-hide', role === 'user');
-      $('wfhRequestForm').classList.toggle('hidden', role !== 'user');
+      $('adminBindBlock').classList.toggle('rbac-hide', role === 'employee');
+      $('bindBtn').classList.toggle('rbac-hide', role === 'employee');
+      $('wfhRequestForm').classList.toggle('hidden', role !== 'employee');
       $('wfhAdminHint').classList.toggle('hidden', !isAdmin);
       $('wfhListTitle').textContent = isAdmin ? 'All requests' : 'My requests';
       $('loginBtn').classList.toggle('hidden', loggedIn || state.authMode === 'register');

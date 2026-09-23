@@ -213,7 +213,7 @@ function typeCopy(type: RegularizationRequestType) {
   };
 }
 
-export function RegularizationScreen({ role }: { role: 'admin' | 'user' | '' }) {
+export function RegularizationScreen({ role }: { role: 'admin' | 'employee' | '' }) {
   const layout = useLayout();
   const today = todayIst();
   const [requestType, setRequestType] = useState<RegularizationRequestType>('wfh');

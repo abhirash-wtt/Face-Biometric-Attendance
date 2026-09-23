@@ -18,7 +18,7 @@ export class RegularizationController {
   constructor(private readonly regularization: RegularizationService) {}
 
   @Post()
-  @Roles('user')
+  @Roles('employee')
   @ApiOperation({
     summary: 'Submit a regularization request (WFH, On Duty, Late in, or Early Out)',
   })
@@ -27,7 +27,7 @@ export class RegularizationController {
   }
 
   @Get('mine')
-  @Roles('user')
+  @Roles('employee')
   @ApiOperation({ summary: 'List my regularization requests' })
   mine(@CurrentUser() user: JwtUser) {
     return this.regularization.listMine(user);
@@ -63,7 +63,7 @@ export class RegularizationController {
   }
 
   @Post(':id/cancel')
-  @Roles('user')
+  @Roles('employee')
   @ApiOperation({ summary: 'Cancel a pending regularization request (own request or admin)' })
   cancel(@Param('id') id: string, @CurrentUser() user: JwtUser) {
     return this.regularization.cancel(id, user);

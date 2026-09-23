@@ -59,13 +59,13 @@ async function run() {
       users.create({
         email: 'user@attendance.local',
         password_hash: await bcrypt.hash('User@123', 10),
-        role: 'user',
+        role: 'employee',
       }),
     );
   }
   const legacy = await users.findOne({ where: { email: 'supervisor@attendance.local' } });
   if (legacy && legacy.role !== 'admin') {
-    legacy.role = 'user';
+    legacy.role = 'employee';
     await users.save(legacy);
   }
 
@@ -117,7 +117,7 @@ async function run() {
         users.create({
           email,
           password_hash: await bcrypt.hash(password, 10),
-          role: 'user',
+          role: 'employee',
           employee_id: employeeId,
         }),
       );
@@ -149,7 +149,7 @@ async function run() {
     );
   }
 
-  console.log('Seed complete: admin, user, HQ site, EMP001-EMP002/EMP007, General shift');
+  console.log('Seed complete: admin, employee, HQ site, EMP001-EMP002/EMP007, General shift');
   await ds.destroy();
 }
 

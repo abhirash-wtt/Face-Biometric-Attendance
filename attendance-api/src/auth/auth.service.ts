@@ -69,10 +69,10 @@ export class AuthService implements OnModuleInit {
         this.users.create({
           email: userEmail,
           password_hash: await bcrypt.hash('User@123', 10),
-          role: 'user',
+          role: 'employee',
         }),
       );
-      this.logger.log(`Seeded regular user ${userEmail}`);
+      this.logger.log(`Seeded employee user ${userEmail}`);
     }
   }
 
@@ -166,7 +166,7 @@ export class AuthService implements OnModuleInit {
             manager.create(User, {
               email,
               password_hash: passwordHash,
-              role: 'user',
+              role: 'employee',
               employee_id: employee.id,
             }),
           );

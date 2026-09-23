@@ -16,8 +16,8 @@ export class User {
   @Column({ type: 'text', name: 'password_hash' })
   password_hash: string;
 
-  @Column({ type: 'text', default: 'user' })
-  role: 'admin' | 'user';
+  @Column({ type: 'text', default: 'employee' })
+  role: 'admin' | 'employee';
 
   @Column({ type: 'uuid', nullable: true })
   employee_id?: string | null;

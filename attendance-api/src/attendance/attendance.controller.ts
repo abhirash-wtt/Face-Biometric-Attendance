@@ -45,7 +45,7 @@ export class AttendanceController {
   ) {}
 
   @Post('attend/identify')
-  @Roles('user')
+  @Roles('employee')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
   @ApiConsumes('multipart/form-data', 'application/json')
   @ApiOperation({
@@ -116,7 +116,7 @@ export class AttendanceController {
   }
 
   @Post('attend/verify')
-  @Roles('user')
+  @Roles('employee')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
   @ApiConsumes('multipart/form-data', 'application/json')
   @ApiOperation({ summary: '1:1 verify employee_id + face crop' })
@@ -134,7 +134,7 @@ export class AttendanceController {
   }
 
   @Post('attendance')
-  @Roles('user')
+  @Roles('employee')
   @ApiOperation({ summary: 'Create attendance log (usually after identify)' })
   create(@Body() dto: CreateAttendanceDto, @CurrentUser() user: JwtUser) {
     const boundEmployeeId = boundClockInEmployeeId(user);
@@ -187,7 +187,7 @@ export class AttendanceController {
   }
 
   @Get('config')
-  @Roles('user')
+  @Roles('employee')
   configPublic() {
     return {
       similarity_threshold: this.config.get<number>('recognition.similarityThreshold'),
