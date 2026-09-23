@@ -21,6 +21,11 @@ describe('boundClockInEmployeeId', () => {
     expect(boundClockInEmployeeId(admin)).toBeUndefined();
   });
 
+  it('leaves BU users without an employee link unbound', () => {
+    const bu: JwtUser = { sub: 'b1', role: 'bu', type: 'user' };
+    expect(boundClockInEmployeeId(bu)).toBeUndefined();
+  });
+
   it('binds employee logins to their employee_id', () => {
     expect(boundClockInEmployeeId(linked)).toBe(linked.employee_id);
   });

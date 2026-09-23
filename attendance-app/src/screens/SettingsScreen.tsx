@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { api } from '../services/api';
-import { storage, Settings } from '../services/storage';
+import { storage, Settings, AppRole } from '../services/storage';
 import { TAP_TARGET, useLayout } from '../theme/responsive';
 import { THEME } from '../theme/colors';
 
@@ -26,7 +26,7 @@ export function SettingsScreen({ onAuthChange }: { onAuthChange?: () => void }) 
   const [email, setEmail] = useState('admin@attendance.local');
   const [password, setPassword] = useState('Admin@123');
   const [message, setMessage] = useState('');
-  const [role, setRole] = useState<'admin' | 'employee' | ''>('');
+  const [role, setRole] = useState<AppRole>('');
 
   useEffect(() => {
     storage.getSettings().then(setSettings);

@@ -4,6 +4,8 @@ const TOKEN_KEY = 'access_token';
 const SETTINGS_KEY = 'settings';
 const QUEUE_KEY = 'offline_queue';
 
+export type AppRole = 'admin' | 'employee' | 'bu' | '';
+
 export type Settings = {
   apiBase: string;
   deviceId: string;
@@ -33,16 +35,25 @@ export const storage = {
     if (token) await AsyncStorage.setItem(TOKEN_KEY, token);
     else await AsyncStorage.removeItem(TOKEN_KEY);
   },
-  roleFromToken(token: string | null): 'admin' | 'employee' | '' {
+  roleFromToken(token: string | null): AppRole {
     if (!token) return '';
     try {
       const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
       if (payload.role === 'admin') return 'admin';
+      if (payload.role === 'bu') return 'bu';
       if (payload.role) return 'employee';
       return '';
     } catch {
       return '';
     }
+  },
+  /** Admin and BU share management privileges (roster, devices, regularization review). */
+  isAdminLike(role: AppRole | string | null | undefined): boolean {
+    return role === 'admin' || role === 'bu';
+  },
+  /** Only true admins may enroll any employee; BU is limited to their own face. */
+  canEnrollAnyEmployee(role: AppRole | string | null | undefined): boolean {
+    return role === 'admin';
   },
   employeeIdFromToken(token: string | null): string {
     if (!token) return '';
@@ -53,7 +64,7 @@ export const storage = {
       return '';
     }
   },
-  /** True for human logins (admin/employee accounts), false for kiosk device tokens. */
+  /** True for human logins (admin/employee/bu accounts), false for kiosk device tokens. */
   isAccountToken(token: string | null): boolean {
     if (!token) return false;
     try {
@@ -63,15 +74,15 @@ export const storage = {
       return false;
     }
   },
-  async getRole(): Promise<'admin' | 'employee' | ''> {
+  async getRole(): Promise<AppRole> {
     return this.roleFromToken(await this.getToken());
   },
   async canEnroll(): Promise<boolean> {
     const token = await this.getToken();
     if (!this.isAccountToken(token)) return false;
     const role = this.roleFromToken(token);
-    if (role === 'admin') return true;
-    return role === 'employee' && !!this.employeeIdFromToken(token);
+    if (this.canEnrollAnyEmployee(role)) return true;
+    return (role === 'employee' || role === 'bu') && !!this.employeeIdFromToken(token);
   },
   async canUseRegularization(): Promise<boolean> {
     const token = await this.getToken();

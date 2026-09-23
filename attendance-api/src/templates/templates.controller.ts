@@ -18,7 +18,7 @@ import { Transform } from 'class-transformer';
 import { IsNumber, IsOptional, IsString, IsUUID } from 'class-validator';
 import { TemplatesService } from './templates.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { RolesGuard, effectiveRole } from '../common/guards/roles.guard';
+import { RolesGuard, canEnrollAnyEmployee } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtUser } from '../auth/jwt.strategy';
@@ -57,7 +57,8 @@ export class TemplatesController {
     if (user.type !== 'user') {
       throw new ForbiddenException('Only signed-in users can manage face enrollment');
     }
-    if (effectiveRole(user.role) !== 'admin') {
+    // BU shares admin access elsewhere, but enroll is employee-scoped (own face only).
+    if (!canEnrollAnyEmployee(user.role)) {
       if (!user.employee_id) {
         throw new ForbiddenException('This login is not linked to an employee');
       }

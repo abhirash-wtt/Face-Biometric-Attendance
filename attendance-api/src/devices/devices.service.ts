@@ -7,6 +7,7 @@ import { SitesService } from '../sites/sites.service';
 import { AuthService } from '../auth/auth.service';
 import { RegisterDeviceDto } from './dto/register-device.dto';
 import { JwtUser } from '../auth/jwt.strategy';
+import { isAdminLike } from '../common/guards/roles.guard';
 
 @Injectable()
 export class DevicesService {
@@ -18,7 +19,7 @@ export class DevicesService {
   ) {}
 
   async register(dto: RegisterDeviceDto, user?: JwtUser) {
-    const isAdmin = user?.role === 'admin';
+    const isAdmin = isAdminLike(user?.role);
     if (user?.type === 'user' && !isAdmin) {
       throw new ForbiddenException('Only admins can register devices');
     }

@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { api, RegularizationRequestType, WfhRequest } from '../services/api';
+import { AppRole, storage } from '../services/storage';
 import { TAP_TARGET, useLayout } from '../theme/responsive';
 import { THEME } from '../theme/colors';
 
@@ -213,7 +214,7 @@ function typeCopy(type: RegularizationRequestType) {
   };
 }
 
-export function RegularizationScreen({ role }: { role: 'admin' | 'employee' | '' }) {
+export function RegularizationScreen({ role }: { role: AppRole }) {
   const layout = useLayout();
   const today = todayIst();
   const [requestType, setRequestType] = useState<RegularizationRequestType>('wfh');
@@ -222,7 +223,7 @@ export function RegularizationScreen({ role }: { role: 'admin' | 'employee' | ''
   const [rows, setRows] = useState<WfhRequest[]>([]);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
-  const isAdmin = role === 'admin';
+  const isAdmin = storage.isAdminLike(role);
   const isPresentRequest = requestType === 'mark_present';
   const copy = typeCopy(requestType);
 

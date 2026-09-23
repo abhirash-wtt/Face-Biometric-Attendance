@@ -16,6 +16,7 @@ import { CreateWfhRequestDto } from './dto/create-wfh-request.dto';
 import { EmployeesService } from '../employees/employees.service';
 import { localDateYmd } from '../attendance/roster';
 import { JwtUser } from '../auth/jwt.strategy';
+import { isAdminLike } from '../common/guards/roles.guard';
 
 @Injectable()
 export class RegularizationService {
@@ -120,7 +121,7 @@ export class RegularizationService {
 
   async cancel(id: string, user: JwtUser) {
     const req = await this.get(id);
-    if (user.role !== 'admin') {
+    if (!isAdminLike(user.role)) {
       if (!user.employee_id || req.employee_id !== user.employee_id) {
         throw new ForbiddenException('You can only cancel your own regularization requests');
       }
@@ -172,7 +173,7 @@ export class RegularizationService {
       }
       return user.employee_id;
     }
-    if (user.role === 'admin' && requestedEmployeeId) {
+    if (isAdminLike(user.role) && requestedEmployeeId) {
       return requestedEmployeeId;
     }
     throw new ForbiddenException('This login is not linked to an employee');

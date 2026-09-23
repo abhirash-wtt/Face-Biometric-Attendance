@@ -2,8 +2,19 @@ import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 
+/** Admin and BU share management privileges (roster, devices, regularization review, etc.). */
+export function isAdminLike(role?: string): boolean {
+  return role === 'admin' || role === 'bu';
+}
+
+/** Only true admins may enroll any employee; BU is limited to their own face like employees. */
+export function canEnrollAnyEmployee(role?: string): boolean {
+  return role === 'admin';
+}
+
+/** Maps JWT/DB roles onto the two privilege tiers used by @Roles(). */
 export function effectiveRole(role?: string): 'admin' | 'employee' {
-  if (role === 'admin') return 'admin';
+  if (isAdminLike(role)) return 'admin';
   return 'employee';
 }
 

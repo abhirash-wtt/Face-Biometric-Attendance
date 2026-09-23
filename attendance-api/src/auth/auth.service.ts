@@ -20,7 +20,6 @@ import { RedisService } from '../redis/redis.service';
 import { JwtUser } from './jwt.strategy';
 import { DatabaseInitService } from '../database/database-init.service';
 import { nextEmployeeCode } from './employee-code';
-import { effectiveRole } from '../common/guards/roles.guard';
 import { MailService } from '../mail/mail.service';
 import { assertCompanyEmail } from './company-email';
 import {
@@ -73,6 +72,18 @@ export class AuthService implements OnModuleInit {
         }),
       );
       this.logger.log(`Seeded employee user ${userEmail}`);
+    }
+    const buEmail = 'bu@attendance.local';
+    const existingBu = await this.users.findOne({ where: { email: buEmail } });
+    if (!existingBu) {
+      await this.users.save(
+        this.users.create({
+          email: buEmail,
+          password_hash: await bcrypt.hash('Bu@123', 10),
+          role: 'bu',
+        }),
+      );
+      this.logger.log(`Seeded BU user ${buEmail}`);
     }
   }
 
@@ -258,7 +269,7 @@ export class AuthService implements OnModuleInit {
       : null;
     return {
       ...user,
-      role: effectiveRole(user.role),
+      role: row?.role || user.role,
       employee_id: row?.employee_id || user.employee_id || undefined,
       employee_code: employee?.code,
       display_name: employee?.display_name,

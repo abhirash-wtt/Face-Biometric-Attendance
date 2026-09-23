@@ -63,8 +63,17 @@ async function run() {
       }),
     );
   }
+  if (!(await users.findOne({ where: { email: 'bu@attendance.local' } }))) {
+    await users.save(
+      users.create({
+        email: 'bu@attendance.local',
+        password_hash: await bcrypt.hash('Bu@123', 10),
+        role: 'bu',
+      }),
+    );
+  }
   const legacy = await users.findOne({ where: { email: 'supervisor@attendance.local' } });
-  if (legacy && legacy.role !== 'admin') {
+  if (legacy && legacy.role !== 'admin' && legacy.role !== 'bu') {
     legacy.role = 'employee';
     await users.save(legacy);
   }

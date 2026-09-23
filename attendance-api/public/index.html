@@ -775,8 +775,12 @@
       const payload = decodeJwt(state.token);
       if (!payload || isJwtExpired(state.token, 0)) return '';
       if (payload.role === 'admin') return 'admin';
+      if (payload.role === 'bu') return 'bu';
       if (payload.role) return 'employee';
       return '';
+    }
+    function isAdminLike(role) {
+      return role === 'admin' || role === 'bu';
     }
     function authUser() {
       try { return JSON.parse(localStorage.getItem('auth_user') || 'null'); } catch { return null; }
@@ -789,8 +793,9 @@
     }
     function canEnroll() {
       const role = jwtRole();
+      // Only true admins enroll any employee; BU and employees enroll their own face.
       if (role === 'admin') return true;
-      return role === 'employee' && !!linkedEmployeeId();
+      return (role === 'employee' || role === 'bu') && !!linkedEmployeeId();
     }
     function isDeviceToken() {
       const payload = decodeJwt(state.token);
@@ -921,21 +926,22 @@
     }
     function applyAccess() {
       const role = jwtRole();
-      const isAdmin = role === 'admin';
+      const adminLike = isAdminLike(role);
       const loggedIn = !!role;
       const user = authUser();
       const wfhOk = canUseWfh();
       const enrollOk = canEnroll();
-      // Admins manage enroll/attendance/regularization — hide shared kiosk clock-in.
-      $('kioskTabBtn').classList.toggle('rbac-hide', isAdmin);
+      // Admin/BU manage attendance/regularization — hide shared kiosk clock-in.
+      $('kioskTabBtn').classList.toggle('rbac-hide', adminLike);
       $('enrollTabBtn').classList.toggle('rbac-hide', !enrollOk);
-      $('attendanceTabBtn').classList.toggle('rbac-hide', !isAdmin);
+      $('attendanceTabBtn').classList.toggle('rbac-hide', !adminLike);
       $('wfhTabBtn').classList.toggle('rbac-hide', !wfhOk);
       $('adminBindBlock').classList.toggle('rbac-hide', role === 'employee');
       $('bindBtn').classList.toggle('rbac-hide', role === 'employee');
+      // BU reviews requests like admin; only employees submit the form.
       $('wfhRequestForm').classList.toggle('hidden', role !== 'employee');
-      $('wfhAdminHint').classList.toggle('hidden', !isAdmin);
-      $('wfhListTitle').textContent = isAdmin ? 'All requests' : 'My requests';
+      $('wfhAdminHint').classList.toggle('hidden', !adminLike);
+      $('wfhListTitle').textContent = adminLike ? 'All requests' : 'My requests';
       $('loginBtn').classList.toggle('hidden', loggedIn || state.authMode === 'register');
       $('logoutBtn').classList.toggle('hidden', !loggedIn);
       if (role && user && user.email) {
@@ -946,9 +952,9 @@
         $('roleBadge').textContent = 'Not signed in';
       }
       let fallback = '';
-      if (isAdmin && state.tab === 'kiosk') fallback = 'attendance';
-      else if ((state.tab === 'attendance' && !isAdmin) || (state.tab === 'enroll' && !enrollOk) || (state.tab === 'wfh' && !wfhOk)) {
-        fallback = isAdmin ? 'attendance' : 'kiosk';
+      if (adminLike && state.tab === 'kiosk') fallback = 'attendance';
+      else if ((state.tab === 'attendance' && !adminLike) || (state.tab === 'enroll' && !enrollOk) || (state.tab === 'wfh' && !wfhOk)) {
+        fallback = adminLike ? 'attendance' : 'kiosk';
       }
       if (fallback) {
         state.tab = fallback;
@@ -1662,6 +1668,7 @@
     }
 
     function prepareEnrollTab() {
+      // Enroll admin UI (search/list) is true-admin only; BU uses employee self-enroll.
       const isAdmin = jwtRole() === 'admin';
       $('enrollTitle').textContent = isAdmin ? 'Enroll faces' : 'Enroll your face';
       $('enrollSearchRow').classList.toggle('hidden', !isAdmin);
@@ -1697,8 +1704,8 @@
     }
     document.querySelectorAll('header button').forEach((b) => {
       b.onclick = () => {
-        if (b.dataset.tab === 'kiosk' && jwtRole() === 'admin') return;
-        if (b.dataset.tab === 'attendance' && jwtRole() !== 'admin') return;
+        if (b.dataset.tab === 'kiosk' && isAdminLike(jwtRole())) return;
+        if (b.dataset.tab === 'attendance' && !isAdminLike(jwtRole())) return;
         if (b.dataset.tab === 'enroll' && !canEnroll()) return;
         if (b.dataset.tab === 'wfh' && !canUseWfh()) return;
         state.tab = b.dataset.tab;
@@ -2326,7 +2333,7 @@
     }
 
     async function loadWfhRequests() {
-      const isAdmin = jwtRole() === 'admin';
+      const isAdmin = isAdminLike(jwtRole());
       const rows = isAdmin
         ? await api('/wfh-requests')
         : await api('/wfh-requests/mine');

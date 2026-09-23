@@ -9,6 +9,7 @@ import { RegularizationScreen } from './screens/RegularizationScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { store } from './state/attendanceSlice';
 import { storage } from './services/storage';
+import type { AppRole } from './services/storage';
 import { TAP_TARGET, useLayout } from './theme/responsive';
 import { THEME } from './theme/colors';
 
@@ -16,7 +17,7 @@ type Tab = 'kiosk' | 'enroll' | 'attendance' | 'wfh' | 'settings';
 
 function Shell() {
   const [tab, setTab] = useState<Tab>('kiosk');
-  const [role, setRole] = useState<'admin' | 'employee' | ''>('');
+  const [role, setRole] = useState<AppRole>('');
   const [canWfh, setCanWfh] = useState(false);
   const [canEnroll, setCanEnroll] = useState(false);
   const insets = useSafeAreaInsets();
@@ -26,15 +27,16 @@ function Shell() {
     const next = await storage.getRole();
     const wfh = await storage.canUseRegularization();
     const enroll = await storage.canEnroll();
+    const adminLike = storage.isAdminLike(next);
     setRole(next);
     setCanWfh(wfh);
     setCanEnroll(enroll);
     setTab((current) => {
-      // Admins do not use kiosk; send them to a management tab.
-      if (next === 'admin' && current === 'kiosk') return 'attendance';
-      if (next !== 'admin' && current === 'attendance') return 'kiosk';
-      if (!enroll && current === 'enroll') return next === 'admin' ? 'attendance' : 'kiosk';
-      if (!wfh && current === 'wfh') return next === 'admin' ? 'attendance' : 'kiosk';
+      // Admin/BU do not use kiosk; send them to a management tab.
+      if (adminLike && current === 'kiosk') return 'attendance';
+      if (!adminLike && current === 'attendance') return 'kiosk';
+      if (!enroll && current === 'enroll') return adminLike ? 'attendance' : 'kiosk';
+      if (!wfh && current === 'wfh') return adminLike ? 'attendance' : 'kiosk';
       return current;
     });
   }, []);
@@ -43,20 +45,20 @@ function Shell() {
     refreshRole();
   }, [refreshRole]);
 
-  const tabs: Array<[Tab, string]> =
-    role === 'admin'
-      ? [
-          ['enroll', 'Enroll'],
-          ['attendance', 'Attend'],
-          ['wfh', 'Regularize'],
-          ['settings', 'Settings'],
-        ]
-      : [
-          ['kiosk', 'Kiosk'],
-          ...(canEnroll ? [['enroll', 'Enroll'] as [Tab, string]] : []),
-          ...(canWfh ? [['wfh', 'Regularize'] as [Tab, string]] : []),
-          ['settings', 'Settings'],
-        ];
+  const adminLike = storage.isAdminLike(role);
+  const tabs: Array<[Tab, string]> = adminLike
+    ? [
+        ...(canEnroll ? [['enroll', 'Enroll'] as [Tab, string]] : []),
+        ['attendance', 'Attend'],
+        ['wfh', 'Regularize'],
+        ['settings', 'Settings'],
+      ]
+    : [
+        ['kiosk', 'Kiosk'],
+        ...(canEnroll ? [['enroll', 'Enroll'] as [Tab, string]] : []),
+        ...(canWfh ? [['wfh', 'Regularize'] as [Tab, string]] : []),
+        ['settings', 'Settings'],
+      ];
 
   return (
     <View style={styles.safe}>
@@ -92,9 +94,9 @@ function Shell() {
           },
         ]}
       >
-        {tab === 'kiosk' && role !== 'admin' && <KioskScreen />}
+        {tab === 'kiosk' && !storage.isAdminLike(role) && <KioskScreen />}
         {tab === 'enroll' && canEnroll && <EnrollScreen />}
-        {tab === 'attendance' && role === 'admin' && <AttendanceScreen />}
+        {tab === 'attendance' && storage.isAdminLike(role) && <AttendanceScreen />}
         {tab === 'wfh' && canWfh && <RegularizationScreen role={role} />}
         {tab === 'settings' && <SettingsScreen onAuthChange={refreshRole} />}
       </View>

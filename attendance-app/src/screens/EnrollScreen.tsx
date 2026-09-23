@@ -108,7 +108,8 @@ export function EnrollScreen() {
   useEffect(() => {
     (async () => {
       const token = await storage.getToken();
-      const admin = storage.roleFromToken(token) === 'admin';
+      // Only true admins get the multi-employee enroll UI; BU enrolls like an employee.
+      const admin = storage.canEnrollAnyEmployee(storage.roleFromToken(token));
       setIsAdmin(admin);
       if (admin) {
         load();
