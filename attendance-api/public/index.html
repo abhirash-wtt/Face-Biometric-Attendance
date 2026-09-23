@@ -211,6 +211,7 @@
       box-shadow:0 4px 16px rgba(6, 182, 212, 0.3);
       width:100%; margin-top:12px;
     }
+    #saveBtn { margin-bottom:24px; }
     button.cta:hover { transform:translateY(-1px); box-shadow:0 6px 20px rgba(6, 182, 212, 0.4); }
     button.cta:active { transform:translateY(0); }
     button.alt {
@@ -651,11 +652,6 @@
         <input id="secret" autocapitalize="none" autocomplete="off" spellcheck="false" />
       </div>
       <button class="cta" id="saveBtn">Save</button>
-      <p style="color:#7ee0c5;font-weight:700" id="authHeading">Login</p>
-      <div class="row" style="margin-top:0;margin-bottom:4px">
-        <button type="button" class="toggle on" id="authModeLogin">Login</button>
-        <button type="button" class="toggle" id="authModeRegister">Register</button>
-      </div>
       <div id="registerNameBlock" class="hidden">
         <label for="displayName">Full name</label>
         <input id="displayName" autocomplete="name" spellcheck="false" enterkeyhint="next" />
@@ -682,6 +678,7 @@
       <button class="cta" id="loginBtn">Login</button>
       <button class="cta hidden" id="registerBtn">Send verification code</button>
       <button class="alt" id="logoutBtn">Logout</button>
+      <button type="button" class="alt" id="authModeRegister">Register</button>
       <button class="alt" id="bindBtn">Register this device</button>
       <button class="alt" id="syncBtn">Sync offline queue</button>
       <p class="status" id="settingsStatus"></p>
@@ -744,6 +741,7 @@
       enrollment: null,
       pending: null,
       queue: JSON.parse(localStorage.getItem('offline_queue') || '[]'),
+      authMode: 'login',
     };
     let refreshInFlight = null;
 
@@ -935,7 +933,7 @@
       $('wfhRequestForm').classList.toggle('hidden', role !== 'user');
       $('wfhAdminHint').classList.toggle('hidden', !isAdmin);
       $('wfhListTitle').textContent = isAdmin ? 'All requests' : 'My requests';
-      $('loginBtn').classList.toggle('hidden', loggedIn || $('authHeading').textContent === 'Register');
+      $('loginBtn').classList.toggle('hidden', loggedIn || state.authMode === 'register');
       $('logoutBtn').classList.toggle('hidden', !loggedIn);
       if (role && user && user.email) {
         $('roleBadge').textContent = 'Signed in as ' + user.email + ' (' + role + ')';
@@ -2439,7 +2437,7 @@
     function setRegisterAwaitingOtp(awaiting, email) {
       const on = !!awaiting;
       $('registerOtpBlock').classList.toggle('hidden', !on);
-      $('registerBtn').classList.toggle('hidden', on || $('authHeading').textContent !== 'Register');
+      $('registerBtn').classList.toggle('hidden', on || state.authMode !== 'register');
       ['displayName', 'email', 'password', 'password2'].forEach((id) => {
         $(id).disabled = on;
       });
@@ -2491,9 +2489,8 @@
     function setAuthMode(mode) {
       const register = mode === 'register';
       const loggedIn = !!jwtRole();
-      $('authModeLogin').classList.toggle('on', !register);
+      state.authMode = register ? 'register' : 'login';
       $('authModeRegister').classList.toggle('on', register);
-      $('authHeading').textContent = register ? 'Register' : 'Login';
       $('registerNameBlock').classList.toggle('hidden', !register);
       $('registerConfirmBlock').classList.toggle('hidden', !register);
       $('registerHint').classList.toggle('hidden', !register);
@@ -2510,8 +2507,9 @@
         $('password2').value = '';
       }
     }
-    $('authModeLogin').onclick = () => setAuthMode('login');
-    $('authModeRegister').onclick = () => setAuthMode('register');
+    $('authModeRegister').onclick = () => {
+      setAuthMode(state.authMode === 'register' ? 'login' : 'register');
+    };
     $('loginBtn').onclick = async () => {
       try {
         const res = await api('/auth/login', { method: 'POST', body: { email: $('email').value, password: $('password').value } });
