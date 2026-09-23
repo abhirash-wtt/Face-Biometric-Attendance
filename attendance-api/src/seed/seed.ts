@@ -114,6 +114,7 @@ async function run() {
     { code: 'EMP007', display_name: 'Pratham Vij' },
     { code: 'EMPHR', display_name: 'HR Role' },
     { code: 'EMPMGR', display_name: 'Manager Role' },
+    { code: 'EMPBU', display_name: 'BU Owner' },
   ];
   for (const row of seedEmployees) {
     if (!(await employees.findOne({ where: { code: row.code } }))) {
@@ -124,7 +125,7 @@ async function run() {
   async function ensureRoleUser(
     email: string,
     password: string,
-    role: 'hr' | 'manager' | 'employee',
+    role: 'hr' | 'manager' | 'employee' | 'bu',
     employeeId?: string,
   ) {
     const existing = await users.findOne({ where: { email } });
@@ -169,6 +170,23 @@ async function run() {
 
   const empMgr = await employees.findOne({ where: { code: 'EMPMGR' } });
   await ensureRoleUser('managerrole@gmail.com', 'V9wbSaSeEt', 'manager', empMgr?.id);
+
+  const empBu = await employees.findOne({ where: { code: 'EMPBU' } });
+  await ensureRoleUser('bu@attendance.local', 'Bu@123', 'bu', empBu?.id);
+
+  // Sample org links so Attendance columns have values.
+  for (const emp of [emp001, emp002, emp007, empHr].filter(Boolean)) {
+    let changed = false;
+    if (empMgr && emp!.reporting_manager_id !== empMgr.id) {
+      emp!.reporting_manager_id = empMgr.id;
+      changed = true;
+    }
+    if (empBu && emp!.bu_owner_id !== empBu.id) {
+      emp!.bu_owner_id = empBu.id;
+      changed = true;
+    }
+    if (changed) await employees.save(emp!);
+  }
 
   if (!(await shifts.findOne({ where: { name: 'General' } }))) {
     await shifts.save(

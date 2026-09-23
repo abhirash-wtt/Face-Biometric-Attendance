@@ -18,6 +18,8 @@ describe('attendance roster', () => {
         display_name: 'Abhirash',
         email: 'abhirash@example.com',
         role: null,
+        reporting_manager: null,
+        bu_owner: null,
         clock_in: null,
         clock_out: null,
         status: 'Absent',

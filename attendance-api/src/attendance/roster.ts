@@ -17,6 +17,8 @@ export type RosterEmployee = {
   display_name: string;
   email?: string | null;
   role?: string | null;
+  reporting_manager?: string | null;
+  bu_owner?: string | null;
 };
 
 export type AttendanceDayStatus = 'Present' | 'Half Day' | 'Absent';
@@ -27,6 +29,8 @@ export type RosterRow = {
   display_name: string;
   email: string | null;
   role: string | null;
+  reporting_manager: string | null;
+  bu_owner: string | null;
   clock_in: string | null;
   clock_out: string | null;
   status: AttendanceDayStatus;
@@ -115,6 +119,8 @@ export function buildRoster(
       display_name: emp.display_name,
       email: emp.email || null,
       role: emp.role || null,
+      reporting_manager: emp.reporting_manager || null,
+      bu_owner: emp.bu_owner || null,
       clock_in,
       clock_out,
       status,

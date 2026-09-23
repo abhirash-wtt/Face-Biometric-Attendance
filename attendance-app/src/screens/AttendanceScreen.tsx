@@ -231,7 +231,7 @@ export function AttendanceScreen() {
       setMessage('Nothing to export');
       return;
     }
-    const header = 'Employee,Code,Email,Role,Clock In,Clock Out,Status';
+    const header = 'Employee,Code,Email,Role,Clock In,Clock Out,Status,Reporting Manager,BU Owner';
     const lines = filteredRows.map((r) =>
       [
         csvEscape(r.display_name),
@@ -241,6 +241,8 @@ export function AttendanceScreen() {
         csvEscape(formatPunch(r.clock_in)),
         csvEscape(formatPunch(r.clock_out)),
         csvEscape(r.status),
+        csvEscape(r.reporting_manager || ''),
+        csvEscape(r.bu_owner || ''),
       ].join(','),
     );
     const csv = [header, ...lines].join('\n');
@@ -372,6 +374,8 @@ export function AttendanceScreen() {
           <Text style={[styles.headText, styles.colTime]}>In</Text>
           <Text style={[styles.headText, styles.colTime]}>Out</Text>
           <Text style={[styles.headText, styles.colStatus]}>Status</Text>
+          <Text style={[styles.headText, styles.colOrg]}>Reporting Manager</Text>
+          <Text style={[styles.headText, styles.colOrg]}>BU Owner</Text>
         </View>
       )}
       <FlatList
@@ -407,6 +411,16 @@ export function AttendanceScreen() {
                   <Text style={styles.cardTimeValue}>{formatPunch(item.clock_out)}</Text>
                 </View>
               </View>
+              <View style={styles.cardOrg}>
+                <View style={styles.cardTime}>
+                  <Text style={styles.cardTimeLabel}>Reporting Manager</Text>
+                  <Text style={styles.cardTimeValue}>{item.reporting_manager || '—'}</Text>
+                </View>
+                <View style={styles.cardTime}>
+                  <Text style={styles.cardTimeLabel}>BU Owner</Text>
+                  <Text style={styles.cardTimeValue}>{item.bu_owner || '—'}</Text>
+                </View>
+              </View>
             </View>
           ) : (
             <View style={styles.row}>
@@ -421,6 +435,12 @@ export function AttendanceScreen() {
               <View style={styles.colStatus}>
                 <StatusPill status={item.status} />
               </View>
+              <Text style={[styles.org, styles.colOrg]} numberOfLines={2}>
+                {item.reporting_manager || '—'}
+              </Text>
+              <Text style={[styles.org, styles.colOrg]} numberOfLines={2}>
+                {item.bu_owner || '—'}
+              </Text>
             </View>
           )
         }
@@ -565,9 +585,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: 'rgba(255, 255, 255, 0.05)',
   },
-  colName: { flex: 1.4, paddingRight: 6 },
-  colTime: { flex: 0.9 },
-  colStatus: { width: 100, alignItems: 'flex-end' },
+  colName: { flex: 1.3, paddingRight: 6 },
+  colOrg: { flex: 1.1, paddingRight: 4 },
+  colTime: { flex: 0.75 },
+  colStatus: { width: 92, alignItems: 'flex-end' },
   card: {
     backgroundColor: THEME.card,
     borderWidth: 1,
@@ -578,6 +599,14 @@ const styles = StyleSheet.create({
   },
   cardHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   cardWho: { flex: 1 },
+  cardOrg: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255, 255, 255, 0.06)',
+  },
   cardTimes: {
     flexDirection: 'row',
     gap: 12,
@@ -598,6 +627,7 @@ const styles = StyleSheet.create({
   code: { color: THEME.cyan, fontSize: 12, fontWeight: '800', marginTop: 2 },
   name: { color: '#fff', fontWeight: '700', fontSize: 15 },
   email: { color: THEME.textMuted, fontSize: 12, marginTop: 2 },
+  org: { color: THEME.textSecondary, fontSize: 13, fontWeight: '600' },
   time: { color: THEME.textSecondary, fontSize: 13, fontWeight: '600' },
   pill: {
     borderRadius: 999,

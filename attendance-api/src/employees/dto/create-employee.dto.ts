@@ -1,4 +1,4 @@
-import { IsIn, IsOptional, IsString, Matches } from 'class-validator';
+import { IsIn, IsOptional, IsString, IsUUID, Matches, ValidateIf } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateEmployeeDto {
@@ -20,4 +20,16 @@ export class CreateEmployeeDto {
   @IsOptional()
   @IsIn(['onsite', 'remote'])
   working_mode?: 'onsite' | 'remote';
+
+  @ApiPropertyOptional({ description: 'Linked employee UUID for Reporting Manager' })
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsUUID()
+  reporting_manager_id?: string | null;
+
+  @ApiPropertyOptional({ description: 'Linked employee UUID for BU Owner' })
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsUUID()
+  bu_owner_id?: string | null;
 }

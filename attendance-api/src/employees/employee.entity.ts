@@ -2,6 +2,8 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  JoinColumn,
+  ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
@@ -25,6 +27,20 @@ export class Employee {
   /** On-site employees must pass geofence; remote may skip it. */
   @Column({ type: 'text', default: 'onsite' })
   working_mode: 'onsite' | 'remote';
+
+  @Column({ type: 'uuid', nullable: true })
+  reporting_manager_id?: string | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  bu_owner_id?: string | null;
+
+  @ManyToOne(() => Employee, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'reporting_manager_id' })
+  reporting_manager?: Employee | null;
+
+  @ManyToOne(() => Employee, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'bu_owner_id' })
+  bu_owner?: Employee | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   created_at: Date;

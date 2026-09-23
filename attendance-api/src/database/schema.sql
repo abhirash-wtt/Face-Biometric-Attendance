@@ -18,6 +18,8 @@ CREATE TABLE IF NOT EXISTS employees (
   display_name TEXT NOT NULL,
   status TEXT CHECK (status IN ('active','inactive')) DEFAULT 'active',
   working_mode TEXT CHECK (working_mode IN ('onsite','remote')) DEFAULT 'onsite',
+  reporting_manager_id UUID REFERENCES employees(id) ON DELETE SET NULL,
+  bu_owner_id UUID REFERENCES employees(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 

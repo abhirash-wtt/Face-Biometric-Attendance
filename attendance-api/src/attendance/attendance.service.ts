@@ -222,18 +222,25 @@ export class AttendanceService {
     const userByEmployee = new Map(
       users.filter((u) => u.employee_id).map((u) => [u.employee_id as string, u]),
     );
+    const employeeById = new Map(employees.map((e) => [e.id, e]));
     return {
       date: day,
       timezone: ATTENDANCE_TZ,
       employees: buildRoster(
         employees.map((e) => {
           const linked = userByEmployee.get(e.id);
+          const manager = e.reporting_manager_id
+            ? employeeById.get(e.reporting_manager_id)
+            : undefined;
+          const owner = e.bu_owner_id ? employeeById.get(e.bu_owner_id) : undefined;
           return {
             id: e.id,
             code: e.code,
             display_name: e.display_name,
             email: linked?.email || null,
             role: linked?.role || null,
+            reporting_manager: manager?.display_name || null,
+            bu_owner: owner?.display_name || null,
           };
         }),
         logs,

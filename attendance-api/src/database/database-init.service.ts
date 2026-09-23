@@ -45,6 +45,7 @@ export class DatabaseInitService implements OnModuleInit {
     await this.migrateWfhRegularization();
     await this.migrateRegularizationRequestType();
     await this.migrateEmployeeWorkingMode();
+    await this.migrateEmployeeOrgLinks();
     await this.migrateFaceEnrollment();
   }
 
@@ -126,6 +127,16 @@ export class DatabaseInitService implements OnModuleInit {
       if (!/already exists/i.test(message)) throw err;
     }
     this.logger.log('Employee working_mode column ready');
+  }
+
+  private async migrateEmployeeOrgLinks() {
+    await this.ds.query(
+      `ALTER TABLE employees ADD COLUMN IF NOT EXISTS reporting_manager_id UUID REFERENCES employees(id) ON DELETE SET NULL`,
+    );
+    await this.ds.query(
+      `ALTER TABLE employees ADD COLUMN IF NOT EXISTS bu_owner_id UUID REFERENCES employees(id) ON DELETE SET NULL`,
+    );
+    this.logger.log('Employee reporting_manager_id and bu_owner_id columns ready');
   }
 
   private async migrateWfhRegularization() {

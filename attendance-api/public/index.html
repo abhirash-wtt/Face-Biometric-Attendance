@@ -663,6 +663,8 @@
               <th>Clock in</th>
               <th>Clock out</th>
               <th>Status</th>
+              <th>Reporting Manager</th>
+              <th>BU Owner</th>
             </tr>
           </thead>
           <tbody id="rosterBody"></tbody>
@@ -2434,9 +2436,9 @@
             const email = r.email ? '<div class="muted">' + esc(r.email) + '</div>' : '';
             const role = r.role ? '<div class="muted">' + esc(String(r.role).toUpperCase()) + '</div>' : '';
             const pill = rosterStatusClass(r.status);
-            return '<tr><td data-label="Employee">' + who + email + role + '</td><td data-label="Clock in">' + formatPunch(r.clock_in) + '</td><td data-label="Clock out">' + formatPunch(r.clock_out) + '</td><td data-label="Status"><span class="pill ' + pill + '">' + esc(r.status) + '</span></td></tr>';
+            return '<tr><td data-label="Employee">' + who + email + role + '</td><td data-label="Clock in">' + formatPunch(r.clock_in) + '</td><td data-label="Clock out">' + formatPunch(r.clock_out) + '</td><td data-label="Status"><span class="pill ' + pill + '">' + esc(r.status) + '</span></td><td data-label="Reporting Manager">' + esc(r.reporting_manager || '—') + '</td><td data-label="BU Owner">' + esc(r.bu_owner || '—') + '</td></tr>';
           }).join('')
-        : '<tr><td colspan="4" class="muted">No employees found</td></tr>';
+        : '<tr><td colspan="6" class="muted">No employees found</td></tr>';
       const suffix = rows.length !== rosterRows.length ? ' of ' + rosterRows.length : '';
       status('rosterStatus', rows.length + ' employee' + (rows.length === 1 ? '' : 's') + suffix);
       syncRosterToolButtons();
@@ -2467,7 +2469,7 @@
         status('rosterStatus', 'Nothing to export');
         return;
       }
-      const header = 'Employee,Code,Email,Role,Clock In,Clock Out,Status';
+      const header = 'Employee,Code,Email,Role,Clock In,Clock Out,Status,Reporting Manager,BU Owner';
       const lines = rows.map((r) => [
         csvEscape(r.display_name),
         csvEscape(r.employee_code),
@@ -2476,6 +2478,8 @@
         csvEscape(formatPunch(r.clock_in)),
         csvEscape(formatPunch(r.clock_out)),
         csvEscape(r.status),
+        csvEscape(r.reporting_manager || ''),
+        csvEscape(r.bu_owner || ''),
       ].join(','));
       const csv = [header].concat(lines).join('\n');
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });

@@ -13,13 +13,17 @@ export class EmployeesService {
     private readonly ds: DataSource,
   ) {}
 
-  create(dto: CreateEmployeeDto) {
+  async create(dto: CreateEmployeeDto) {
+    if (dto.reporting_manager_id) await this.get(dto.reporting_manager_id);
+    if (dto.bu_owner_id) await this.get(dto.bu_owner_id);
     return this.repo.save(
       this.repo.create({
         code: dto.code.toUpperCase(),
         display_name: dto.display_name,
         status: dto.status || 'active',
         working_mode: dto.working_mode || 'onsite',
+        reporting_manager_id: dto.reporting_manager_id ?? null,
+        bu_owner_id: dto.bu_owner_id ?? null,
       }),
     );
   }
@@ -29,6 +33,14 @@ export class EmployeesService {
     if (dto.display_name !== undefined) emp.display_name = dto.display_name;
     if (dto.status !== undefined) emp.status = dto.status;
     if (dto.working_mode !== undefined) emp.working_mode = dto.working_mode;
+    if (dto.reporting_manager_id !== undefined) {
+      if (dto.reporting_manager_id) await this.get(dto.reporting_manager_id);
+      emp.reporting_manager_id = dto.reporting_manager_id;
+    }
+    if (dto.bu_owner_id !== undefined) {
+      if (dto.bu_owner_id) await this.get(dto.bu_owner_id);
+      emp.bu_owner_id = dto.bu_owner_id;
+    }
     return this.repo.save(emp);
   }
 

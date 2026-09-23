@@ -64,6 +64,8 @@ export type AttendanceStatusRow = {
   display_name: string;
   email: string | null;
   role: string | null;
+  reporting_manager: string | null;
+  bu_owner: string | null;
   clock_in: string | null;
   clock_out: string | null;
   status: 'Present' | 'Half Day' | 'Absent';
