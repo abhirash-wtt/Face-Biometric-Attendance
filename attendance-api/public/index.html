@@ -386,7 +386,55 @@
 
     .roster-toolbar { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; margin:14px 0 16px; }
     .roster-toolbar > .cta { flex:0 1 auto; width:auto; margin:0; padding:12px 20px; }
+    .roster-actions {
+      display:flex; flex-wrap:nowrap; gap:8px; align-items:stretch;
+      margin:12px 0 10px;
+    }
+    button.roster-tool {
+      flex:1 1 0; width:auto; margin:0; min-width:0;
+      padding:12px 10px; min-height:var(--tap);
+      background:rgba(56, 189, 248, 0.12);
+      border:1px solid rgba(56, 189, 248, 0.35);
+      border-radius:12px; color:var(--mint);
+      box-shadow:none; font-size:13px; font-weight:800;
+      font-family:inherit; cursor:pointer;
+      display:inline-flex; align-items:center; justify-content:center;
+      transition:all 0.2s ease;
+    }
+    button.roster-tool:hover {
+      transform:translateY(-1px);
+      background:rgba(56, 189, 248, 0.18);
+      box-shadow:0 4px 16px rgba(56, 189, 248, 0.2);
+    }
+    button.roster-tool.on {
+      color:#fff;
+      background:rgba(6, 182, 212, 0.22);
+      border-color:rgba(6, 182, 212, 0.55);
+    }
+    .roster-panel {
+      margin:0 0 10px;
+      padding:12px;
+      border-radius:14px;
+      border:1px solid var(--card-border);
+      background:rgba(15, 23, 42, 0.45);
+    }
+    .roster-panel.hidden { display:none; }
+    .roster-panel input {
+      width:100%; margin:0; background:rgba(15, 23, 42, 0.6);
+      border:1px solid var(--line); color:var(--text);
+      border-radius:12px; padding:12px 14px; min-height:var(--tap);
+      font-size:15px; font-weight:600; font-family:inherit;
+    }
+    .roster-filter-row { display:flex; flex-wrap:wrap; gap:8px; }
+    .roster-filter-row > button.toggle {
+      flex:1 1 90px; width:auto; margin:0; min-width:0;
+      padding:10px 12px; font-size:12px;
+    }
     .date-picker { flex:1 1 200px; position:relative; }
+    .date-picker > label {
+      display:block; color:var(--muted); font-size:12px; font-weight:800;
+      text-transform:uppercase; letter-spacing:.05em; margin:0 0 6px;
+    }
     .date-field {
       width:100%; display:flex; align-items:center; justify-content:flex-start; gap:10px;
       background:rgba(15, 23, 42, 0.6); border:1px solid var(--line); color:var(--text);
@@ -579,6 +627,23 @@
     <section id="attendance" class="hidden">
       <h1>Attendance</h1>
       <p id="rosterMeta">Clock-in, clock-out, and current status for every employee.</p>
+      <div class="roster-actions" role="toolbar" aria-label="Attendance tools">
+        <button type="button" class="roster-tool" id="rosterSearchBtn" aria-pressed="false">Search</button>
+        <button type="button" class="roster-tool" id="rosterFilterBtn" aria-pressed="false">Filter</button>
+        <button type="button" class="roster-tool" id="rosterExportBtn">Export</button>
+      </div>
+      <div class="roster-panel hidden" id="rosterSearchPanel">
+        <input id="rosterSearch" type="search" placeholder="Search name, code, or email"
+               autocapitalize="none" autocomplete="off" spellcheck="false" enterkeyhint="search" />
+      </div>
+      <div class="roster-panel hidden" id="rosterFilterPanel">
+        <div class="roster-filter-row" id="rosterFilterRow">
+          <button type="button" class="toggle on" data-status="">All</button>
+          <button type="button" class="toggle" data-status="Present">Present</button>
+          <button type="button" class="toggle" data-status="Half Day">Half Day</button>
+          <button type="button" class="toggle" data-status="Absent">Absent</button>
+        </div>
+      </div>
       <div class="roster-toolbar">
         <div class="date-picker">
           <label for="rosterDateBtn">Date</label>
@@ -2326,20 +2391,121 @@
         const res = await api('/attendance/status' + (date ? ('?date=' + encodeURIComponent(date)) : ''));
         if (res.date) setRosterDate(res.date, false);
         $('rosterMeta').textContent = 'Times in ' + (res.timezone || 'Asia/Kolkata') + ' for ' + (res.date || '') + '.';
-        const rows = res.employees || [];
-        $('rosterBody').innerHTML = rows.length
-          ? rows.map((r) => {
-              const who = esc(r.display_name) + ' (' + esc(r.employee_code) + ')';
-              const email = r.email ? '<div class="muted">' + esc(r.email) + '</div>' : '';
-              const pill = r.status === 'Present' ? 'present' : 'absent';
-              return '<tr><td data-label="Employee">' + who + email + '</td><td data-label="Clock in">' + formatPunch(r.clock_in) + '</td><td data-label="Clock out">' + formatPunch(r.clock_out) + '</td><td data-label="Status"><span class="pill ' + pill + '">' + esc(r.status) + '</span></td></tr>';
-            }).join('')
-          : '<tr><td colspan="4" class="muted">No employees found</td></tr>';
-        status('rosterStatus', rows.length + ' employee' + (rows.length === 1 ? '' : 's'));
+        rosterRows = res.employees || [];
+        renderRoster();
       } catch (e) {
+        rosterRows = [];
+        renderRoster();
         status('rosterStatus', e.message || 'Unable to load attendance');
       }
     }
+
+    let rosterRows = [];
+    let rosterStatusFilter = '';
+
+    function filteredRosterRows() {
+      const q = (($('rosterSearch') && $('rosterSearch').value) || '').trim().toLowerCase();
+      return rosterRows.filter((r) => {
+        if (rosterStatusFilter && r.status !== rosterStatusFilter) return false;
+        if (!q) return true;
+        const hay = ((r.display_name || '') + ' ' + (r.employee_code || '') + ' ' + (r.email || '')).toLowerCase();
+        return hay.includes(q);
+      });
+    }
+
+    function rosterStatusClass(statusName) {
+      if (statusName === 'Present') return 'present';
+      if (statusName === 'Half Day') return 'pending';
+      return 'absent';
+    }
+
+    function renderRoster() {
+      const rows = filteredRosterRows();
+      $('rosterBody').innerHTML = rows.length
+        ? rows.map((r) => {
+            const who = esc(r.display_name) + ' (' + esc(r.employee_code) + ')';
+            const email = r.email ? '<div class="muted">' + esc(r.email) + '</div>' : '';
+            const pill = rosterStatusClass(r.status);
+            return '<tr><td data-label="Employee">' + who + email + '</td><td data-label="Clock in">' + formatPunch(r.clock_in) + '</td><td data-label="Clock out">' + formatPunch(r.clock_out) + '</td><td data-label="Status"><span class="pill ' + pill + '">' + esc(r.status) + '</span></td></tr>';
+          }).join('')
+        : '<tr><td colspan="4" class="muted">No employees found</td></tr>';
+      const suffix = rows.length !== rosterRows.length ? ' of ' + rosterRows.length : '';
+      status('rosterStatus', rows.length + ' employee' + (rows.length === 1 ? '' : 's') + suffix);
+      syncRosterToolButtons();
+    }
+
+    function syncRosterToolButtons() {
+      const searchOpen = !$('rosterSearchPanel').classList.contains('hidden');
+      const filterOpen = !$('rosterFilterPanel').classList.contains('hidden');
+      const filterActive = !!rosterStatusFilter;
+      $('rosterSearchBtn').classList.toggle('on', searchOpen);
+      $('rosterSearchBtn').setAttribute('aria-pressed', searchOpen ? 'true' : 'false');
+      $('rosterFilterBtn').classList.toggle('on', filterOpen || filterActive);
+      $('rosterFilterBtn').setAttribute('aria-pressed', (filterOpen || filterActive) ? 'true' : 'false');
+    }
+
+    function csvEscape(value) {
+      const s = String(value == null ? '' : value);
+      if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+      return s;
+    }
+
+    function exportRosterCsv() {
+      const rows = filteredRosterRows();
+      if (!rows.length) {
+        status('rosterStatus', 'Nothing to export');
+        return;
+      }
+      const header = 'Employee,Code,Email,Clock In,Clock Out,Status';
+      const lines = rows.map((r) => [
+        csvEscape(r.display_name),
+        csvEscape(r.employee_code),
+        csvEscape(r.email || ''),
+        csvEscape(formatPunch(r.clock_in)),
+        csvEscape(formatPunch(r.clock_out)),
+        csvEscape(r.status),
+      ].join(','));
+      const csv = [header].concat(lines).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'attendance-' + ($('rosterDate').value || 'roster') + '.csv';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      status('rosterStatus', 'Exported ' + rows.length + ' row' + (rows.length === 1 ? '' : 's'));
+    }
+
+    $('rosterSearchBtn').onclick = () => {
+      const panel = $('rosterSearchPanel');
+      const open = panel.classList.contains('hidden');
+      panel.classList.toggle('hidden', !open);
+      if (open) {
+        $('rosterFilterPanel').classList.add('hidden');
+        setTimeout(() => $('rosterSearch').focus(), 0);
+      }
+      syncRosterToolButtons();
+    };
+    $('rosterFilterBtn').onclick = () => {
+      const panel = $('rosterFilterPanel');
+      const open = panel.classList.contains('hidden');
+      panel.classList.toggle('hidden', !open);
+      if (open) $('rosterSearchPanel').classList.add('hidden');
+      syncRosterToolButtons();
+    };
+    $('rosterExportBtn').onclick = () => exportRosterCsv();
+    $('rosterSearch').oninput = () => renderRoster();
+    $('rosterFilterRow').onclick = (e) => {
+      const btn = e.target.closest('button[data-status]');
+      if (!btn) return;
+      rosterStatusFilter = btn.getAttribute('data-status') || '';
+      Array.from($('rosterFilterRow').querySelectorAll('button[data-status]')).forEach((b) => {
+        b.classList.toggle('on', b === btn);
+      });
+      renderRoster();
+    };
 
     async function loadWfhRequests() {
       const isAdmin = isAdminLike(jwtRole());

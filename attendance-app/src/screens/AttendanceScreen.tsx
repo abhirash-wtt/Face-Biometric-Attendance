@@ -4,8 +4,10 @@ import {
   Modal,
   Pressable,
   RefreshControl,
+  Share,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { api, AttendanceStatusRow } from '../services/api';
@@ -13,6 +15,8 @@ import { TAP_TARGET, useLayout } from '../theme/responsive';
 import { THEME } from '../theme/colors';
 
 const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+type StatusFilter = 'All' | 'Present' | 'Half Day' | 'Absent';
 
 function todayIst(): string {
   return new Intl.DateTimeFormat('en-CA', {
@@ -47,6 +51,11 @@ function formatDateLabel(ymd: string) {
 
 function toYmd(year: number, monthIndex: number, day: number) {
   return `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function csvEscape(value: string) {
+  if (/[",\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
+  return value;
 }
 
 function DatePickerField({
@@ -163,6 +172,10 @@ export function AttendanceScreen() {
   const [timezone, setTimezone] = useState('Asia/Kolkata');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [showFilter, setShowFilter] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
 
   const load = useCallback(async (queryDate = date) => {
     try {
@@ -183,10 +196,51 @@ export function AttendanceScreen() {
     load(todayIst());
   }, []);
 
+  const filteredRows = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return rows.filter((r) => {
+      if (statusFilter !== 'All' && r.status !== statusFilter) return false;
+      if (!q) return true;
+      const hay = `${r.display_name} ${r.employee_code} ${r.email || ''}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [rows, searchQuery, statusFilter]);
+
   const totalCount = rows.length;
   const presentCount = rows.filter((r) => r.status === 'Present').length;
   const halfDayCount = rows.filter((r) => r.status === 'Half Day').length;
   const absentCount = rows.filter((r) => r.status === 'Absent').length;
+
+  const exportCsv = async () => {
+    if (!filteredRows.length) {
+      setMessage('Nothing to export');
+      return;
+    }
+    const header = 'Employee,Code,Email,Clock In,Clock Out,Status';
+    const lines = filteredRows.map((r) =>
+      [
+        csvEscape(r.display_name),
+        csvEscape(r.employee_code),
+        csvEscape(r.email || ''),
+        csvEscape(formatPunch(r.clock_in)),
+        csvEscape(formatPunch(r.clock_out)),
+        csvEscape(r.status),
+      ].join(','),
+    );
+    const csv = [header, ...lines].join('\n');
+    try {
+      await Share.share({
+        title: `Attendance ${date}`,
+        message: csv,
+      });
+      setMessage(`Exported ${filteredRows.length} row${filteredRows.length === 1 ? '' : 's'}`);
+    } catch (err) {
+      if (err instanceof Error && /share.*cancel|dismiss/i.test(err.message)) return;
+      setMessage(err instanceof Error ? err.message : 'Export failed');
+    }
+  };
+
+  const filterOptions: StatusFilter[] = ['All', 'Present', 'Half Day', 'Absent'];
 
   return (
     <View
@@ -198,7 +252,6 @@ export function AttendanceScreen() {
         ≥4h, Absent &lt;4h).
       </Text>
 
-      {/* KPI Stats Summary Cards */}
       <View style={styles.kpiContainer}>
         <View style={styles.kpiCard}>
           <Text style={styles.kpiValue}>{totalCount}</Text>
@@ -218,7 +271,76 @@ export function AttendanceScreen() {
         </View>
       </View>
 
+      <View style={styles.actionRow}>
+        <Pressable
+          onPress={() => {
+            setShowSearch((v) => !v);
+            if (showFilter) setShowFilter(false);
+          }}
+          accessibilityRole="button"
+          accessibilityState={{ selected: showSearch }}
+          style={[styles.actionBtn, showSearch && styles.actionBtnOn]}
+        >
+          <Text style={[styles.actionBtnText, showSearch && styles.actionBtnTextOn]}>Search</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => {
+            setShowFilter((v) => !v);
+            if (showSearch) setShowSearch(false);
+          }}
+          accessibilityRole="button"
+          accessibilityState={{ selected: showFilter || statusFilter !== 'All' }}
+          style={[styles.actionBtn, (showFilter || statusFilter !== 'All') && styles.actionBtnOn]}
+        >
+          <Text
+            style={[
+              styles.actionBtnText,
+              (showFilter || statusFilter !== 'All') && styles.actionBtnTextOn,
+            ]}
+          >
+            Filter
+          </Text>
+        </Pressable>
+        <Pressable onPress={exportCsv} accessibilityRole="button" style={styles.actionBtn}>
+          <Text style={styles.actionBtnText}>Export</Text>
+        </Pressable>
+      </View>
+
+      {showSearch && (
+        <TextInput
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Search name, code, or email"
+          placeholderTextColor={THEME.textSubtle}
+          style={styles.searchInput}
+          autoCapitalize="none"
+          autoCorrect={false}
+          clearButtonMode="while-editing"
+          returnKeyType="search"
+        />
+      )}
+
+      {showFilter && (
+        <View style={styles.filterRow}>
+          {filterOptions.map((opt) => {
+            const on = statusFilter === opt;
+            return (
+              <Pressable
+                key={opt}
+                onPress={() => setStatusFilter(opt)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: on }}
+                style={[styles.filterChip, on && styles.filterChipOn]}
+              >
+                <Text style={[styles.filterChipText, on && styles.filterChipTextOn]}>{opt}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+
       <View style={styles.toolbar}>
+        <Text style={styles.dateCaption}>Date</Text>
         <DatePickerField
           value={date}
           onChange={(next) => {
@@ -237,7 +359,7 @@ export function AttendanceScreen() {
         </View>
       )}
       <FlatList
-        data={rows}
+        data={filteredRows}
         keyExtractor={(item) => item.employee_id}
         refreshControl={<RefreshControl refreshing={busy} onRefresh={() => load(date)} tintColor={THEME.cyan} />}
         ListEmptyComponent={<Text style={styles.empty}>No employees found</Text>}
@@ -311,7 +433,63 @@ const styles = StyleSheet.create({
   kpiCardAbsent: { borderColor: 'rgba(148, 163, 184, 0.2)', backgroundColor: 'rgba(148, 163, 184, 0.06)' },
   kpiValue: { fontSize: 20, fontWeight: '900', color: '#fff' },
   kpiLabel: { fontSize: 11, fontWeight: '700', color: THEME.textMuted, marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.5 },
-  toolbar: { flexDirection: 'row', gap: 8, marginBottom: 14 },
+  actionRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
+  actionBtn: {
+    flex: 1,
+    minHeight: TAP_TARGET - 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.35)',
+    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+  },
+  actionBtnOn: {
+    borderColor: 'rgba(6, 182, 212, 0.55)',
+    backgroundColor: 'rgba(6, 182, 212, 0.22)',
+  },
+  actionBtnText: { color: THEME.cyanLight, fontWeight: '800', fontSize: 13 },
+  actionBtnTextOn: { color: '#fff' },
+  searchInput: {
+    minHeight: TAP_TARGET,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 10,
+    color: '#fff',
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
+  filterChip: {
+    minHeight: 36,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+  },
+  filterChipOn: {
+    borderColor: 'rgba(6, 182, 212, 0.5)',
+    backgroundColor: 'rgba(6, 182, 212, 0.18)',
+  },
+  filterChipText: { color: THEME.textMuted, fontWeight: '800', fontSize: 12 },
+  filterChipTextOn: { color: '#fff' },
+  toolbar: { marginBottom: 14 },
+  dateCaption: {
+    color: THEME.textMuted,
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  },
   dateField: {
     flex: 1,
     flexDirection: 'row',
