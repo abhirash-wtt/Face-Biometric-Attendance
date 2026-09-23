@@ -2490,6 +2490,7 @@
       const register = mode === 'register';
       const loggedIn = !!jwtRole();
       state.authMode = register ? 'register' : 'login';
+      $('authModeRegister').textContent = register ? 'Back to Login' : 'Register';
       $('authModeRegister').classList.toggle('on', register);
       $('registerNameBlock').classList.toggle('hidden', !register);
       $('registerConfirmBlock').classList.toggle('hidden', !register);
