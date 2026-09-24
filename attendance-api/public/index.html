@@ -724,19 +724,29 @@
       </div>
       <div class="roster-toolbar">
         <div class="date-picker">
-          <label for="rosterDateBtn">Date</label>
-          <button type="button" class="date-field" id="rosterDateBtn" aria-haspopup="dialog" aria-expanded="false">
+          <label for="rosterStartDateBtn">Start date</label>
+          <button type="button" class="date-field" id="rosterStartDateBtn" aria-haspopup="dialog" aria-expanded="false">
             <span class="cal-icon" aria-hidden="true">📅</span>
-            <span id="rosterDateLabel">Select date</span>
+            <span id="rosterStartDateLabel">Select date</span>
           </button>
-          <input id="rosterDate" type="hidden" />
-          <div id="rosterCalendar" class="calendar hidden" role="dialog" aria-label="Choose date"></div>
+          <input id="rosterStartDate" type="hidden" />
+          <div id="rosterStartCalendar" class="calendar hidden" role="dialog" aria-label="Choose start date"></div>
+        </div>
+        <div class="date-picker">
+          <label for="rosterEndDateBtn">End date</label>
+          <button type="button" class="date-field" id="rosterEndDateBtn" aria-haspopup="dialog" aria-expanded="false">
+            <span class="cal-icon" aria-hidden="true">📅</span>
+            <span id="rosterEndDateLabel">Select date</span>
+          </button>
+          <input id="rosterEndDate" type="hidden" />
+          <div id="rosterEndCalendar" class="calendar hidden" role="dialog" aria-label="Choose end date"></div>
         </div>
       </div>
       <div class="roster-wrap">
         <table class="roster">
           <thead>
             <tr>
+              <th>Date</th>
               <th>Employee</th>
               <th>Clock in</th>
               <th>Clock out</th>
@@ -2341,10 +2351,38 @@
         timeZone: 'UTC',
       });
     }
-    function setRosterDate(ymd, reload) {
-      $('rosterDate').value = ymd || '';
-      $('rosterDateLabel').textContent = formatDateLabel(ymd);
+    function setRosterStartDate(ymd, reload) {
+      const next = ymd || todayYmd();
+      $('rosterStartDate').value = next;
+      $('rosterStartDateLabel').textContent = formatDateLabel(next);
+      const end = $('rosterEndDate').value;
+      if (!end || end < next) setRosterEndDate(next, false);
       if (reload) loadRoster().catch((e) => status('rosterStatus', e.message));
+    }
+    function setRosterEndDate(ymd, reload) {
+      const start = $('rosterStartDate').value || todayYmd();
+      let next = ymd || start;
+      if (next < start) next = start;
+      $('rosterEndDate').value = next;
+      $('rosterEndDateLabel').textContent = formatDateLabel(next);
+      if (reload) loadRoster().catch((e) => status('rosterStatus', e.message));
+    }
+    function setRosterRange(start, end, reload) {
+      const s = start || todayYmd();
+      let e = end || s;
+      if (e < s) e = s;
+      $('rosterStartDate').value = s;
+      $('rosterStartDateLabel').textContent = formatDateLabel(s);
+      $('rosterEndDate').value = e;
+      $('rosterEndDateLabel').textContent = formatDateLabel(e);
+      if (reload) loadRoster().catch((err) => status('rosterStatus', err.message));
+    }
+    function rosterRangeLabel() {
+      const start = $('rosterStartDate').value;
+      const end = $('rosterEndDate').value;
+      if (!start) return '';
+      if (!end || end === start) return start;
+      return start + ' → ' + end;
     }
     function setWfhDate(ymd) {
       const today = todayYmd();
@@ -2358,7 +2396,7 @@
       $('wfhDateLabel').textContent = formatDateLabel(next);
     }
     let calMonth = new Date();
-    let calTarget = 'roster';
+    let calTarget = 'rosterStart';
     function calEls() {
       if (calTarget === 'wfh') {
         const present = regularizationType() === 'mark_present';
@@ -2372,14 +2410,25 @@
           onSelect: (ymd) => setWfhDate(ymd),
         };
       }
+      if (calTarget === 'rosterEnd') {
+        return {
+          valueEl: $('rosterEndDate'),
+          labelEl: $('rosterEndDateLabel'),
+          btnEl: $('rosterEndDateBtn'),
+          calEl: $('rosterEndCalendar'),
+          minDate: $('rosterStartDate').value || null,
+          maxDate: null,
+          onSelect: (ymd) => setRosterEndDate(ymd, true),
+        };
+      }
       return {
-        valueEl: $('rosterDate'),
-        labelEl: $('rosterDateLabel'),
-        btnEl: $('rosterDateBtn'),
-        calEl: $('rosterCalendar'),
+        valueEl: $('rosterStartDate'),
+        labelEl: $('rosterStartDateLabel'),
+        btnEl: $('rosterStartDateBtn'),
+        calEl: $('rosterStartCalendar'),
         minDate: null,
         maxDate: null,
-        onSelect: (ymd) => setRosterDate(ymd, true),
+        onSelect: (ymd) => setRosterStartDate(ymd, true),
       };
     }
     function renderCalendar() {
@@ -2437,11 +2486,11 @@
       cfg.btnEl.setAttribute('aria-expanded', 'true');
     }
     function closeAllCalendars() {
-      ['rosterCalendar', 'wfhCalendar'].forEach((id) => {
+      ['rosterStartCalendar', 'rosterEndCalendar', 'wfhCalendar'].forEach((id) => {
         const el = $(id);
         if (el) el.classList.add('hidden');
       });
-      ['rosterDateBtn', 'wfhDateBtn'].forEach((id) => {
+      ['rosterStartDateBtn', 'rosterEndDateBtn', 'wfhDateBtn'].forEach((id) => {
         const el = $(id);
         if (el) el.setAttribute('aria-expanded', 'false');
       });
@@ -2449,12 +2498,18 @@
     function closeCalendar() {
       closeAllCalendars();
     }
-    $('rosterDateBtn').onclick = (e) => {
+    $('rosterStartDateBtn').onclick = (e) => {
       e.stopPropagation();
-      if ($('rosterCalendar').classList.contains('hidden')) openCalendar('roster');
+      if ($('rosterStartCalendar').classList.contains('hidden')) openCalendar('rosterStart');
       else closeAllCalendars();
     };
-    $('rosterCalendar').onclick = (e) => e.stopPropagation();
+    $('rosterEndDateBtn').onclick = (e) => {
+      e.stopPropagation();
+      if ($('rosterEndCalendar').classList.contains('hidden')) openCalendar('rosterEnd');
+      else closeAllCalendars();
+    };
+    $('rosterStartCalendar').onclick = (e) => e.stopPropagation();
+    $('rosterEndCalendar').onclick = (e) => e.stopPropagation();
     $('wfhDateBtn').onclick = (e) => {
       e.stopPropagation();
       if ($('wfhCalendar').classList.contains('hidden')) openCalendar('wfh');
@@ -2486,14 +2541,21 @@
     let rosterLoadInFlight = null;
 
     function rosterCacheKey() {
-      return (($('rosterDate') && $('rosterDate').value) || '') + '|' + (state.token || '').slice(-16);
+      return (
+        (($('rosterStartDate') && $('rosterStartDate').value) || '') +
+        '..' +
+        (($('rosterEndDate') && $('rosterEndDate').value) || '') +
+        '|' +
+        (state.token || '').slice(-16)
+      );
     }
 
     /** Load roster when Attendance is active. force=true refreshes even if cached. */
     function ensureAttendanceData(force) {
       if (state.tab !== 'attendance') return;
       if (!canAccessAttendance(jwtRole())) return;
-      if ($('rosterDate') && !$('rosterDate').value) setRosterDate(todayYmd(), false);
+      const today = todayYmd();
+      if ($('rosterStartDate') && !$('rosterStartDate').value) setRosterRange(today, today, false);
       if (!force && state.rosterLoadedKey === rosterCacheKey() && state.rosterRows.length) {
         renderRoster();
         return;
@@ -2503,14 +2565,22 @@
 
     async function loadRoster() {
       if (rosterLoadInFlight) return rosterLoadInFlight;
-      const date = $('rosterDate').value;
+      const start = $('rosterStartDate').value;
+      const end = $('rosterEndDate').value || start;
       status('rosterStatus', state.rosterRows.length ? 'Refreshing…' : 'Loading…');
       rosterLoadInFlight = (async () => {
         try {
           if (!state.rosterRows.length) renderRoster();
-          const res = await api('/attendance/status' + (date ? ('?date=' + encodeURIComponent(date)) : ''));
-          if (res.date) setRosterDate(res.date, false);
-          $('rosterMeta').textContent = 'Times in ' + (res.timezone || 'Asia/Kolkata') + ' for ' + (res.date || '') + '.';
+          const qs = [];
+          if (start) qs.push('start_date=' + encodeURIComponent(start));
+          if (end) qs.push('end_date=' + encodeURIComponent(end));
+          const res = await api('/attendance/status' + (qs.length ? ('?' + qs.join('&')) : ''));
+          if (res.start_date || res.end_date || res.date) {
+            setRosterRange(res.start_date || res.date, res.end_date || res.date || res.start_date, false);
+          }
+          const rangeText = rosterRangeLabel();
+          $('rosterMeta').textContent =
+            'Times in ' + (res.timezone || 'Asia/Kolkata') + (rangeText ? ' for ' + rangeText : '') + '.';
           state.rosterRows = res.employees || [];
           state.rosterLoadedKey = rosterCacheKey();
           renderRoster();
@@ -2599,15 +2669,16 @@
       const rows = filteredRosterRows();
       $('rosterBody').innerHTML = rows.length
         ? rows.map((r) => {
+            const day = esc(r.date || $('rosterStartDate').value || '—');
             const who = esc(r.display_name) + ' (' + esc(r.employee_code) + ')';
             const email = r.email ? '<div class="muted">' + esc(r.email) + '</div>' : '';
             const role = r.role ? '<div class="muted">' + esc(String(r.role).toUpperCase()) + '</div>' : '';
             const pill = rosterStatusClass(r.status);
-            return '<tr><td data-label="Employee">' + who + email + role + '</td><td data-label="Clock in">' + formatPunch(r.clock_in) + '</td><td data-label="Clock out">' + formatPunch(r.clock_out) + '</td><td data-label="Status"><span class="pill ' + pill + '">' + esc(r.status) + '</span></td><td data-label="Reporting Manager">' + esc(r.reporting_manager || '—') + '</td><td data-label="BU Owner">' + esc(r.bu_owner || '—') + '</td></tr>';
+            return '<tr><td data-label="Date">' + day + '</td><td data-label="Employee">' + who + email + role + '</td><td data-label="Clock in">' + formatPunch(r.clock_in) + '</td><td data-label="Clock out">' + formatPunch(r.clock_out) + '</td><td data-label="Status"><span class="pill ' + pill + '">' + esc(r.status) + '</span></td><td data-label="Reporting Manager">' + esc(r.reporting_manager || '—') + '</td><td data-label="BU Owner">' + esc(r.bu_owner || '—') + '</td></tr>';
           }).join('')
-        : '<tr><td colspan="6" class="muted">' + (rosterLoadInFlight ? 'Loading…' : 'No employees found') + '</td></tr>';
+        : '<tr><td colspan="7" class="muted">' + (rosterLoadInFlight ? 'Loading…' : 'No employees found') + '</td></tr>';
       const suffix = rows.length !== state.rosterRows.length ? ' of ' + state.rosterRows.length : '';
-      status('rosterStatus', rows.length + ' employee' + (rows.length === 1 ? '' : 's') + suffix);
+      status('rosterStatus', rows.length + ' row' + (rows.length === 1 ? '' : 's') + suffix);
       syncRosterToolButtons();
       renderPersonFilterOptions();
     }
@@ -2648,8 +2719,9 @@
         status('rosterStatus', 'Nothing to export');
         return;
       }
-      const header = 'Employee,Code,Email,Role,Clock In,Clock Out,Status,Reporting Manager,BU Owner';
+      const header = 'Date,Employee,Code,Email,Role,Clock In,Clock Out,Status,Reporting Manager,BU Owner';
       const lines = rows.map((r) => [
+        csvEscape(r.date || $('rosterStartDate').value || ''),
         csvEscape(r.display_name),
         csvEscape(r.employee_code),
         csvEscape(r.email || ''),
@@ -2665,7 +2737,9 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'attendance-' + ($('rosterDate').value || 'roster') + '.csv';
+      const start = $('rosterStartDate').value || 'roster';
+      const end = $('rosterEndDate').value || start;
+      a.download = 'attendance-' + start + (end !== start ? ('_to_' + end) : '') + '.csv';
       document.body.appendChild(a);
       a.click();
       a.remove();

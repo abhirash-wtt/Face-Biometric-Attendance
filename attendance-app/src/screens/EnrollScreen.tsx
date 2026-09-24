@@ -58,7 +58,7 @@ function previewSamples(enrollment: EnrollmentStatus | null): EnrollmentSample[]
   }).filter((s): s is EnrollmentSample => !!s);
 }
 
-export function EnrollScreen() {
+export function EnrollScreen({ active = true }: { active?: boolean }) {
   const layout = useLayout();
   const [q, setQ] = useState('');
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -77,12 +77,18 @@ export function EnrollScreen() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewUrls, setPreviewUrls] = useState<Array<{ pose: EnrollPose | string; uri: string; label: string }>>([]);
   const captureRef = React.useRef<() => Promise<string>>(async () => {
-    throw new Error('Camera not ready');
+    throw new Error('Camera is still starting. Wait for the preview, then try again.');
   });
+  const [cameraReady, setCameraReady] = useState(false);
 
   const onCameraReady = useCallback((capture: () => Promise<string>) => {
     captureRef.current = capture;
+    setCameraReady(true);
   }, []);
+
+  useEffect(() => {
+    if (!active) setCameraReady(false);
+  }, [active]);
 
   const applyEnrollment = (res: EnrollmentStatus | null, autoPose = true) => {
     setEnrollment(res);
@@ -238,7 +244,7 @@ export function EnrollScreen() {
           : { minHeight: layout.short ? 140 : 180, maxHeight: layout.cameraHeight },
       ]}
     >
-      <CameraView onReady={onCameraReady} />
+      <CameraView onReady={onCameraReady} isActive={active} />
     </View>
   );
 
@@ -357,13 +363,17 @@ export function EnrollScreen() {
           </Text>
           {!twoColumn && camera}
           <Pressable
-            disabled={busy || !selected}
+            disabled={busy || !selected || !cameraReady}
             onPress={captureSample}
             accessibilityRole="button"
-            style={[styles.cta, styles.ctaPrimary, (busy || !selected) && styles.ctaBusy]}
+            style={[styles.cta, styles.ctaPrimary, (busy || !selected || !cameraReady) && styles.ctaBusy]}
           >
             <Text style={styles.ctaText}>
-              {busy ? 'Saving…' : `${enrollment?.enrollment_complete ? 'Recapture' : 'Capture'} ${posePhrase(enrollPose)}`}
+              {busy
+                ? 'Saving…'
+                : !cameraReady
+                  ? 'Starting camera…'
+                  : `${enrollment?.enrollment_complete ? 'Recapture' : 'Capture'} ${posePhrase(enrollPose)}`}
             </Text>
           </Pressable>
           <Pressable

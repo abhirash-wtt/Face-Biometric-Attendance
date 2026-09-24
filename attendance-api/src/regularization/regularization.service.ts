@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, Between, Repository } from 'typeorm';
 import {
   RegularizationRequestType,
   WfhRequest,
@@ -44,6 +44,21 @@ export class RegularizationService {
       select: ['employee_id'],
     });
     return rows.map((r) => r.employee_id);
+  }
+
+  async listApprovedPresentInRange(
+    startDate: string,
+    endDate: string,
+  ): Promise<Array<{ employee_id: string; work_date: string }>> {
+    const rows = await this.repo.find({
+      where: {
+        work_date: Between(startDate, endDate),
+        status: 'approved',
+        request_type: 'mark_present',
+      },
+      select: ['employee_id', 'work_date'],
+    });
+    return rows.map((r) => ({ employee_id: r.employee_id, work_date: r.work_date }));
   }
 
   async create(dto: CreateWfhRequestDto, user: JwtUser) {

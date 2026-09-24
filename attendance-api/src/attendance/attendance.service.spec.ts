@@ -43,6 +43,7 @@ describe('AttendanceService - clock-out replacement & duplicate handling', () =>
     regularization = {
       hasApprovedWfh: jest.fn().mockResolvedValue(false),
       listApprovedPresentEmployeeIds: jest.fn().mockResolvedValue([]),
+      listApprovedPresentInRange: jest.fn().mockResolvedValue([]),
     };
 
     service = new AttendanceService(
@@ -71,18 +72,21 @@ describe('AttendanceService - clock-out replacement & duplicate handling', () =>
     users.find.mockResolvedValue([{ id: 'u1', employee_id: 'emp-1', email: 'ada@ex.com', role: 'employee' }]);
     mockQueryBuilder.getMany.mockResolvedValue([]);
 
-    const result = await service.roster('2026-03-20');
+    const result = await service.roster({ date: '2026-03-20' });
 
     expect(employees.listForRoster).toHaveBeenCalled();
     expect(employees.findAll).not.toHaveBeenCalled();
     expect(users.find).toHaveBeenCalledWith({ select: ['id', 'employee_id', 'email', 'role'] });
     expect(mockQueryBuilder.select).toHaveBeenCalled();
+    expect(result.start_date).toBe('2026-03-20');
+    expect(result.end_date).toBe('2026-03-20');
     expect(result.employees).toHaveLength(1);
     expect(result.employees[0]).toMatchObject({
       employee_id: 'emp-1',
       employee_code: 'E1',
       display_name: 'Ada',
       email: 'ada@ex.com',
+      date: '2026-03-20',
       status: 'Absent',
     });
   });

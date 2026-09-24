@@ -1,9 +1,18 @@
-import React, { useCallback, useRef } from 'react';
-import { Platform, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  AppState,
+  PermissionsAndroid,
+  Platform,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { THEME } from '../theme/colors';
 
 type Props = {
   onReady?: (capture: () => Promise<string>) => void;
+  /** When false, the native camera session stays paused (e.g. another tab is visible). */
+  isActive?: boolean;
 };
 
 function FaceGuide() {
@@ -19,11 +28,11 @@ function FaceGuide() {
   );
 }
 
-export function CameraView({ onReady }: Props) {
+export function CameraView({ onReady, isActive = true }: Props) {
   if (Platform.OS === 'web') {
     return <WebCamera onReady={onReady} />;
   }
-  return <NativeCamera onReady={onReady} />;
+  return <NativeCamera onReady={onReady} isActive={isActive} />;
 }
 
 const CAM_CHANNEL = 'face-kiosk-camera';
@@ -68,7 +77,7 @@ function WebCamera({ onReady }: Props) {
     return canvas.toDataURL('image/jpeg', 0.75).replace(/^data:image\/\w+;base64,/, '');
   }, []);
 
-  React.useEffect(() => {
+  useEffect(() => {
     let cancelled = false;
     let busy = false;
     let heldByPeer = false;
@@ -85,7 +94,11 @@ function WebCamera({ onReady }: Props) {
     };
 
     const post = (msg: Record<string, unknown>) => {
-      try { channel?.postMessage({ ...msg, clientId }); } catch { /* closed */ }
+      try {
+        channel?.postMessage({ ...msg, clientId });
+      } catch {
+        /* closed */
+      }
     };
 
     const reportFailure = (err: unknown) => {
@@ -99,30 +112,31 @@ function WebCamera({ onReady }: Props) {
       });
     };
 
-    const requestPeerRelease = () => new Promise<boolean>((resolve) => {
-      if (!channel) {
-        resolve(false);
-        return;
-      }
-      let released = false;
-      let settled = false;
-      const finish = () => {
-        if (settled) return;
-        settled = true;
-        channel.removeEventListener('message', onMsg);
-        resolve(released);
-      };
-      const timer = window.setTimeout(finish, 50);
-      const onMsg = (event: MessageEvent) => {
-        const msg = event.data || {};
-        if (!msg || msg.clientId === clientId || msg.type !== 'released' || !msg.held) return;
-        released = true;
-        window.clearTimeout(timer);
-        window.setTimeout(finish, 50);
-      };
-      channel.addEventListener('message', onMsg);
-      post({ type: 'release' });
-    });
+    const requestPeerRelease = () =>
+      new Promise<boolean>((resolve) => {
+        if (!channel) {
+          resolve(false);
+          return;
+        }
+        let released = false;
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          channel.removeEventListener('message', onMsg);
+          resolve(released);
+        };
+        const timer = window.setTimeout(finish, 50);
+        const onMsg = (event: MessageEvent) => {
+          const msg = event.data || {};
+          if (!msg || msg.clientId === clientId || msg.type !== 'released' || !msg.held) return;
+          released = true;
+          window.clearTimeout(timer);
+          window.setTimeout(finish, 50);
+        };
+        channel.addEventListener('message', onMsg);
+        post({ type: 'release' });
+      });
 
     const attach = (stream: MediaStream) => {
       streamRef.current = stream;
@@ -215,9 +229,11 @@ function WebCamera({ onReady }: Props) {
         if (msg.type === 'idle') {
           heldByPeer = false;
           if (busy && !streamRef.current) {
-            acquire().catch(() => {}).finally(() => {
-              if (!cancelled && busy && !heldByPeer && !streamRef.current) schedulePoll();
-            });
+            acquire()
+              .catch(() => {})
+              .finally(() => {
+                if (!cancelled && busy && !heldByPeer && !streamRef.current) schedulePoll();
+              });
           }
           return;
         }
@@ -253,9 +269,12 @@ function WebCamera({ onReady }: Props) {
           });
       }, 1500);
     };
-    const acquireAndWatch = () => acquire().catch(() => {}).finally(() => {
-      if (!cancelled && busy && !heldByPeer && !streamRef.current) schedulePoll();
-    });
+    const acquireAndWatch = () =>
+      acquire()
+        .catch(() => {})
+        .finally(() => {
+          if (!cancelled && busy && !heldByPeer && !streamRef.current) schedulePoll();
+        });
     acquireAndWatch();
 
     return () => {
@@ -285,41 +304,264 @@ function WebCamera({ onReady }: Props) {
   );
 }
 
-function NativeCamera({ onReady }: Props) {
-  const cameraRef = useRef<{ takePhoto: (opts: object) => Promise<{ path: string }> } | null>(
-    null,
-  );
-  let Camera: React.ComponentType<Record<string, unknown>> | null = null;
-  let device: unknown;
+type CameraDeviceLike = { id: string; position: 'front' | 'back' | 'external' | string };
+type PhotoFileLike = { path: string };
+type CameraRefLike = {
+  takePhoto: (opts?: object) => Promise<PhotoFileLike>;
+};
+
+type VisionCameraModule = {
+  Camera: React.ComponentType<Record<string, unknown>> & {
+    requestCameraPermission: () => Promise<'granted' | 'denied' | 'not-determined' | 'restricted'>;
+    getCameraPermissionStatus: () => string;
+    getAvailableCameraDevices: () => CameraDeviceLike[];
+    addCameraDevicesChangedListener: (
+      listener: (devices: CameraDeviceLike[]) => void,
+    ) => { remove: () => void };
+  };
+  useCameraDevice: (position: 'front' | 'back') => CameraDeviceLike | undefined;
+  useCameraPermission: () => {
+    hasPermission: boolean;
+    requestPermission: () => Promise<boolean>;
+  };
+};
+
+let VisionCameraMod: VisionCameraModule | null = null;
+try {
+  VisionCameraMod = require('react-native-vision-camera');
+} catch {
+  VisionCameraMod = null;
+}
+
+function filePathForFs(path: string): string {
+  return path.startsWith('file://') ? path.replace(/^file:\/\//, '') : path;
+}
+
+async function ensureAndroidCameraPermission(): Promise<boolean> {
+  if (Platform.OS !== 'android') return true;
   try {
-    const vision = require('react-native-vision-camera');
-    Camera = vision.Camera;
-    device = vision.useCameraDevice ? vision.useCameraDevice('front') : undefined;
-  } catch {
-    Camera = null;
-  }
-
-  React.useEffect(() => {
-    onReady?.(async () => {
-      if (!cameraRef.current) throw new Error('Camera not ready');
-      const photo = await cameraRef.current.takePhoto({ qualityPrioritization: 'speed' });
-      const fs = require('react-native-fs');
-      return fs.readFile(photo.path, 'base64');
+    const current = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.CAMERA);
+    if (current) return true;
+    const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA, {
+      title: 'Camera permission',
+      message: 'Face Attendance needs the camera to verify your identity.',
+      buttonPositive: 'Allow',
+      buttonNegative: 'Deny',
     });
-  }, [onReady]);
+    return result === PermissionsAndroid.RESULTS.GRANTED;
+  } catch {
+    return false;
+  }
+}
 
-  if (!Camera || !device) {
+function pickDevice(
+  Camera: VisionCameraModule['Camera'],
+  preferred?: CameraDeviceLike,
+): CameraDeviceLike | undefined {
+  if (preferred) return preferred;
+  const devices = Camera.getAvailableCameraDevices?.() ?? [];
+  return devices.find((d) => d.position === 'front') ?? devices.find((d) => d.position === 'back');
+}
+
+function NativeCamera({ onReady, isActive = true }: Props) {
+  if (!VisionCameraMod) {
     return (
       <View style={[styles.box, styles.center]}>
-        <Text style={styles.hint}>Point the kiosk camera at the employee</Text>
+        <Text style={styles.hint}>Camera module unavailable. Rebuild the native app.</Text>
+      </View>
+    );
+  }
+  return <VisionNativeCamera onReady={onReady} isActive={isActive} />;
+}
+
+/**
+ * Minimal, reliable Android camera path:
+ * 1) Ask OS permission (PermissionsAndroid + VisionCamera)
+ * 2) Wait for a device (CameraX provider can take a moment)
+ * 3) Mount <Camera> full-bleed with isActive tied to AppState + tab visibility
+ * 4) Expose takePhoto only after onInitialized
+ */
+function VisionNativeCamera({ onReady, isActive = true }: Props) {
+  const Camera = VisionCameraMod!.Camera;
+  const hookDevice = VisionCameraMod!.useCameraDevice('front');
+  const { hasPermission: vcHasPermission, requestPermission } =
+    VisionCameraMod!.useCameraPermission();
+
+  const cameraRef = useRef<CameraRefLike | null>(null);
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
+
+  const [permission, setPermission] = useState<'unknown' | 'granted' | 'denied'>('unknown');
+  const [device, setDevice] = useState<CameraDeviceLike | undefined>(undefined);
+  const [appActive, setAppActive] = useState(AppState.currentState === 'active');
+  const [initialized, setInitialized] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Keep session active only while this screen is visible and the app is foregrounded.
+  const sessionActive = Boolean(isActive && appActive && permission === 'granted' && device);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      setAppActive(state === 'active');
+    });
+    return () => sub.remove();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const androidOk = await ensureAndroidCameraPermission();
+      if (cancelled) return;
+      if (!androidOk) {
+        setPermission('denied');
+        return;
+      }
+      // VisionCamera keeps its own status; request again if needed.
+      let granted = vcHasPermission;
+      if (!granted) {
+        try {
+          granted = await requestPermission();
+        } catch {
+          granted = Camera.getCameraPermissionStatus() === 'granted';
+        }
+      }
+      if (!cancelled) setPermission(granted ? 'granted' : 'denied');
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [Camera, requestPermission, vcHasPermission]);
+
+  useEffect(() => {
+    if (permission !== 'granted') {
+      setDevice(undefined);
+      setInitialized(false);
+      return;
+    }
+
+    let cancelled = false;
+    const refresh = () => {
+      const next = pickDevice(Camera, hookDevice);
+      if (!cancelled && next) {
+        setDevice((prev) => (prev?.id === next.id ? prev : next));
+        setError(null);
+      }
+      return !!next;
+    };
+
+    refresh();
+    const listener = Camera.addCameraDevicesChangedListener(() => {
+      refresh();
+    });
+    // CameraX ProcessCameraProvider often finishes after first JS read — poll briefly.
+    const timer = setInterval(() => {
+      if (refresh()) clearInterval(timer);
+    }, 250);
+    const giveUp = setTimeout(() => {
+      clearInterval(timer);
+      if (!cancelled && !pickDevice(Camera, hookDevice)) {
+        setError('No camera found. Check that no other app is using the camera, then reopen this tab.');
+      }
+    }, 10000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      clearTimeout(giveUp);
+      listener.remove();
+    };
+  }, [Camera, hookDevice, permission]);
+
+  useEffect(() => {
+    setInitialized(false);
+  }, [device?.id]);
+
+  useEffect(() => {
+    if (!initialized || !sessionActive) return;
+
+    onReadyRef.current?.(async () => {
+      const cam = cameraRef.current;
+      if (!cam) {
+        throw new Error('Camera is still starting. Wait for the live preview, then try again.');
+      }
+      try {
+        const photo = await cam.takePhoto({ flash: 'off', enableShutterSound: false });
+        const fs = require('react-native-fs') as {
+          readFile: (path: string, encoding: string) => Promise<string>;
+          exists: (path: string) => Promise<boolean>;
+        };
+        const path = filePathForFs(photo.path);
+        if (!(await fs.exists(path))) {
+          throw new Error('Captured photo was not saved. Please try again.');
+        }
+        return fs.readFile(path, 'base64');
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Failed to capture photo';
+        if (/submit capture request|capture request|not ready|closed/i.test(msg)) {
+          throw new Error(
+            'Camera preview is not ready. Wait until you see yourself in the frame, then try again.',
+          );
+        }
+        throw err instanceof Error ? err : new Error(msg);
+      }
+    });
+  }, [initialized, sessionActive]);
+
+  if (permission === 'denied') {
+    return (
+      <View style={[styles.box, styles.center]}>
+        <Text style={styles.hint}>
+          Camera permission denied. Open Android Settings → Apps → Attendance → Permissions, enable
+          Camera, then return here.
+        </Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={[styles.box, styles.center]}>
+        <Text style={styles.hint}>{error}</Text>
+      </View>
+    );
+  }
+
+  if (permission !== 'granted' || !device) {
+    return (
+      <View style={[styles.box, styles.center]}>
+        <Text style={styles.hint}>
+          {permission === 'unknown' ? 'Requesting camera permission…' : 'Starting camera…'}
+        </Text>
       </View>
     );
   }
 
   return (
     <View style={styles.box}>
-      <Camera ref={cameraRef} style={StyleSheet.absoluteFill} device={device} isActive photo />
+      <Camera
+        ref={cameraRef}
+        style={styles.preview}
+        device={device}
+        isActive={sessionActive}
+        preview
+        photo
+        resizeMode="cover"
+        androidPreviewViewType="texture-view"
+        onInitialized={() => {
+          setInitialized(true);
+          setError(null);
+        }}
+        onError={(err: { message?: string; code?: string }) => {
+          setInitialized(false);
+          setError(err?.message || err?.code || 'Camera failed to start.');
+        }}
+      />
       <FaceGuide />
+      {!initialized ? (
+        <View style={styles.booting} pointerEvents="none">
+          <Text style={styles.bootText}>Warming up camera…</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -334,23 +576,43 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     borderColor: THEME.border,
+    position: 'relative',
   },
-  center: { alignItems: 'center', justifyContent: 'center' },
-  hint: { color: THEME.textMuted, textAlign: 'center', paddingHorizontal: 16, fontSize: 15, fontWeight: '600' },
+  preview: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  center: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
+  hint: {
+    color: THEME.textMuted,
+    textAlign: 'center',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  booting: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingBottom: 12,
+    backgroundColor: 'rgba(7, 12, 24, 0.28)',
+  },
+  bootText: {
+    color: THEME.cyanLight,
+    fontSize: 13,
+    fontWeight: '700',
+  },
   guide: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
   },
   guideRing: {
-    width: '70%',
-    maxWidth: 270,
+    width: '72%',
+    maxWidth: 260,
     aspectRatio: 1,
     borderRadius: 9999,
     borderWidth: 2,
     borderColor: 'rgba(6, 182, 212, 0.75)',
     backgroundColor: 'transparent',
-    boxShadow: '0 0 0 9999px rgba(7, 12, 24, 0.55)',
     position: 'relative',
   },
   corner: {
@@ -364,4 +626,3 @@ const styles = StyleSheet.create({
   cornerBL: { bottom: -2, left: -2, borderBottomWidth: 3, borderLeftWidth: 3, borderBottomLeftRadius: 6 },
   cornerBR: { bottom: -2, right: -2, borderBottomWidth: 3, borderRightWidth: 3, borderBottomRightRadius: 6 },
 });
-

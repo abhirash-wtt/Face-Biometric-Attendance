@@ -156,10 +156,14 @@ export class AttendanceController {
   @Roles('admin', 'manager', 'hr')
   @ApiOperation({
     summary:
-      'Roster: clock-in, clock-out, and status from worked hours (Present ≥9h, Half Day 4–<9h, Absent <4h). Admin, BU, manager, HR.',
+      'Roster: clock-in, clock-out, and status from worked hours (Present ≥9h, Half Day 4–<9h, Absent <4h). Filter with date or start_date+end_date (max 31 days). Admin, BU, manager, HR.',
   })
-  status(@Query('date') date?: string) {
-    return this.attendance.roster(date);
+  status(
+    @Query('date') date?: string,
+    @Query('start_date') startDate?: string,
+    @Query('end_date') endDate?: string,
+  ) {
+    return this.attendance.roster({ date, start_date: startDate, end_date: endDate });
   }
 
   @Get('attendance')

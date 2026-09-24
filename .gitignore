@@ -10,7 +10,10 @@ attendance-api/uploads/
 attendance-api/certs/
 *.pem
 attendance-api/models/*.onnx
+attendance-app/android/.gradle/
+attendance-app/android/local.properties
 attendance-app/android/app/build/
+attendance-app/android/app/.cxx/
 attendance-app/ios/Pods/
 .expo/
 *.jks
@@ -21,3 +24,5 @@ attendance-app/ios/Pods/
 .idea/
 .vscode/
 _doc_extract.txt
+_rn_template/
+*.apk

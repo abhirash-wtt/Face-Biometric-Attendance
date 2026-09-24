@@ -16,7 +16,14 @@ import { StorageService } from '../storage/storage.service';
 import { RecognitionService } from '../recognition/recognition.service';
 import { RegularizationService } from '../regularization/regularization.service';
 import { User } from '../auth/user.entity';
-import { ATTENDANCE_TZ, buildRoster, dayBoundsIst, localDateYmd, parseRosterDate } from './roster';
+import {
+  ATTENDANCE_TZ,
+  buildRosterRange,
+  dayBoundsIst,
+  localDateYmd,
+  parseRosterRange,
+  rangeBoundsIst,
+} from './roster';
 
 @Injectable()
 export class AttendanceService {
@@ -208,10 +215,17 @@ export class AttendanceService {
     return log;
   }
 
-  async roster(date?: string) {
-    const day = parseRosterDate(date);
-    const { from, to } = dayBoundsIst(day);
-    const [logs, employees, users, markedPresentList] = await Promise.all([
+  async roster(opts?: { date?: string; start_date?: string; end_date?: string }) {
+    let start: string;
+    let end: string;
+    let days: string[];
+    try {
+      ({ start, end, days } = parseRosterRange(opts || {}));
+    } catch (err) {
+      throw new BadRequestException(err instanceof Error ? err.message : 'Invalid date range');
+    }
+    const { from, to } = rangeBoundsIst(start, end);
+    const [logs, employees, users, markedPresentRows] = await Promise.all([
       this.repo
         .createQueryBuilder('a')
         .select(['a.id', 'a.employee_id', 'a.type', 'a.event_time'])
@@ -220,36 +234,40 @@ export class AttendanceService {
         .getMany(),
       this.employees.listForRoster(),
       this.users.find({ select: ['id', 'employee_id', 'email', 'role'] }),
-      this.regularization.listApprovedPresentEmployeeIds(day),
+      this.regularization.listApprovedPresentInRange(start, end),
     ]);
-    const markedPresentIds = new Set(markedPresentList);
+    const markedPresentByDay = new Map<string, Set<string>>();
+    for (const row of markedPresentRows) {
+      const set = markedPresentByDay.get(row.work_date) || new Set<string>();
+      set.add(row.employee_id);
+      markedPresentByDay.set(row.work_date, set);
+    }
     const userByEmployee = new Map(
       users.filter((u) => u.employee_id).map((u) => [u.employee_id as string, u]),
     );
     const employeeById = new Map(employees.map((e) => [e.id, e]));
+    const rosterEmployees = employees.map((e) => {
+      const linked = userByEmployee.get(e.id);
+      const manager = e.reporting_manager_id
+        ? employeeById.get(e.reporting_manager_id)
+        : undefined;
+      const owner = e.bu_owner_id ? employeeById.get(e.bu_owner_id) : undefined;
+      return {
+        id: e.id,
+        code: e.code,
+        display_name: e.display_name,
+        email: linked?.email || null,
+        role: linked?.role || null,
+        reporting_manager: manager?.display_name || null,
+        bu_owner: owner?.display_name || null,
+      };
+    });
     return {
-      date: day,
+      date: start,
+      start_date: start,
+      end_date: end,
       timezone: ATTENDANCE_TZ,
-      employees: buildRoster(
-        employees.map((e) => {
-          const linked = userByEmployee.get(e.id);
-          const manager = e.reporting_manager_id
-            ? employeeById.get(e.reporting_manager_id)
-            : undefined;
-          const owner = e.bu_owner_id ? employeeById.get(e.bu_owner_id) : undefined;
-          return {
-            id: e.id,
-            code: e.code,
-            display_name: e.display_name,
-            email: linked?.email || null,
-            role: linked?.role || null,
-            reporting_manager: manager?.display_name || null,
-            bu_owner: owner?.display_name || null,
-          };
-        }),
-        logs,
-        markedPresentIds,
-      ),
+      employees: buildRosterRange(rosterEmployees, logs, days, markedPresentByDay),
     };
   }
 

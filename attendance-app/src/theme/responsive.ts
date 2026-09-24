@@ -47,7 +47,10 @@ export function useLayout(): Layout {
       tablet,
       gutter: compact ? 12 : 16,
       maxContentWidth: tablet ? 620 : landscape ? 560 : width,
-      cameraHeight: landscape ? clamp(150, height * 0.52, 280) : clamp(200, height * 0.4, 380),
+      cameraHeight: landscape
+        ? clamp(150, height * 0.52, 280)
+        : // Portrait face frame (~3:4). Avoids a short/wide box that Android often renders half-black.
+          clamp(220, Math.min(width * (4 / 3), height * 0.42), 400),
       stackRows: width < 420 || largeText,
       largeText,
     };

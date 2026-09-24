@@ -21,6 +21,7 @@ export type QueuedEvent = {
 };
 
 const defaultSettings: Settings = {
+  // Emulator loopback. On a physical phone, set Settings → API URL to http://<PC-LAN-IP>:3000
   apiBase: 'http://10.0.2.2:3000',
   deviceId: 'KIOSK-01',
   siteCode: 'HQ',

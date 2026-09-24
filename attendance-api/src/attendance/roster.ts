@@ -31,10 +31,14 @@ export type RosterRow = {
   role: string | null;
   reporting_manager: string | null;
   bu_owner: string | null;
+  /** Work day in Asia/Kolkata (YYYY-MM-DD). Present on range and single-day responses. */
+  date?: string;
   clock_in: string | null;
   clock_out: string | null;
   status: AttendanceDayStatus;
 };
+
+export const ROSTER_MAX_RANGE_DAYS = 31;
 
 export function localDateYmd(now = new Date(), timeZone = ATTENDANCE_TZ): string {
   return new Intl.DateTimeFormat('en-CA', {
@@ -50,11 +54,65 @@ export function parseRosterDate(date?: string, now = new Date()): string {
   return localDateYmd(now);
 }
 
+/** Inclusive list of YYYY-MM-DD days from start through end (UTC calendar math on the date parts). */
+export function enumerateDays(start: string, end: string): string[] {
+  const days: string[] = [];
+  const [sy, sm, sd] = start.split('-').map(Number);
+  const [ey, em, ed] = end.split('-').map(Number);
+  const cursor = new Date(Date.UTC(sy, sm - 1, sd));
+  const last = new Date(Date.UTC(ey, em - 1, ed));
+  while (cursor <= last) {
+    days.push(
+      `${cursor.getUTCFullYear()}-${String(cursor.getUTCMonth() + 1).padStart(2, '0')}-${String(cursor.getUTCDate()).padStart(2, '0')}`,
+    );
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return days;
+}
+
+export type RosterRangeQuery = {
+  date?: string;
+  start_date?: string;
+  end_date?: string;
+};
+
+/**
+ * Resolve start/end for roster queries.
+ * Prefer start_date/end_date; fall back to date (or today) for a single day.
+ */
+export function parseRosterRange(
+  query: RosterRangeQuery,
+  now = new Date(),
+): { start: string; end: string; days: string[] } {
+  const hasStart = !!(query.start_date && /^\d{4}-\d{2}-\d{2}$/.test(query.start_date));
+  const hasEnd = !!(query.end_date && /^\d{4}-\d{2}-\d{2}$/.test(query.end_date));
+  let start = hasStart ? query.start_date! : parseRosterDate(query.date, now);
+  let end = hasEnd ? query.end_date! : hasStart ? query.start_date! : parseRosterDate(query.date, now);
+  if (!hasStart && hasEnd) start = end;
+  if (start > end) {
+    const tmp = start;
+    start = end;
+    end = tmp;
+  }
+  const days = enumerateDays(start, end);
+  if (days.length > ROSTER_MAX_RANGE_DAYS) {
+    throw new Error(`Date range cannot exceed ${ROSTER_MAX_RANGE_DAYS} days`);
+  }
+  return { start, end, days };
+}
+
 /** Inclusive IST day bounds as ISO timestamps (Asia/Kolkata has no DST). */
 export function dayBoundsIst(day: string): { from: string; to: string } {
   return {
     from: `${day}T00:00:00.000+05:30`,
     to: `${day}T23:59:59.999+05:30`,
+  };
+}
+
+export function rangeBoundsIst(start: string, end: string): { from: string; to: string } {
+  return {
+    from: `${start}T00:00:00.000+05:30`,
+    to: `${end}T23:59:59.999+05:30`,
   };
 }
 
@@ -91,6 +149,7 @@ export function buildRoster(
   employees: RosterEmployee[],
   logs: RosterLog[],
   markedPresentIds?: Set<string>,
+  workDate?: string,
 ): RosterRow[] {
   const byEmp = new Map<string, RosterLog[]>();
   for (const log of logs) {
@@ -121,9 +180,36 @@ export function buildRoster(
       role: emp.role || null,
       reporting_manager: emp.reporting_manager || null,
       bu_owner: emp.bu_owner || null,
+      ...(workDate ? { date: workDate } : {}),
       clock_in,
       clock_out,
       status,
     };
   });
+}
+
+/**
+ * One roster row per employee per day across `days`.
+ * `markedPresentByDay` maps YYYY-MM-DD → employee ids with approved mark-present.
+ */
+export function buildRosterRange(
+  employees: RosterEmployee[],
+  logs: RosterLog[],
+  days: string[],
+  markedPresentByDay?: Map<string, Set<string>>,
+): RosterRow[] {
+  const logsByDay = new Map<string, RosterLog[]>();
+  for (const day of days) logsByDay.set(day, []);
+  for (const log of logs) {
+    const day = localDateYmd(new Date(log.event_time));
+    const bucket = logsByDay.get(day);
+    if (bucket) bucket.push(log);
+  }
+  const rows: RosterRow[] = [];
+  for (const day of days) {
+    rows.push(
+      ...buildRoster(employees, logsByDay.get(day) || [], markedPresentByDay?.get(day), day),
+    );
+  }
+  return rows;
 }

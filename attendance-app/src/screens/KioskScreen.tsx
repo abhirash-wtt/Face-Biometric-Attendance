@@ -58,13 +58,14 @@ function buildFailureMessage(reason?: string): string {
   return `${reasonText}\n\nPlease ensure good lighting, look straight into the camera without accessories, and try again.`;
 }
 
-export function KioskScreen() {
+export function KioskScreen({ active = true }: { active?: boolean }) {
   const dispatch = useDispatch<AppDispatch>();
   const layout = useLayout();
   const { lastMessage, busy, livenessPrompt } = useSelector((s: RootState) => s.attendance);
   const captureRef = React.useRef<() => Promise<string>>(async () => {
-    throw new Error('Camera not ready');
+    throw new Error('Camera is still starting. Wait for the preview, then try again.');
   });
+  const [cameraReady, setCameraReady] = useState(false);
   const [success, setSuccess] = useState<{
     name: string;
     type: PunchType;
@@ -78,7 +79,12 @@ export function KioskScreen() {
 
   const onReady = useCallback((capture: () => Promise<string>) => {
     captureRef.current = capture;
+    setCameraReady(true);
   }, []);
+
+  React.useEffect(() => {
+    if (!active) setCameraReady(false);
+  }, [active]);
 
   const captureAndIdentify = async (type: PunchType) => {
     try {
@@ -226,30 +232,30 @@ export function KioskScreen() {
         <Text style={styles.prompt}>{promptCopy[livenessPrompt] || livenessPrompt}</Text>
       </View>
       <View style={[styles.camera, { height: layout.cameraHeight }]}>
-        <CameraView onReady={onReady} />
+        <CameraView onReady={onReady} isActive={active} />
       </View>
       <View style={styles.actions}>
         <Pressable
-          disabled={busy}
+          disabled={busy || !cameraReady}
           onPress={() => captureAndIdentify('IN')}
           accessibilityRole="button"
-          style={[styles.cta, styles.ctaIn, busy && styles.ctaBusy]}
+          style={[styles.cta, styles.ctaIn, (busy || !cameraReady) && styles.ctaBusy]}
         >
           <Text style={styles.ctaIcon} accessibilityElementsHidden>
             📥
           </Text>
-          <Text style={styles.ctaText}>{busy ? 'Working…' : 'Clock In'}</Text>
+          <Text style={styles.ctaText}>{busy ? 'Working…' : cameraReady ? 'Clock In' : 'Starting…'}</Text>
         </Pressable>
         <Pressable
-          disabled={busy}
+          disabled={busy || !cameraReady}
           onPress={() => captureAndIdentify('OUT')}
           accessibilityRole="button"
-          style={[styles.cta, styles.ctaOut, busy && styles.ctaBusy]}
+          style={[styles.cta, styles.ctaOut, (busy || !cameraReady) && styles.ctaBusy]}
         >
           <Text style={styles.ctaIcon} accessibilityElementsHidden>
             📤
           </Text>
-          <Text style={styles.ctaText}>{busy ? 'Working…' : 'Clock Out'}</Text>
+          <Text style={styles.ctaText}>{busy ? 'Working…' : cameraReady ? 'Clock Out' : 'Starting…'}</Text>
         </Pressable>
       </View>
       {!!lastMessage && <Text style={styles.status}>{lastMessage}</Text>}
@@ -302,7 +308,7 @@ const styles = StyleSheet.create({
     backgroundColor: THEME.cyan,
   },
   prompt: { color: THEME.cyanLight, textAlign: 'center', fontSize: 14, fontWeight: '700' },
-  camera: { marginVertical: 8 },
+  camera: { marginVertical: 8, width: '100%', overflow: 'hidden', borderRadius: 20 },
   actions: { flexDirection: 'row', gap: 12, marginTop: 14 },
   cta: {
     flex: 1,

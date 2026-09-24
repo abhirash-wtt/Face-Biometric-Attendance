@@ -81,9 +81,11 @@ function csvEscape(value: string) {
 function DatePickerField({
   value,
   onChange,
+  label,
 }: {
   value: string;
   onChange: (next: string) => void;
+  label?: string;
 }) {
   const layout = useLayout();
   const [open, setOpen] = useState(false);
@@ -119,7 +121,7 @@ function DatePickerField({
         onPress={() => setOpen(true)}
         style={styles.dateField}
         accessibilityRole="button"
-        accessibilityLabel={`Change date, currently ${formatDateLabel(selected)}`}
+        accessibilityLabel={`${label || 'Change date'}, currently ${formatDateLabel(selected)}`}
       >
         <Text style={styles.calIcon}>📅</Text>
         <Text style={styles.dateLabel} numberOfLines={1}>
@@ -177,7 +179,8 @@ function DatePickerField({
 
 /** Survives tab switches so returning to Attendance paints instantly. */
 let rosterCache: {
-  date: string;
+  startDate: string;
+  endDate: string;
   timezone: string;
   rows: AttendanceStatusRow[];
 } | null = null;
@@ -204,6 +207,7 @@ const AttendanceRow = React.memo(function AttendanceRow({
       <View style={styles.card}>
         <View style={styles.cardHead}>
           <View style={styles.cardWho}>
+            {!!item.date && <Text style={styles.rowDate}>{formatDateLabel(item.date)}</Text>}
             <Text style={styles.name}>{item.display_name}</Text>
             <Text style={styles.code}>{item.employee_code}</Text>
             {!!item.email && (
@@ -239,6 +243,9 @@ const AttendanceRow = React.memo(function AttendanceRow({
   }
   return (
     <View style={styles.row}>
+      <Text style={[styles.time, styles.colDate]} numberOfLines={2}>
+        {item.date ? formatDateLabel(item.date) : '—'}
+      </Text>
       <View style={styles.colName}>
         <Text style={styles.name}>
           {item.display_name} ({item.employee_code})
@@ -262,12 +269,14 @@ const AttendanceRow = React.memo(function AttendanceRow({
 
 export function AttendanceScreen({ active = true }: { active?: boolean }) {
   const layout = useLayout();
-  const [date, setDate] = useState(rosterCache?.date || todayIst());
+  const today = todayIst();
+  const [startDate, setStartDate] = useState(rosterCache?.startDate || today);
+  const [endDate, setEndDate] = useState(rosterCache?.endDate || today);
   const [rows, setRows] = useState<AttendanceStatusRow[]>(rosterCache?.rows || []);
   const [timezone, setTimezone] = useState(rosterCache?.timezone || 'Asia/Kolkata');
   const [message, setMessage] = useState(
     rosterCache?.rows?.length
-      ? `${rosterCache.rows.length} employee${rosterCache.rows.length === 1 ? '' : 's'}`
+      ? `${rosterCache.rows.length} row${rosterCache.rows.length === 1 ? '' : 's'}`
       : '',
   );
   const [busy, setBusy] = useState(!rosterCache?.rows?.length);
@@ -278,25 +287,42 @@ export function AttendanceScreen({ active = true }: { active?: boolean }) {
   const [filterQuery, setFilterQuery] = useState('');
   const loadedRef = React.useRef(!!rosterCache?.rows?.length);
 
-  const load = useCallback(async (queryDate = date, opts?: { silent?: boolean }) => {
-    try {
-      if (!opts?.silent || !rosterCache?.rows?.length) setBusy(true);
-      const res = await api.attendanceStatus(queryDate || undefined);
-      const nextRows = res.employees || [];
-      const nextDate = res.date || queryDate;
-      const nextTz = res.timezone || 'Asia/Kolkata';
-      rosterCache = { date: nextDate, timezone: nextTz, rows: nextRows };
-      loadedRef.current = true;
-      setRows(nextRows);
-      if (res.date) setDate(res.date);
-      if (res.timezone) setTimezone(res.timezone);
-      setMessage(`${nextRows.length} employee${nextRows.length === 1 ? '' : 's'}`);
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Unable to load attendance');
-    } finally {
-      setBusy(false);
-    }
-  }, [date]);
+  const rangeLabel = useMemo(() => {
+    if (!startDate) return 'today';
+    if (!endDate || endDate === startDate) return startDate;
+    return `${startDate} → ${endDate}`;
+  }, [startDate, endDate]);
+
+  const load = useCallback(
+    async (
+      range: { start_date: string; end_date: string } = { start_date: startDate, end_date: endDate },
+      opts?: { silent?: boolean },
+    ) => {
+      try {
+        if (!opts?.silent || !rosterCache?.rows?.length) setBusy(true);
+        let start = range.start_date || todayIst();
+        let end = range.end_date || start;
+        if (end < start) end = start;
+        const res = await api.attendanceStatus({ start_date: start, end_date: end });
+        const nextRows = res.employees || [];
+        const nextStart = res.start_date || res.date || start;
+        const nextEnd = res.end_date || res.date || end;
+        const nextTz = res.timezone || 'Asia/Kolkata';
+        rosterCache = { startDate: nextStart, endDate: nextEnd, timezone: nextTz, rows: nextRows };
+        loadedRef.current = true;
+        setRows(nextRows);
+        setStartDate(nextStart);
+        setEndDate(nextEnd);
+        if (res.timezone) setTimezone(res.timezone);
+        setMessage(`${nextRows.length} row${nextRows.length === 1 ? '' : 's'}`);
+      } catch (err) {
+        setMessage(err instanceof Error ? err.message : 'Unable to load attendance');
+      } finally {
+        setBusy(false);
+      }
+    },
+    [startDate, endDate],
+  );
 
   const loadRef = React.useRef(load);
   loadRef.current = load;
@@ -304,11 +330,14 @@ export function AttendanceScreen({ active = true }: { active?: boolean }) {
   useEffect(() => {
     if (!active) return;
     if (loadedRef.current && rosterCache?.rows?.length) {
-      // Instant paint from cache; refresh in background.
-      loadRef.current(rosterCache.date || todayIst(), { silent: true });
+      loadRef.current(
+        { start_date: rosterCache.startDate, end_date: rosterCache.endDate },
+        { silent: true },
+      );
       return;
     }
-    loadRef.current(todayIst());
+    const day = todayIst();
+    loadRef.current({ start_date: day, end_date: day });
   }, [active]);
 
   const personFilterOptions = useMemo(() => {
@@ -333,7 +362,7 @@ export function AttendanceScreen({ active = true }: { active?: boolean }) {
         if (!hay.includes(personQ)) return false;
       }
       if (!q) return true;
-      const hay = `${r.display_name} ${r.employee_code} ${r.email || ''} ${r.role || ''}`.toLowerCase();
+      const hay = `${r.display_name} ${r.employee_code} ${r.email || ''} ${r.role || ''} ${r.date || ''}`.toLowerCase();
       return hay.includes(q);
     });
   }, [rows, searchQuery, filterKind, filterQuery]);
@@ -367,9 +396,10 @@ export function AttendanceScreen({ active = true }: { active?: boolean }) {
       setMessage('Nothing to export');
       return;
     }
-    const header = 'Employee,Code,Email,Role,Clock In,Clock Out,Status,Reporting Manager,BU Owner';
+    const header = 'Date,Employee,Code,Email,Role,Clock In,Clock Out,Status,Reporting Manager,BU Owner';
     const lines = filteredRows.map((r) =>
       [
+        csvEscape(r.date || startDate),
         csvEscape(r.display_name),
         csvEscape(r.employee_code),
         csvEscape(r.email || ''),
@@ -384,7 +414,7 @@ export function AttendanceScreen({ active = true }: { active?: boolean }) {
     const csv = [header, ...lines].join('\n');
     try {
       await Share.share({
-        title: `Attendance ${date}`,
+        title: `Attendance ${rangeLabel}`,
         message: csv,
       });
       setMessage(`Exported ${filteredRows.length} row${filteredRows.length === 1 ? '' : 's'}`);
@@ -398,20 +428,33 @@ export function AttendanceScreen({ active = true }: { active?: boolean }) {
   const filterPlaceholder =
     filterKind === 'reporting_manager' ? 'Search reporting manager…' : 'Search employee…';
 
+  const onStartChange = (next: string) => {
+    setStartDate(next);
+    const end = endDate < next ? next : endDate;
+    if (end !== endDate) setEndDate(end);
+    load({ start_date: next, end_date: end });
+  };
+
+  const onEndChange = (next: string) => {
+    const end = next < startDate ? startDate : next;
+    setEndDate(end);
+    load({ start_date: startDate, end_date: end });
+  };
+
   return (
     <View
       style={[styles.root, { paddingHorizontal: layout.gutter, maxWidth: layout.maxContentWidth }]}
     >
       <Text style={styles.title}>Attendance</Text>
       <Text style={styles.meta}>
-        Times in {timezone} for {date || 'today'}. Status from worked hours (Present ≥9h, Half Day
+        Times in {timezone} for {rangeLabel}. Status from worked hours (Present ≥9h, Half Day
         ≥4h, Absent &lt;4h).
       </Text>
 
       <View style={styles.kpiContainer}>
         <View style={styles.kpiCard}>
           <Text style={styles.kpiValue}>{totalCount}</Text>
-          <Text style={styles.kpiLabel}>Total Staff</Text>
+          <Text style={styles.kpiLabel}>Total Rows</Text>
         </View>
         <View style={[styles.kpiCard, styles.kpiCardPresent]}>
           <Text style={[styles.kpiValue, { color: THEME.emerald }]}>{presentCount}</Text>
@@ -558,19 +601,20 @@ export function AttendanceScreen({ active = true }: { active?: boolean }) {
         </View>
       )}
 
-      <View style={styles.toolbar}>
-        <Text style={styles.dateCaption}>Date</Text>
-        <DatePickerField
-          value={date}
-          onChange={(next) => {
-            setDate(next);
-            load(next);
-          }}
-        />
+      <View style={styles.dateRangeRow}>
+        <View style={styles.dateRangeField}>
+          <Text style={styles.dateCaption}>Start date</Text>
+          <DatePickerField label="Start date" value={startDate} onChange={onStartChange} />
+        </View>
+        <View style={styles.dateRangeField}>
+          <Text style={styles.dateCaption}>End date</Text>
+          <DatePickerField label="End date" value={endDate} onChange={onEndChange} />
+        </View>
       </View>
 
       {!layout.stackRows && (
         <View style={styles.head}>
+          <Text style={[styles.headText, styles.colDate]}>Date</Text>
           <Text style={[styles.headText, styles.colName]}>Employee</Text>
           <Text style={[styles.headText, styles.colTime]}>In</Text>
           <Text style={[styles.headText, styles.colTime]}>Out</Text>
@@ -581,8 +625,14 @@ export function AttendanceScreen({ active = true }: { active?: boolean }) {
       )}
       <FlatList
         data={filteredRows}
-        keyExtractor={(item) => item.employee_id}
-        refreshControl={<RefreshControl refreshing={busy} onRefresh={() => load(date)} tintColor={THEME.cyan} />}
+        keyExtractor={(item) => `${item.date || startDate}-${item.employee_id}`}
+        refreshControl={
+          <RefreshControl
+            refreshing={busy}
+            onRefresh={() => load({ start_date: startDate, end_date: endDate })}
+            tintColor={THEME.cyan}
+          />
+        }
         ListEmptyComponent={
           <Text style={styles.empty}>
             {busy ? 'Loading attendance…' : 'No employees found'}
@@ -754,7 +804,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
-  toolbar: { marginBottom: 14 },
+  dateRangeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 14 },
+  dateRangeField: { flex: 1, minWidth: 150 },
   dateCaption: {
     color: THEME.textMuted,
     fontSize: 12,
@@ -764,7 +815,6 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   dateField: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-start',
@@ -822,10 +872,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: 'rgba(255, 255, 255, 0.05)',
   },
-  colName: { flex: 1.3, paddingRight: 6 },
-  colOrg: { flex: 1.1, paddingRight: 4 },
-  colTime: { flex: 0.75 },
+  colName: { flex: 1.2, paddingRight: 6 },
+  colOrg: { flex: 1, paddingRight: 4 },
+  colDate: { flex: 0.95, paddingRight: 4 },
+  colTime: { flex: 0.7 },
   colStatus: { width: 92, alignItems: 'flex-end' },
+  rowDate: { color: THEME.cyan, fontSize: 12, fontWeight: '800', marginBottom: 4 },
   card: {
     backgroundColor: THEME.card,
     borderWidth: 1,

@@ -115,12 +115,12 @@ function Shell() {
         {/* Keep screens mounted so Attendance does not remount/refetch on every tab switch. */}
         {!adminLike && (
           <TabPanel active={tab === 'kiosk'}>
-            <KioskScreen />
+            <KioskScreen active={tab === 'kiosk'} />
           </TabPanel>
         )}
         {canEnroll && (
           <TabPanel active={tab === 'enroll'}>
-            <EnrollScreen />
+            <EnrollScreen active={tab === 'enroll'} />
           </TabPanel>
         )}
         {canAttendance && (

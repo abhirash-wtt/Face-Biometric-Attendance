@@ -66,6 +66,7 @@ export type AttendanceStatusRow = {
   role: string | null;
   reporting_manager: string | null;
   bu_owner: string | null;
+  date?: string;
   clock_in: string | null;
   clock_out: string | null;
   status: 'Present' | 'Half Day' | 'Absent';
@@ -176,11 +177,23 @@ export const api = {
   attendance(payload: Record<string, unknown>) {
     return request('/attendance', { method: 'POST', body: payload });
   },
-  attendanceStatus(date?: string) {
-    const qs = date ? `?date=${encodeURIComponent(date)}` : '';
-    return request<{ date: string; timezone: string; employees: AttendanceStatusRow[] }>(
-      `/attendance/status${qs}`,
-    );
+  attendanceStatus(opts?: { date?: string; start_date?: string; end_date?: string } | string) {
+    const params =
+      typeof opts === 'string'
+        ? { date: opts }
+        : opts || {};
+    const qs = new URLSearchParams();
+    if (params.start_date) qs.set('start_date', params.start_date);
+    if (params.end_date) qs.set('end_date', params.end_date);
+    if (params.date && !params.start_date && !params.end_date) qs.set('date', params.date);
+    const query = qs.toString();
+    return request<{
+      date: string;
+      start_date?: string;
+      end_date?: string;
+      timezone: string;
+      employees: AttendanceStatusRow[];
+    }>(`/attendance/status${query ? `?${query}` : ''}`);
   },
   enroll(employeeId: string, imageB64: string, liveness?: number, pose?: EnrollPose) {
     return request<EnrollmentStatus>('/enroll', {
