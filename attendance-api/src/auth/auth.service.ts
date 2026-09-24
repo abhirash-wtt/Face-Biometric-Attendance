@@ -304,6 +304,25 @@ export class AuthService implements OnModuleInit {
     return this.issueUserTokens(user);
   }
 
+  async changePassword(user: JwtUser, currentPassword: string, newPassword: string) {
+    if (user.type === 'device' || !user.sub) {
+      throw new UnauthorizedException('Sign in with your account to change password');
+    }
+    if (currentPassword === newPassword) {
+      throw new BadRequestException('New password must be different from the current password');
+    }
+    const row = await this.users.findOne({ where: { id: user.sub } });
+    if (!row) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+    if (!(await bcrypt.compare(currentPassword, row.password_hash))) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+    row.password_hash = await bcrypt.hash(newPassword, 10);
+    await this.users.save(row);
+    return { ok: true as const, message: 'Password updated' };
+  }
+
   async me(user: JwtUser) {
     const row = user.sub ? await this.users.findOne({ where: { id: user.sub } }) : null;
     const employee = row?.employee_id

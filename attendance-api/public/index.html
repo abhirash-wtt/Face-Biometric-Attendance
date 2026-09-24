@@ -212,6 +212,14 @@
       width:100%; margin-top:12px;
     }
     #saveBtn { margin-bottom:24px; }
+    #changePasswordBlock {
+      margin-top:24px;
+      margin-bottom:8px;
+    }
+    #changePasswordBlock > label:first-of-type {
+      margin-top:0;
+    }
+    #changePasswordBtn { margin-top:12px; }
     button.cta:hover { transform:translateY(-1px); box-shadow:0 6px 20px rgba(6, 182, 212, 0.4); }
     button.cta:active { transform:translateY(0); }
     button.alt {
@@ -745,6 +753,16 @@
       <button class="cta" id="loginBtn">Login</button>
       <button class="cta hidden" id="registerBtn">Send verification code</button>
       <button class="alt" id="logoutBtn">Logout</button>
+      <button type="button" class="cta hidden" id="changePasswordBtn">Change Password</button>
+      <div id="changePasswordBlock" class="hidden">
+        <label for="currentPassword">Current Password</label>
+        <input id="currentPassword" type="password" autocomplete="current-password" enterkeyhint="next" />
+        <label for="newPassword">New Password</label>
+        <input id="newPassword" type="password" autocomplete="new-password" enterkeyhint="next" />
+        <label for="confirmNewPassword">Confirm New Password</label>
+        <input id="confirmNewPassword" type="password" autocomplete="new-password" enterkeyhint="go" />
+        <button type="button" class="cta" id="changePasswordSubmitBtn">Change Password</button>
+      </div>
       <button type="button" class="alt" id="authModeRegister">Register</button>
       <button class="alt" id="bindBtn">Register this device</button>
       <button class="alt" id="syncBtn">Sync offline queue</button>
@@ -809,6 +827,7 @@
       pending: null,
       queue: JSON.parse(localStorage.getItem('offline_queue') || '[]'),
       authMode: 'login',
+      showChangePassword: false,
       rosterLoadedKey: '',
       rosterRows: [],
     };
@@ -1024,6 +1043,7 @@
       $('wfhListTitle').textContent = adminLike ? 'All requests' : 'My requests';
       $('loginBtn').classList.toggle('hidden', loggedIn || state.authMode === 'register');
       $('logoutBtn').classList.toggle('hidden', !loggedIn);
+      updateChangePasswordUi(loggedIn);
       if (role && user && user.email) {
         $('roleBadge').textContent = 'Signed in as ' + user.email + ' (' + role + ')';
       } else if (role) {
@@ -2736,6 +2756,7 @@
       $('loginBtn').classList.toggle('hidden', register || loggedIn);
       $('registerBtn').classList.toggle('hidden', !register);
       $('logoutBtn').classList.toggle('hidden', !loggedIn);
+      updateChangePasswordUi(loggedIn);
       $('email').autocomplete = register ? 'email' : 'username';
       $('email').placeholder = register ? 'you@walkingtree.tech' : '';
       $('password').autocomplete = register ? 'new-password' : 'current-password';
@@ -2863,8 +2884,59 @@
     };
     $('logoutBtn').onclick = () => {
       clearSession();
+      resetChangePasswordForm();
       applyAccess();
       status('settingsStatus', 'Signed out');
+    };
+    function resetChangePasswordForm() {
+      state.showChangePassword = false;
+      $('currentPassword').value = '';
+      $('newPassword').value = '';
+      $('confirmNewPassword').value = '';
+    }
+    function updateChangePasswordUi(loggedIn) {
+      const open = !!(loggedIn && state.showChangePassword);
+      $('changePasswordBtn').classList.toggle('hidden', !loggedIn || open);
+      $('changePasswordBlock').classList.toggle('hidden', !open);
+    }
+    $('changePasswordBtn').onclick = () => {
+      state.showChangePassword = true;
+      updateChangePasswordUi(!!jwtRole());
+      $('currentPassword').focus();
+    };
+    $('changePasswordSubmitBtn').onclick = async () => {
+      const currentPassword = $('currentPassword').value;
+      const newPassword = $('newPassword').value;
+      const confirmPassword = $('confirmNewPassword').value;
+      if (!currentPassword) {
+        status('settingsStatus', 'Enter your current password');
+        return;
+      }
+      if (newPassword.length < 6) {
+        status('settingsStatus', 'New password must be at least 6 characters');
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        status('settingsStatus', 'New password and confirmation do not match');
+        return;
+      }
+      try {
+        const res = await api('/auth/change-password', {
+          method: 'POST',
+          body: { current_password: currentPassword, new_password: newPassword },
+        });
+        resetChangePasswordForm();
+        updateChangePasswordUi(!!jwtRole());
+        status('settingsStatus', (res && res.message) || 'Password updated');
+      } catch (e) {
+        status('settingsStatus', e.message);
+      }
+    };
+    $('confirmNewPassword').onkeydown = (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        $('changePasswordSubmitBtn').onclick();
+      }
     };
     $('syncBtn').onclick = async () => {
       const remain = [];

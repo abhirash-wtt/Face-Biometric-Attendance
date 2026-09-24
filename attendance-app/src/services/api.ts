@@ -137,6 +137,12 @@ export const api = {
       token: null,
     });
   },
+  changePassword(currentPassword: string, newPassword: string) {
+    return request<{ ok: true; message: string }>('/auth/change-password', {
+      method: 'POST',
+      body: { current_password: currentPassword, new_password: newPassword },
+    });
+  },
   registerDevice(payload: {
     device_id: string;
     site_code: string;

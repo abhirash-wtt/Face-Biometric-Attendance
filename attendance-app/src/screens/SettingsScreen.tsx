@@ -25,6 +25,10 @@ export function SettingsScreen({ onAuthChange }: { onAuthChange?: () => void }) 
   });
   const [email, setEmail] = useState('admin@attendance.local');
   const [password, setPassword] = useState('Admin@123');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showChangePassword, setShowChangePassword] = useState(false);
   const [message, setMessage] = useState('');
   const [role, setRole] = useState<AppRole>('');
 
@@ -73,8 +77,37 @@ export function SettingsScreen({ onAuthChange }: { onAuthChange?: () => void }) 
   const logout = async () => {
     await storage.setToken(null);
     setRole('');
+    setShowChangePassword(false);
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
     onAuthChange?.();
     setMessage('Signed out');
+  };
+
+  const changePassword = async () => {
+    if (!currentPassword) {
+      setMessage('Enter your current password');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setMessage('New password must be at least 6 characters');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setMessage('New password and confirmation do not match');
+      return;
+    }
+    try {
+      const res = await api.changePassword(currentPassword, newPassword);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setShowChangePassword(false);
+      setMessage(res.message || 'Password updated');
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Password change failed');
+    }
   };
 
   const isLoggedIn = !!role;
@@ -145,35 +178,74 @@ export function SettingsScreen({ onAuthChange }: { onAuthChange?: () => void }) 
         {/* Card 2: User Account & Authentication */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>User Account & Auth</Text>
-          <Field label="Email Address" value={email} onChange={setEmail} keyboardType="email-address" />
-          <Field
-            label="Password"
-            value={password}
-            onChange={setPassword}
-            secure
-            returnKeyType="go"
-            onSubmit={isLoggedIn ? undefined : login}
-          />
-          <View style={styles.btnRow}>
-            {!isLoggedIn && (
-              <Pressable
-                onPress={login}
-                accessibilityRole="button"
-                style={[styles.btnPrimary, styles.flexBtn]}
-              >
-                <Text style={styles.btnText}>Login</Text>
-              </Pressable>
-            )}
-            {isLoggedIn && (
+          {!isLoggedIn && (
+            <>
+              <Field label="Email Address" value={email} onChange={setEmail} keyboardType="email-address" />
+              <Field
+                label="Password"
+                value={password}
+                onChange={setPassword}
+                secure
+                returnKeyType="go"
+                onSubmit={login}
+              />
+              <View style={styles.btnRow}>
+                <Pressable
+                  onPress={login}
+                  accessibilityRole="button"
+                  style={[styles.btnPrimary, styles.flexBtn]}
+                >
+                  <Text style={styles.btnText}>Login</Text>
+                </Pressable>
+              </View>
+            </>
+          )}
+          {isLoggedIn && (
+            <>
               <Pressable
                 onPress={logout}
                 accessibilityRole="button"
-                style={[styles.btnDanger, styles.flexBtn]}
+                style={styles.btnDanger}
               >
                 <Text style={styles.btnText}>Logout</Text>
               </Pressable>
-            )}
-          </View>
+              {!showChangePassword && (
+                <Pressable
+                  onPress={() => setShowChangePassword(true)}
+                  accessibilityRole="button"
+                  style={styles.btnChangePassword}
+                >
+                  <Text style={styles.btnChangePasswordText}>Change Password</Text>
+                </Pressable>
+              )}
+              {showChangePassword && (
+                <View style={styles.changePasswordBlock}>
+                  <Field
+                    label="Current Password"
+                    value={currentPassword}
+                    onChange={setCurrentPassword}
+                    secure
+                  />
+                  <Field label="New Password" value={newPassword} onChange={setNewPassword} secure />
+                  <Field
+                    label="Confirm New Password"
+                    value={confirmPassword}
+                    onChange={setConfirmPassword}
+                    secure
+                    returnKeyType="go"
+                    onSubmit={changePassword}
+                  />
+                  <Pressable
+                    onPress={changePassword}
+                    accessibilityRole="button"
+                    style={styles.btnPrimary}
+                  >
+                    <Text style={styles.btnText}>Change Password</Text>
+                  </Pressable>
+                </View>
+              )}
+            </>
+          )}
           {showBind && (
             <Pressable onPress={bind} accessibilityRole="button" style={styles.btnSecondary}>
               <Text style={styles.btnSecondaryText}>Register This Device</Text>
@@ -253,6 +325,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   sectionTitle: { color: THEME.cyan, fontSize: 15, fontWeight: '800', marginBottom: 12 },
+  changePasswordBlock: { marginTop: 16 },
   field: { marginBottom: 12 },
   label: { color: THEME.textMuted, fontSize: 12, fontWeight: '800', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 },
   input: {
@@ -290,6 +363,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 6,
   },
+  btnChangePassword: {
+    minHeight: TAP_TARGET,
+    backgroundColor: THEME.cyan,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+    shadowColor: THEME.cyan,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  btnChangePasswordText: { color: '#0f172a', fontWeight: '800', fontSize: 14 },
   btnSecondary: {
     minHeight: TAP_TARGET,
     backgroundColor: 'rgba(6, 182, 212, 0.15)',
