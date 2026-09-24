@@ -511,6 +511,23 @@
       border-radius:12px; padding:12px 14px; margin:4px 0 0; min-height:var(--tap);
       font-size:15px; font-weight:700; cursor:pointer; text-align:left;
     }
+    .period-picker { flex:1 1 260px; max-width:420px; }
+    .period-field { justify-content:space-between; }
+    .period-chevron { color:var(--accent); font-weight:800; font-size:14px; }
+    .period-menu {
+      position:absolute; z-index:60; top:calc(100% + 8px); left:0; right:0;
+      background:#0f172a; border:1px solid var(--card-border); border-radius:14px; padding:6px;
+      box-shadow:0 20px 48px rgba(0,0,0,0.6); overflow:hidden;
+    }
+    .period-menu.hidden { display:none !important; }
+    .period-option {
+      width:100%; margin:0; padding:12px 14px; min-height:var(--tap);
+      background:transparent; border:0; border-radius:10px; color:var(--text);
+      font-size:15px; font-weight:700; cursor:pointer; text-align:left;
+    }
+    .period-option + .period-option { margin-top:2px; }
+    .period-option:hover { background:rgba(255,255,255,0.06); }
+    .period-option.on { background:rgba(6, 182, 212, 0.18); color:#fff; }
     .cal-icon { color:var(--accent); font-size:16px; }
     .calendar {
       position:absolute; z-index:60; top:calc(100% + 8px); left:0;
@@ -723,23 +740,20 @@
         <div class="roster-filter-dropdown" id="rosterFilterOptions" role="listbox" aria-label="Filter names"></div>
       </div>
       <div class="roster-toolbar">
-        <div class="date-picker">
-          <label for="rosterStartDateBtn">Start date</label>
-          <button type="button" class="date-field" id="rosterStartDateBtn" aria-haspopup="dialog" aria-expanded="false">
-            <span class="cal-icon" aria-hidden="true">📅</span>
-            <span id="rosterStartDateLabel">Select date</span>
+        <div class="date-picker period-picker">
+          <label for="rosterPeriodBtn">Attendance Period</label>
+          <button type="button" class="date-field period-field" id="rosterPeriodBtn" aria-haspopup="listbox" aria-expanded="false">
+            <span id="rosterPeriodLabel">Today</span>
+            <span class="period-chevron" aria-hidden="true">▾</span>
           </button>
+          <input id="rosterPeriod" type="hidden" value="today" />
           <input id="rosterStartDate" type="hidden" />
-          <div id="rosterStartCalendar" class="calendar hidden" role="dialog" aria-label="Choose start date"></div>
-        </div>
-        <div class="date-picker">
-          <label for="rosterEndDateBtn">End date</label>
-          <button type="button" class="date-field" id="rosterEndDateBtn" aria-haspopup="dialog" aria-expanded="false">
-            <span class="cal-icon" aria-hidden="true">📅</span>
-            <span id="rosterEndDateLabel">Select date</span>
-          </button>
           <input id="rosterEndDate" type="hidden" />
-          <div id="rosterEndCalendar" class="calendar hidden" role="dialog" aria-label="Choose end date"></div>
+          <div id="rosterPeriodMenu" class="period-menu hidden" role="listbox" aria-label="Attendance Period">
+            <button type="button" class="period-option on" role="option" data-period="today" aria-selected="true">Today</button>
+            <button type="button" class="period-option" role="option" data-period="weekly" aria-selected="false">Weekly</button>
+            <button type="button" class="period-option" role="option" data-period="monthly" aria-selected="false">Monthly</button>
+          </div>
         </div>
       </div>
       <div class="roster-wrap">
@@ -2339,6 +2353,9 @@
         day: '2-digit',
       }).format(new Date());
     }
+    function toYmd(year, monthIndex, day) {
+      return year + '-' + String(monthIndex + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+    }
     function formatDateLabel(ymd) {
       if (!ymd) return 'Select date';
       const parts = ymd.split('-').map(Number);
@@ -2351,38 +2368,73 @@
         timeZone: 'UTC',
       });
     }
-    function setRosterStartDate(ymd, reload) {
-      const next = ymd || todayYmd();
-      $('rosterStartDate').value = next;
-      $('rosterStartDateLabel').textContent = formatDateLabel(next);
-      const end = $('rosterEndDate').value;
-      if (!end || end < next) setRosterEndDate(next, false);
-      if (reload) loadRoster().catch((e) => status('rosterStatus', e.message));
+    const ATTENDANCE_PERIODS = {
+      today: 'Today',
+      weekly: 'Weekly',
+      monthly: 'Monthly',
+    };
+    function periodLabel(period) {
+      return ATTENDANCE_PERIODS[period] || ATTENDANCE_PERIODS.today;
     }
-    function setRosterEndDate(ymd, reload) {
-      const start = $('rosterStartDate').value || todayYmd();
-      let next = ymd || start;
-      if (next < start) next = start;
-      $('rosterEndDate').value = next;
-      $('rosterEndDateLabel').textContent = formatDateLabel(next);
-      if (reload) loadRoster().catch((e) => status('rosterStatus', e.message));
+    /** Date ranges use Asia/Kolkata calendar days (Mon–Sun week). */
+    function rangeForPeriod(period) {
+      const today = todayYmd();
+      if (period === 'today') return { start_date: today, end_date: today };
+      const parts = today.split('-').map(Number);
+      const y = parts[0];
+      const m = parts[1];
+      const d = parts[2];
+      const todayUtc = new Date(Date.UTC(y, m - 1, d));
+      if (period === 'weekly') {
+        const dow = todayUtc.getUTCDay();
+        const daysFromMonday = (dow + 6) % 7;
+        const monday = new Date(todayUtc);
+        monday.setUTCDate(todayUtc.getUTCDate() - daysFromMonday);
+        const sunday = new Date(monday);
+        sunday.setUTCDate(monday.getUTCDate() + 6);
+        return {
+          start_date: toYmd(monday.getUTCFullYear(), monday.getUTCMonth(), monday.getUTCDate()),
+          end_date: toYmd(sunday.getUTCFullYear(), sunday.getUTCMonth(), sunday.getUTCDate()),
+        };
+      }
+      const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+      return {
+        start_date: toYmd(y, m - 1, 1),
+        end_date: toYmd(y, m - 1, lastDay),
+      };
+    }
+    function syncPeriodMenu(period) {
+      const next = ATTENDANCE_PERIODS[period] ? period : 'today';
+      if ($('rosterPeriod')) $('rosterPeriod').value = next;
+      if ($('rosterPeriodLabel')) $('rosterPeriodLabel').textContent = periodLabel(next);
+      document.querySelectorAll('#rosterPeriodMenu .period-option').forEach((btn) => {
+        const on = btn.dataset.period === next;
+        btn.classList.toggle('on', on);
+        btn.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
     }
     function setRosterRange(start, end, reload) {
       const s = start || todayYmd();
       let e = end || s;
       if (e < s) e = s;
-      $('rosterStartDate').value = s;
-      $('rosterStartDateLabel').textContent = formatDateLabel(s);
-      $('rosterEndDate').value = e;
-      $('rosterEndDateLabel').textContent = formatDateLabel(e);
+      if ($('rosterStartDate')) $('rosterStartDate').value = s;
+      if ($('rosterEndDate')) $('rosterEndDate').value = e;
       if (reload) loadRoster().catch((err) => status('rosterStatus', err.message));
     }
+    function setRosterPeriod(period, reload) {
+      const next = ATTENDANCE_PERIODS[period] ? period : 'today';
+      syncPeriodMenu(next);
+      const range = rangeForPeriod(next);
+      setRosterRange(range.start_date, range.end_date, reload);
+    }
     function rosterRangeLabel() {
-      const start = $('rosterStartDate').value;
-      const end = $('rosterEndDate').value;
-      if (!start) return '';
-      if (!end || end === start) return start;
-      return start + ' → ' + end;
+      const period = ($('rosterPeriod') && $('rosterPeriod').value) || 'today';
+      const label = periodLabel(period);
+      const start = $('rosterStartDate') && $('rosterStartDate').value;
+      const end = $('rosterEndDate') && $('rosterEndDate').value;
+      if (!start) return label;
+      if (!end || end === start) return label + ' (' + start + ')';
+      return label + ' (' + start + ' → ' + end + ')';
     }
     function setWfhDate(ymd) {
       const today = todayYmd();
@@ -2396,39 +2448,16 @@
       $('wfhDateLabel').textContent = formatDateLabel(next);
     }
     let calMonth = new Date();
-    let calTarget = 'rosterStart';
     function calEls() {
-      if (calTarget === 'wfh') {
-        const present = regularizationType() === 'mark_present';
-        return {
-          valueEl: $('wfhDate'),
-          labelEl: $('wfhDateLabel'),
-          btnEl: $('wfhDateBtn'),
-          calEl: $('wfhCalendar'),
-          minDate: present ? null : todayYmd(),
-          maxDate: present ? todayYmd() : null,
-          onSelect: (ymd) => setWfhDate(ymd),
-        };
-      }
-      if (calTarget === 'rosterEnd') {
-        return {
-          valueEl: $('rosterEndDate'),
-          labelEl: $('rosterEndDateLabel'),
-          btnEl: $('rosterEndDateBtn'),
-          calEl: $('rosterEndCalendar'),
-          minDate: $('rosterStartDate').value || null,
-          maxDate: null,
-          onSelect: (ymd) => setRosterEndDate(ymd, true),
-        };
-      }
+      const present = regularizationType() === 'mark_present';
       return {
-        valueEl: $('rosterStartDate'),
-        labelEl: $('rosterStartDateLabel'),
-        btnEl: $('rosterStartDateBtn'),
-        calEl: $('rosterStartCalendar'),
-        minDate: null,
-        maxDate: null,
-        onSelect: (ymd) => setRosterStartDate(ymd, true),
+        valueEl: $('wfhDate'),
+        labelEl: $('wfhDateLabel'),
+        btnEl: $('wfhDateBtn'),
+        calEl: $('wfhCalendar'),
+        minDate: present ? null : todayYmd(),
+        maxDate: present ? todayYmd() : null,
+        onSelect: (ymd) => setWfhDate(ymd),
       };
     }
     function renderCalendar() {
@@ -2474,9 +2503,9 @@
         };
       });
     }
-    function openCalendar(target) {
+    function openCalendar() {
+      closePeriodMenu();
       closeAllCalendars();
-      calTarget = target || 'roster';
       const cfg = calEls();
       const ymd = cfg.valueEl.value || (cfg.minDate || todayYmd());
       const parts = ymd.split('-').map(Number);
@@ -2486,33 +2515,46 @@
       cfg.btnEl.setAttribute('aria-expanded', 'true');
     }
     function closeAllCalendars() {
-      ['rosterStartCalendar', 'rosterEndCalendar', 'wfhCalendar'].forEach((id) => {
-        const el = $(id);
-        if (el) el.classList.add('hidden');
-      });
-      ['rosterStartDateBtn', 'rosterEndDateBtn', 'wfhDateBtn'].forEach((id) => {
-        const el = $(id);
-        if (el) el.setAttribute('aria-expanded', 'false');
-      });
+      const el = $('wfhCalendar');
+      if (el) el.classList.add('hidden');
+      const btn = $('wfhDateBtn');
+      if (btn) btn.setAttribute('aria-expanded', 'false');
     }
     function closeCalendar() {
       closeAllCalendars();
     }
-    $('rosterStartDateBtn').onclick = (e) => {
+    function closePeriodMenu() {
+      const menu = $('rosterPeriodMenu');
+      const btn = $('rosterPeriodBtn');
+      if (menu) menu.classList.add('hidden');
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+    }
+    function openPeriodMenu() {
+      closeAllCalendars();
+      const menu = $('rosterPeriodMenu');
+      const btn = $('rosterPeriodBtn');
+      if (!menu || !btn) return;
+      menu.classList.remove('hidden');
+      btn.setAttribute('aria-expanded', 'true');
+    }
+    $('rosterPeriodBtn').onclick = (e) => {
       e.stopPropagation();
-      if ($('rosterStartCalendar').classList.contains('hidden')) openCalendar('rosterStart');
-      else closeAllCalendars();
+      if ($('rosterPeriodMenu').classList.contains('hidden')) openPeriodMenu();
+      else closePeriodMenu();
     };
-    $('rosterEndDateBtn').onclick = (e) => {
-      e.stopPropagation();
-      if ($('rosterEndCalendar').classList.contains('hidden')) openCalendar('rosterEnd');
-      else closeAllCalendars();
-    };
-    $('rosterStartCalendar').onclick = (e) => e.stopPropagation();
-    $('rosterEndCalendar').onclick = (e) => e.stopPropagation();
+    $('rosterPeriodMenu').onclick = (e) => e.stopPropagation();
+    $('rosterPeriodMenu').querySelectorAll('.period-option').forEach((opt) => {
+      opt.onclick = (e) => {
+        e.stopPropagation();
+        const period = opt.dataset.period || 'today';
+        closePeriodMenu();
+        if (($('rosterPeriod').value || 'today') === period) return;
+        setRosterPeriod(period, true);
+      };
+    });
     $('wfhDateBtn').onclick = (e) => {
       e.stopPropagation();
-      if ($('wfhCalendar').classList.contains('hidden')) openCalendar('wfh');
+      if ($('wfhCalendar').classList.contains('hidden')) openCalendar();
       else closeAllCalendars();
     };
     $('wfhCalendar').onclick = (e) => e.stopPropagation();
@@ -2532,9 +2574,15 @@
       e.preventDefault();
       setRegType('early_out');
     };
-    document.addEventListener('click', closeAllCalendars);
+    document.addEventListener('click', () => {
+      closeAllCalendars();
+      closePeriodMenu();
+    });
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') closeAllCalendars();
+      if (e.key === 'Escape') {
+        closeAllCalendars();
+        closePeriodMenu();
+      }
     });
 
     let rosterPersonFilterKind = 'reporting_manager';
@@ -2544,6 +2592,8 @@
 
     function rosterCacheKey() {
       return (
+        (($('rosterPeriod') && $('rosterPeriod').value) || 'today') +
+        ':' +
         (($('rosterStartDate') && $('rosterStartDate').value) || '') +
         '..' +
         (($('rosterEndDate') && $('rosterEndDate').value) || '') +
@@ -2556,8 +2606,13 @@
     function ensureAttendanceData(force) {
       if (state.tab !== 'attendance') return;
       if (!canAccessAttendance(jwtRole())) return;
-      const today = todayYmd();
-      if ($('rosterStartDate') && !$('rosterStartDate').value) setRosterRange(today, today, false);
+      const period = ($('rosterPeriod') && $('rosterPeriod').value) || 'today';
+      if ($('rosterStartDate') && !$('rosterStartDate').value) {
+        setRosterPeriod(period, false);
+      } else if (force) {
+        const range = rangeForPeriod(period);
+        setRosterRange(range.start_date, range.end_date, false);
+      }
       if (!force && state.rosterLoadedKey === rosterCacheKey() && state.rosterRows.length) {
         renderRoster();
         return;

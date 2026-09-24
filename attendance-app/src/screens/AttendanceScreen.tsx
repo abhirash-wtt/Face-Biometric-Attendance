@@ -15,13 +15,18 @@ import { api, AttendanceStatusRow } from '../services/api';
 import { TAP_TARGET, useLayout } from '../theme/responsive';
 import { THEME } from '../theme/colors';
 
-const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
-
 type PersonFilterKind = 'reporting_manager' | 'employee';
+type AttendancePeriod = 'today' | 'weekly' | 'monthly';
 
 const PERSON_FILTER_KINDS: Array<{ id: PersonFilterKind; label: string }> = [
   { id: 'reporting_manager', label: 'Reporting Manager' },
   { id: 'employee', label: 'Employee' },
+];
+
+const ATTENDANCE_PERIODS: Array<{ id: AttendancePeriod; label: string }> = [
+  { id: 'today', label: 'Today' },
+  { id: 'weekly', label: 'Weekly' },
+  { id: 'monthly', label: 'Monthly' },
 ];
 
 function uniqueSortedNames(values: Array<string | null | undefined>): string[] {
@@ -73,103 +78,87 @@ function toYmd(year: number, monthIndex: number, day: number) {
   return `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
+/** Date ranges use Asia/Kolkata calendar days (Mon–Sun week). */
+function rangeForPeriod(period: AttendancePeriod): { start_date: string; end_date: string } {
+  const today = todayIst();
+  if (period === 'today') return { start_date: today, end_date: today };
+
+  const [y, m, d] = today.split('-').map(Number);
+  const todayUtc = new Date(Date.UTC(y, m - 1, d));
+
+  if (period === 'weekly') {
+    const dow = todayUtc.getUTCDay(); // 0 = Sunday
+    const daysFromMonday = (dow + 6) % 7;
+    const monday = new Date(todayUtc);
+    monday.setUTCDate(todayUtc.getUTCDate() - daysFromMonday);
+    const sunday = new Date(monday);
+    sunday.setUTCDate(monday.getUTCDate() + 6);
+    return {
+      start_date: toYmd(monday.getUTCFullYear(), monday.getUTCMonth(), monday.getUTCDate()),
+      end_date: toYmd(sunday.getUTCFullYear(), sunday.getUTCMonth(), sunday.getUTCDate()),
+    };
+  }
+
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return {
+    start_date: toYmd(y, m - 1, 1),
+    end_date: toYmd(y, m - 1, lastDay),
+  };
+}
+
+function periodLabel(period: AttendancePeriod) {
+  return ATTENDANCE_PERIODS.find((p) => p.id === period)?.label || 'Today';
+}
+
 function csvEscape(value: string) {
   if (/[",\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
   return value;
 }
 
-function DatePickerField({
+function PeriodDropdown({
   value,
   onChange,
-  label,
 }: {
-  value: string;
-  onChange: (next: string) => void;
-  label?: string;
+  value: AttendancePeriod;
+  onChange: (next: AttendancePeriod) => void;
 }) {
-  const layout = useLayout();
   const [open, setOpen] = useState(false);
-  const selected = value || todayIst();
-  const [viewYear, setViewYear] = useState(() => Number(selected.slice(0, 4)));
-  const [viewMonth, setViewMonth] = useState(() => Number(selected.slice(5, 7)) - 1);
-
-  useEffect(() => {
-    if (!open) return;
-    setViewYear(Number(selected.slice(0, 4)));
-    setViewMonth(Number(selected.slice(5, 7)) - 1);
-  }, [open, selected]);
-
-  const title = useMemo(
-    () => new Date(viewYear, viewMonth, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }),
-    [viewYear, viewMonth],
-  );
-  const cells = useMemo(() => {
-    const start = new Date(viewYear, viewMonth, 1).getDay();
-    const days = new Date(viewYear, viewMonth + 1, 0).getDate();
-    return [...Array(start).fill(null), ...Array.from({ length: days }, (_, i) => i + 1)];
-  }, [viewYear, viewMonth]);
-
-  const shiftMonth = (delta: number) => {
-    const next = new Date(viewYear, viewMonth + delta, 1);
-    setViewYear(next.getFullYear());
-    setViewMonth(next.getMonth());
-  };
 
   return (
     <>
       <Pressable
         onPress={() => setOpen(true)}
-        style={styles.dateField}
+        style={styles.periodField}
         accessibilityRole="button"
-        accessibilityLabel={`${label || 'Change date'}, currently ${formatDateLabel(selected)}`}
+        accessibilityLabel={`Attendance Period, currently ${periodLabel(value)}`}
       >
-        <Text style={styles.calIcon}>📅</Text>
-        <Text style={styles.dateLabel} numberOfLines={1}>
-          {formatDateLabel(selected)}
+        <Text style={styles.periodFieldText} numberOfLines={1}>
+          {periodLabel(value)}
         </Text>
+        <Text style={styles.periodChevron}>▾</Text>
       </Pressable>
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <Pressable style={styles.calBackdrop} onPress={() => setOpen(false)}>
-          <Pressable
-            style={[
-              styles.calendar,
-              { width: Math.min(360, layout.width - 2 * layout.gutter - 16) },
-            ]}
-            onPress={(e) => e.stopPropagation()}
-          >
-            <View style={styles.calHead}>
-              <Pressable onPress={() => shiftMonth(-1)} style={styles.calNav}>
-                <Text style={styles.calNavText}>‹</Text>
-              </Pressable>
-              <Text style={styles.calTitle}>{title}</Text>
-              <Pressable onPress={() => shiftMonth(1)} style={styles.calNav}>
-                <Text style={styles.calNavText}>›</Text>
-              </Pressable>
-            </View>
-            <View style={styles.calGrid}>
-              {WEEKDAYS.map((d) => (
-                <Text key={d} style={styles.calDow}>
-                  {d}
-                </Text>
-              ))}
-              {cells.map((day, idx) => {
-                if (!day) return <View key={`empty-${idx}`} style={styles.calDay} />;
-                const ymd = toYmd(viewYear, viewMonth, day);
-                const on = ymd === selected;
-                return (
-                  <Pressable
-                    key={ymd}
-                    onPress={() => {
-                      onChange(ymd);
-                      setOpen(false);
-                    }}
-                    style={[styles.calDay, on && styles.calDayOn]}
-                  >
-                    <Text style={[styles.calDayText, on && styles.calDayTextOn]}>{day}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+        <Pressable style={styles.periodBackdrop} onPress={() => setOpen(false)}>
+          <Pressable style={styles.periodMenu} onPress={(e) => e.stopPropagation()}>
+            {ATTENDANCE_PERIODS.map((opt) => {
+              const on = opt.id === value;
+              return (
+                <Pressable
+                  key={opt.id}
+                  onPress={() => {
+                    onChange(opt.id);
+                    setOpen(false);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
+                  style={[styles.periodOption, on && styles.periodOptionOn]}
+                >
+                  <Text style={[styles.periodOptionText, on && styles.periodOptionTextOn]}>
+                    {opt.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </Pressable>
         </Pressable>
       </Modal>
@@ -179,6 +168,7 @@ function DatePickerField({
 
 /** Survives tab switches so returning to Attendance paints instantly. */
 let rosterCache: {
+  period: AttendancePeriod;
   startDate: string;
   endDate: string;
   timezone: string;
@@ -269,9 +259,12 @@ const AttendanceRow = React.memo(function AttendanceRow({
 
 export function AttendanceScreen({ active = true }: { active?: boolean }) {
   const layout = useLayout();
-  const today = todayIst();
-  const [startDate, setStartDate] = useState(rosterCache?.startDate || today);
-  const [endDate, setEndDate] = useState(rosterCache?.endDate || today);
+  const initialRange = rosterCache
+    ? { start_date: rosterCache.startDate, end_date: rosterCache.endDate }
+    : rangeForPeriod('today');
+  const [period, setPeriod] = useState<AttendancePeriod>(rosterCache?.period || 'today');
+  const [startDate, setStartDate] = useState(initialRange.start_date);
+  const [endDate, setEndDate] = useState(initialRange.end_date);
   const [rows, setRows] = useState<AttendanceStatusRow[]>(rosterCache?.rows || []);
   const [timezone, setTimezone] = useState(rosterCache?.timezone || 'Asia/Kolkata');
   const [message, setMessage] = useState(
@@ -289,31 +282,42 @@ export function AttendanceScreen({ active = true }: { active?: boolean }) {
   /** Value applied to the roster — set only when a dropdown option is chosen. */
   const [filterSelected, setFilterSelected] = useState('');
   const loadedRef = React.useRef(!!rosterCache?.rows?.length);
+  const periodRef = React.useRef(period);
+  periodRef.current = period;
 
   const rangeLabel = useMemo(() => {
-    if (!startDate) return 'today';
-    if (!endDate || endDate === startDate) return startDate;
-    return `${startDate} → ${endDate}`;
-  }, [startDate, endDate]);
+    const label = periodLabel(period);
+    if (!startDate) return label.toLowerCase();
+    if (!endDate || endDate === startDate) return `${label} (${startDate})`;
+    return `${label} (${startDate} → ${endDate})`;
+  }, [period, startDate, endDate]);
 
   const load = useCallback(
     async (
       range: { start_date: string; end_date: string } = { start_date: startDate, end_date: endDate },
-      opts?: { silent?: boolean },
+      opts?: { silent?: boolean; period?: AttendancePeriod },
     ) => {
       try {
         if (!opts?.silent || !rosterCache?.rows?.length) setBusy(true);
         let start = range.start_date || todayIst();
         let end = range.end_date || start;
         if (end < start) end = start;
+        const nextPeriod = opts?.period ?? periodRef.current;
         const res = await api.attendanceStatus({ start_date: start, end_date: end });
         const nextRows = res.employees || [];
         const nextStart = res.start_date || res.date || start;
         const nextEnd = res.end_date || res.date || end;
         const nextTz = res.timezone || 'Asia/Kolkata';
-        rosterCache = { startDate: nextStart, endDate: nextEnd, timezone: nextTz, rows: nextRows };
+        rosterCache = {
+          period: nextPeriod,
+          startDate: nextStart,
+          endDate: nextEnd,
+          timezone: nextTz,
+          rows: nextRows,
+        };
         loadedRef.current = true;
         setRows(nextRows);
+        setPeriod(nextPeriod);
         setStartDate(nextStart);
         setEndDate(nextEnd);
         if (res.timezone) setTimezone(res.timezone);
@@ -335,12 +339,12 @@ export function AttendanceScreen({ active = true }: { active?: boolean }) {
     if (loadedRef.current && rosterCache?.rows?.length) {
       loadRef.current(
         { start_date: rosterCache.startDate, end_date: rosterCache.endDate },
-        { silent: true },
+        { silent: true, period: rosterCache.period },
       );
       return;
     }
-    const day = todayIst();
-    loadRef.current({ start_date: day, end_date: day });
+    const range = rangeForPeriod('today');
+    loadRef.current(range, { period: 'today' });
   }, [active]);
 
   const clearPersonFilter = useCallback(() => {
@@ -436,17 +440,13 @@ export function AttendanceScreen({ active = true }: { active?: boolean }) {
   const filterPlaceholder =
     filterKind === 'reporting_manager' ? 'Search reporting manager…' : 'Search employee…';
 
-  const onStartChange = (next: string) => {
-    setStartDate(next);
-    const end = endDate < next ? next : endDate;
-    if (end !== endDate) setEndDate(end);
-    load({ start_date: next, end_date: end });
-  };
-
-  const onEndChange = (next: string) => {
-    const end = next < startDate ? startDate : next;
-    setEndDate(end);
-    load({ start_date: startDate, end_date: end });
+  const onPeriodChange = (next: AttendancePeriod) => {
+    if (next === period) return;
+    const range = rangeForPeriod(next);
+    setPeriod(next);
+    setStartDate(range.start_date);
+    setEndDate(range.end_date);
+    load(range, { period: next });
   };
 
   return (
@@ -612,15 +612,9 @@ export function AttendanceScreen({ active = true }: { active?: boolean }) {
         </View>
       )}
 
-      <View style={styles.dateRangeRow}>
-        <View style={styles.dateRangeField}>
-          <Text style={styles.dateCaption}>Start date</Text>
-          <DatePickerField label="Start date" value={startDate} onChange={onStartChange} />
-        </View>
-        <View style={styles.dateRangeField}>
-          <Text style={styles.dateCaption}>End date</Text>
-          <DatePickerField label="End date" value={endDate} onChange={onEndChange} />
-        </View>
+      <View style={styles.periodRow}>
+        <Text style={styles.periodCaption}>Attendance Period</Text>
+        <PeriodDropdown value={period} onChange={onPeriodChange} />
       </View>
 
       {!layout.stackRows && (
@@ -640,7 +634,10 @@ export function AttendanceScreen({ active = true }: { active?: boolean }) {
         refreshControl={
           <RefreshControl
             refreshing={busy}
-            onRefresh={() => load({ start_date: startDate, end_date: endDate })}
+            onRefresh={() => {
+              const range = rangeForPeriod(period);
+              load(range, { period });
+            }}
             tintColor={THEME.cyan}
           />
         }
@@ -815,9 +812,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
-  dateRangeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 14 },
-  dateRangeField: { flex: 1, minWidth: 150 },
-  dateCaption: {
+  periodRow: { marginBottom: 14 },
+  periodCaption: {
     color: THEME.textMuted,
     fontSize: 12,
     fontWeight: '800',
@@ -825,10 +821,10 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginBottom: 6,
   },
-  dateField: {
+  periodField: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-start',
+    justifyContent: 'space-between',
     gap: 10,
     minHeight: TAP_TARGET,
     borderWidth: 1,
@@ -838,41 +834,35 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     backgroundColor: 'rgba(15, 23, 42, 0.6)',
   },
-  dateLabel: { flex: 1, color: '#fff', fontWeight: '700', fontSize: 14 },
-  calIcon: { fontSize: 16 },
-  calBackdrop: {
+  periodFieldText: { flex: 1, color: '#fff', fontWeight: '700', fontSize: 14 },
+  periodChevron: { color: THEME.cyan, fontWeight: '800', fontSize: 14 },
+  periodBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(4, 10, 22, 0.8)',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 16,
+    padding: 24,
   },
-  calendar: {
-    maxWidth: '100%',
+  periodMenu: {
+    width: '100%',
+    maxWidth: 360,
     backgroundColor: THEME.cardSolid,
-    borderRadius: 18,
-    padding: 14,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: THEME.border,
+    overflow: 'hidden',
   },
-  calHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-  calTitle: { flex: 1, textAlign: 'center', color: '#fff', fontWeight: '800', fontSize: 15 },
-  calNav: {
-    minWidth: 44,
-    minHeight: 38,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 8,
-    alignItems: 'center',
+  periodOption: {
+    minHeight: TAP_TARGET,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255, 255, 255, 0.06)',
     justifyContent: 'center',
-    paddingHorizontal: 12,
   },
-  calNavText: { color: THEME.cyan, fontWeight: '800', fontSize: 18 },
-  calGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  calDow: { width: '14.28%', textAlign: 'center', color: THEME.textMuted, fontSize: 11, fontWeight: '800', paddingVertical: 6 },
-  calDay: { width: '14.28%', minHeight: 40, paddingVertical: 8, alignItems: 'center', justifyContent: 'center', borderRadius: 8 },
-  calDayOn: { backgroundColor: THEME.cyan },
-  calDayText: { color: THEME.textSecondary, fontWeight: '700' },
-  calDayTextOn: { color: '#fff', fontWeight: '800' },
+  periodOptionOn: { backgroundColor: 'rgba(6, 182, 212, 0.18)' },
+  periodOptionText: { color: THEME.textSecondary, fontWeight: '700', fontSize: 15 },
+  periodOptionTextOn: { color: '#fff' },
   head: { flexDirection: 'row', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: THEME.border },
   headText: { color: THEME.textMuted, fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
   listContent: { paddingBottom: 16 },
