@@ -594,7 +594,6 @@ export function AttendanceScreen({ active = true }: { active?: boolean }) {
                     onPress={() => {
                       setFilterSelected(name);
                       setFilterDraft(name);
-                      setShowFilter(false);
                     }}
                     accessibilityRole="button"
                     accessibilityState={{ selected: on }}
