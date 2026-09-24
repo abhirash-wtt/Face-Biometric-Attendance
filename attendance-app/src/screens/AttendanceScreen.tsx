@@ -284,7 +284,10 @@ export function AttendanceScreen({ active = true }: { active?: boolean }) {
   const [showFilter, setShowFilter] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterKind, setFilterKind] = useState<PersonFilterKind>('reporting_manager');
-  const [filterQuery, setFilterQuery] = useState('');
+  /** Text typed in the filter field — only narrows the dropdown. */
+  const [filterDraft, setFilterDraft] = useState('');
+  /** Value applied to the roster — set only when a dropdown option is chosen. */
+  const [filterSelected, setFilterSelected] = useState('');
   const loadedRef = React.useRef(!!rosterCache?.rows?.length);
 
   const rangeLabel = useMemo(() => {
@@ -340,32 +343,37 @@ export function AttendanceScreen({ active = true }: { active?: boolean }) {
     loadRef.current({ start_date: day, end_date: day });
   }, [active]);
 
+  const clearPersonFilter = useCallback(() => {
+    setFilterDraft('');
+    setFilterSelected('');
+  }, []);
+
   const personFilterOptions = useMemo(() => {
     const names =
       filterKind === 'reporting_manager'
         ? uniqueSortedNames(rows.map((r) => r.reporting_manager))
         : uniqueSortedNames(rows.map((r) => r.display_name));
-    const q = filterQuery.trim().toLowerCase();
+    const q = filterDraft.trim().toLowerCase();
     if (!q) return names;
     return names.filter((n) => n.toLowerCase().includes(q));
-  }, [rows, filterKind, filterQuery]);
+  }, [rows, filterKind, filterDraft]);
 
   const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    const personQ = filterQuery.trim().toLowerCase();
+    const personQ = filterSelected.trim().toLowerCase();
     return rows.filter((r) => {
       if (personQ) {
         const hay =
           filterKind === 'reporting_manager'
             ? (r.reporting_manager || '').toLowerCase()
             : r.display_name.toLowerCase();
-        if (!hay.includes(personQ)) return false;
+        if (hay !== personQ) return false;
       }
       if (!q) return true;
       const hay = `${r.display_name} ${r.employee_code} ${r.email || ''} ${r.role || ''} ${r.date || ''}`.toLowerCase();
       return hay.includes(q);
     });
-  }, [rows, searchQuery, filterKind, filterQuery]);
+  }, [rows, searchQuery, filterKind, filterSelected]);
 
   const { totalCount, presentCount, halfDayCount, absentCount } = useMemo(() => {
     let present = 0;
@@ -424,7 +432,7 @@ export function AttendanceScreen({ active = true }: { active?: boolean }) {
     }
   };
 
-  const filterActive = !!filterQuery.trim();
+  const filterActive = !!filterSelected.trim();
   const filterPlaceholder =
     filterKind === 'reporting_manager' ? 'Search reporting manager…' : 'Search employee…';
 
@@ -499,7 +507,7 @@ export function AttendanceScreen({ active = true }: { active?: boolean }) {
             ]}
             numberOfLines={1}
           >
-            {filterActive ? filterQuery.trim() : 'Filter'}
+            {filterActive ? filterSelected.trim() : 'Filter'}
           </Text>
           <View style={styles.filterChevronWrap} pointerEvents="none">
             <Text style={[styles.filterChevron, (showFilter || filterActive) && styles.actionBtnTextOn]}>
@@ -537,7 +545,7 @@ export function AttendanceScreen({ active = true }: { active?: boolean }) {
                   onPress={() => {
                     if (filterKind === opt.id) return;
                     setFilterKind(opt.id);
-                    setFilterQuery('');
+                    clearPersonFilter();
                   }}
                   accessibilityRole="button"
                   accessibilityState={{ selected: on }}
@@ -550,8 +558,8 @@ export function AttendanceScreen({ active = true }: { active?: boolean }) {
           </View>
           <View style={styles.filterInputRow}>
             <TextInput
-              value={filterQuery}
-              onChangeText={setFilterQuery}
+              value={filterDraft}
+              onChangeText={setFilterDraft}
               placeholder={filterPlaceholder}
               placeholderTextColor={THEME.textSubtle}
               style={styles.filterInput}
@@ -561,9 +569,9 @@ export function AttendanceScreen({ active = true }: { active?: boolean }) {
               returnKeyType="search"
               accessibilityLabel={filterPlaceholder}
             />
-            {filterActive && (
+            {(filterActive || !!filterDraft.trim()) && (
               <Pressable
-                onPress={() => setFilterQuery('')}
+                onPress={clearPersonFilter}
                 accessibilityRole="button"
                 accessibilityLabel="Clear filter"
                 style={styles.filterClearBtn}
@@ -579,11 +587,15 @@ export function AttendanceScreen({ active = true }: { active?: boolean }) {
           >
             {personFilterOptions.length ? (
               personFilterOptions.map((name) => {
-                const on = filterQuery.trim().toLowerCase() === name.toLowerCase();
+                const on = filterSelected.trim().toLowerCase() === name.toLowerCase();
                 return (
                   <Pressable
                     key={name}
-                    onPress={() => setFilterQuery(name)}
+                    onPress={() => {
+                      setFilterSelected(name);
+                      setFilterDraft(name);
+                      setShowFilter(false);
+                    }}
                     accessibilityRole="button"
                     accessibilityState={{ selected: on }}
                     style={[styles.filterOption, on && styles.filterOptionOn]}

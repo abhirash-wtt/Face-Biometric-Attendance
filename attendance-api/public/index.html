@@ -2538,6 +2538,8 @@
     });
 
     let rosterPersonFilterKind = 'reporting_manager';
+    /** Applied person filter — set only when a dropdown option is chosen. */
+    let rosterPersonFilterSelected = '';
     let rosterLoadInFlight = null;
 
     function rosterCacheKey() {
@@ -2610,8 +2612,13 @@
       return out.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
     }
 
-    function rosterPersonFilterQuery() {
+    function rosterPersonFilterDraft() {
       return (($('rosterPersonFilter') && $('rosterPersonFilter').value) || '').trim();
+    }
+
+    function clearPersonFilter() {
+      rosterPersonFilterSelected = '';
+      if ($('rosterPersonFilter')) $('rosterPersonFilter').value = '';
     }
 
     function personFilterOptions() {
@@ -2620,21 +2627,21 @@
           rosterPersonFilterKind === 'reporting_manager' ? r.reporting_manager : r.display_name,
         ),
       );
-      const q = rosterPersonFilterQuery().toLowerCase();
+      const q = rosterPersonFilterDraft().toLowerCase();
       if (!q) return names;
       return names.filter((n) => n.toLowerCase().includes(q));
     }
 
     function filteredRosterRows() {
       const q = (($('rosterSearch') && $('rosterSearch').value) || '').trim().toLowerCase();
-      const personQ = rosterPersonFilterQuery().toLowerCase();
+      const personQ = (rosterPersonFilterSelected || '').trim().toLowerCase();
       return state.rosterRows.filter((r) => {
         if (personQ) {
           const hay =
             rosterPersonFilterKind === 'reporting_manager'
               ? String(r.reporting_manager || '').toLowerCase()
               : String(r.display_name || '').toLowerCase();
-          if (!hay.includes(personQ)) return false;
+          if (hay !== personQ) return false;
         }
         if (!q) return true;
         const hay = ((r.display_name || '') + ' ' + (r.employee_code || '') + ' ' + (r.email || '') + ' ' + (r.role || '')).toLowerCase();
@@ -2652,7 +2659,7 @@
       const list = $('rosterFilterOptions');
       if (!list) return;
       const options = personFilterOptions();
-      const selected = rosterPersonFilterQuery().toLowerCase();
+      const selected = (rosterPersonFilterSelected || '').trim().toLowerCase();
       list.innerHTML = options.length
         ? options.map((name) => {
             const on = selected && selected === name.toLowerCase();
@@ -2686,15 +2693,16 @@
     function syncRosterToolButtons() {
       const searchOpen = !$('rosterSearchPanel').classList.contains('hidden');
       const filterOpen = !$('rosterFilterPanel').classList.contains('hidden');
-      const personQ = rosterPersonFilterQuery();
+      const personQ = (rosterPersonFilterSelected || '').trim();
       const filterActive = !!personQ;
+      const draft = rosterPersonFilterDraft();
       $('rosterSearchBtn').classList.toggle('on', searchOpen);
       $('rosterSearchBtn').setAttribute('aria-pressed', searchOpen ? 'true' : 'false');
       $('rosterFilterBtn').classList.toggle('on', filterOpen || filterActive);
       $('rosterFilterBtn').setAttribute('aria-pressed', (filterOpen || filterActive) ? 'true' : 'false');
       $('rosterFilterLabel').textContent = filterActive ? personQ : 'Filter';
       $('rosterFilterChevron').textContent = filterOpen ? '▴' : '▾';
-      $('rosterFilterClear').classList.toggle('hidden', !filterActive);
+      $('rosterFilterClear').classList.toggle('hidden', !(filterActive || !!draft));
       Array.from($('rosterFilterKindRow').querySelectorAll('button[data-kind]')).forEach((b) => {
         b.classList.toggle('on', (b.getAttribute('data-kind') || '') === rosterPersonFilterKind);
       });
@@ -2775,11 +2783,15 @@
     };
     let rosterPersonFilterTimer = 0;
     $('rosterPersonFilter').oninput = () => {
+      // Typing only narrows the dropdown — roster filters after an option is selected.
       clearTimeout(rosterPersonFilterTimer);
-      rosterPersonFilterTimer = setTimeout(() => renderRoster(), 120);
+      rosterPersonFilterTimer = setTimeout(() => {
+        renderPersonFilterOptions();
+        syncRosterToolButtons();
+      }, 120);
     };
     $('rosterFilterClear').onclick = () => {
-      $('rosterPersonFilter').value = '';
+      clearPersonFilter();
       renderRoster();
       $('rosterPersonFilter').focus();
     };
@@ -2789,14 +2801,17 @@
       const next = btn.getAttribute('data-kind') || 'employee';
       if (next === rosterPersonFilterKind) return;
       rosterPersonFilterKind = next;
-      $('rosterPersonFilter').value = '';
+      clearPersonFilter();
       renderRoster();
       $('rosterPersonFilter').focus();
     };
     $('rosterFilterOptions').onclick = (e) => {
       const btn = e.target.closest('button[data-name]');
       if (!btn) return;
-      $('rosterPersonFilter').value = btn.getAttribute('data-name') || '';
+      const name = btn.getAttribute('data-name') || '';
+      rosterPersonFilterSelected = name;
+      $('rosterPersonFilter').value = name;
+      $('rosterFilterPanel').classList.add('hidden');
       renderRoster();
     };
 
