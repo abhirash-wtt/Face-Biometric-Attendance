@@ -809,6 +809,8 @@
       pending: null,
       queue: JSON.parse(localStorage.getItem('offline_queue') || '[]'),
       authMode: 'login',
+      rosterLoadedKey: '',
+      rosterRows: [],
     };
     let refreshInFlight = null;
 
@@ -963,6 +965,8 @@
       localStorage.removeItem('access_token');
       localStorage.removeItem('refresh_token');
       localStorage.removeItem('auth_user');
+      state.rosterLoadedKey = '';
+      state.rosterRows = [];
     }
     async function refreshSession() {
       const rt = state.refreshToken || localStorage.getItem('refresh_token');
@@ -1042,6 +1046,8 @@
         if (camHidden) stopCam();
         else if (!camActive()) ensureCam(false);
       }
+      // Admin/BU land on Attendance via applyAccess without clicking the tab — load roster then.
+      ensureAttendanceData(false);
     }
     function gpsErrorMessage(code, secureContext) {
       if (secureContext) {
@@ -1795,10 +1801,7 @@
         else if (!camActive()) ensureCam(false);
         window.scrollTo({ top: 0, behavior: 'smooth' });
         if (state.tab === 'enroll') prepareEnrollTab();
-        if (state.tab === 'attendance') {
-          if (!$('rosterDate').value) setRosterDate(todayYmd(), false);
-          loadRoster().catch(() => {});
-        }
+        if (state.tab === 'attendance') ensureAttendanceData(true);
         if (state.tab === 'wfh') {
           syncRegFormCopy();
           setWfhDate($('wfhDate').value || todayYmd());
@@ -2386,24 +2389,49 @@
       if (e.key === 'Escape') closeAllCalendars();
     });
 
-    async function loadRoster() {
-      const date = $('rosterDate').value;
-      status('rosterStatus', 'Loading…');
-      try {
-        const res = await api('/attendance/status' + (date ? ('?date=' + encodeURIComponent(date)) : ''));
-        if (res.date) setRosterDate(res.date, false);
-        $('rosterMeta').textContent = 'Times in ' + (res.timezone || 'Asia/Kolkata') + ' for ' + (res.date || '') + '.';
-        rosterRows = res.employees || [];
-        renderRoster();
-      } catch (e) {
-        rosterRows = [];
-        renderRoster();
-        status('rosterStatus', e.message || 'Unable to load attendance');
-      }
+    let rosterRoleFilter = '';
+    let rosterLoadInFlight = null;
+
+    function rosterCacheKey() {
+      return (($('rosterDate') && $('rosterDate').value) || '') + '|' + (state.token || '').slice(-16);
     }
 
-    let rosterRows = [];
-    let rosterRoleFilter = '';
+    /** Load roster when Attendance is active. force=true refreshes even if cached. */
+    function ensureAttendanceData(force) {
+      if (state.tab !== 'attendance') return;
+      if (!canAccessAttendance(jwtRole())) return;
+      if ($('rosterDate') && !$('rosterDate').value) setRosterDate(todayYmd(), false);
+      if (!force && state.rosterLoadedKey === rosterCacheKey() && state.rosterRows.length) {
+        renderRoster();
+        return;
+      }
+      loadRoster().catch(() => {});
+    }
+
+    async function loadRoster() {
+      if (rosterLoadInFlight) return rosterLoadInFlight;
+      const date = $('rosterDate').value;
+      status('rosterStatus', state.rosterRows.length ? 'Refreshing…' : 'Loading…');
+      rosterLoadInFlight = (async () => {
+        try {
+          if (!state.rosterRows.length) renderRoster();
+          const res = await api('/attendance/status' + (date ? ('?date=' + encodeURIComponent(date)) : ''));
+          if (res.date) setRosterDate(res.date, false);
+          $('rosterMeta').textContent = 'Times in ' + (res.timezone || 'Asia/Kolkata') + ' for ' + (res.date || '') + '.';
+          state.rosterRows = res.employees || [];
+          state.rosterLoadedKey = rosterCacheKey();
+          renderRoster();
+        } catch (e) {
+          state.rosterRows = [];
+          state.rosterLoadedKey = '';
+          renderRoster();
+          status('rosterStatus', e.message || 'Unable to load attendance');
+        } finally {
+          rosterLoadInFlight = null;
+        }
+      })();
+      return rosterLoadInFlight;
+    }
 
     function matchesRoleFilter(role, filter) {
       if (!filter) return true;
@@ -2414,7 +2442,7 @@
 
     function filteredRosterRows() {
       const q = (($('rosterSearch') && $('rosterSearch').value) || '').trim().toLowerCase();
-      return rosterRows.filter((r) => {
+      return state.rosterRows.filter((r) => {
         if (!matchesRoleFilter(r.role, rosterRoleFilter)) return false;
         if (!q) return true;
         const hay = ((r.display_name || '') + ' ' + (r.employee_code || '') + ' ' + (r.email || '') + ' ' + (r.role || '')).toLowerCase();
@@ -2438,8 +2466,8 @@
             const pill = rosterStatusClass(r.status);
             return '<tr><td data-label="Employee">' + who + email + role + '</td><td data-label="Clock in">' + formatPunch(r.clock_in) + '</td><td data-label="Clock out">' + formatPunch(r.clock_out) + '</td><td data-label="Status"><span class="pill ' + pill + '">' + esc(r.status) + '</span></td><td data-label="Reporting Manager">' + esc(r.reporting_manager || '—') + '</td><td data-label="BU Owner">' + esc(r.bu_owner || '—') + '</td></tr>';
           }).join('')
-        : '<tr><td colspan="6" class="muted">No employees found</td></tr>';
-      const suffix = rows.length !== rosterRows.length ? ' of ' + rosterRows.length : '';
+        : '<tr><td colspan="6" class="muted">' + (rosterLoadInFlight ? 'Loading…' : 'No employees found') + '</td></tr>';
+      const suffix = rows.length !== state.rosterRows.length ? ' of ' + state.rosterRows.length : '';
       status('rosterStatus', rows.length + ' employee' + (rows.length === 1 ? '' : 's') + suffix);
       syncRosterToolButtons();
     }
@@ -2512,7 +2540,11 @@
       syncRosterToolButtons();
     };
     $('rosterExportBtn').onclick = () => exportRosterCsv();
-    $('rosterSearch').oninput = () => renderRoster();
+    let rosterSearchTimer = 0;
+    $('rosterSearch').oninput = () => {
+      clearTimeout(rosterSearchTimer);
+      rosterSearchTimer = setTimeout(() => renderRoster(), 120);
+    };
     $('rosterFilterRow').onclick = (e) => {
       const btn = e.target.closest('button[data-role]');
       if (!btn) return;
@@ -2852,7 +2884,8 @@
       applyAccess();
     });
     rollPrompt();
-    ensureCam(false);
+    // Do not open the camera behind Attendance/WFH/Settings — it delays first paint.
+    if (!cameraPanelHidden()) ensureCam(false);
   </script>
 </body>
 </html>

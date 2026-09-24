@@ -211,14 +211,18 @@ export class AttendanceService {
   async roster(date?: string) {
     const day = parseRosterDate(date);
     const { from, to } = dayBoundsIst(day);
-    const logs = await this.repo
-      .createQueryBuilder('a')
-      .where('a.event_time >= :from AND a.event_time <= :to', { from, to })
-      .orderBy('a.event_time', 'ASC')
-      .getMany();
-    const employees = await this.employees.findAll();
-    const users = await this.users.find();
-    const markedPresentIds = new Set(await this.regularization.listApprovedPresentEmployeeIds(day));
+    const [logs, employees, users, markedPresentList] = await Promise.all([
+      this.repo
+        .createQueryBuilder('a')
+        .select(['a.id', 'a.employee_id', 'a.type', 'a.event_time'])
+        .where('a.event_time >= :from AND a.event_time <= :to', { from, to })
+        .orderBy('a.event_time', 'ASC')
+        .getMany(),
+      this.employees.listForRoster(),
+      this.users.find({ select: ['id', 'employee_id', 'email', 'role'] }),
+      this.regularization.listApprovedPresentEmployeeIds(day),
+    ]);
+    const markedPresentIds = new Set(markedPresentList);
     const userByEmployee = new Map(
       users.filter((u) => u.employee_id).map((u) => [u.employee_id as string, u]),
     );

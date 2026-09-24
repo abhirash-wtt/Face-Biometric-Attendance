@@ -15,6 +15,25 @@ import { THEME } from './theme/colors';
 
 type Tab = 'kiosk' | 'enroll' | 'attendance' | 'wfh' | 'settings';
 
+function TabPanel({
+  active,
+  children,
+}: {
+  active: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <View
+      style={active ? styles.panel : styles.panelHidden}
+      pointerEvents={active ? 'auto' : 'none'}
+      accessibilityElementsHidden={!active}
+      importantForAccessibility={active ? 'yes' : 'no-hide-descendants'}
+    >
+      {children}
+    </View>
+  );
+}
+
 function Shell() {
   const [tab, setTab] = useState<Tab>('kiosk');
   const [role, setRole] = useState<AppRole>('');
@@ -24,20 +43,16 @@ function Shell() {
   const layout = useLayout();
 
   const refreshRole = useCallback(async () => {
-    const next = await storage.getRole();
-    const wfh = await storage.canUseRegularization();
-    const enroll = await storage.canEnroll();
-    const adminLike = storage.isAdminLike(next);
-    const canAttendance = storage.canAccessAttendance(next);
-    setRole(next);
-    setCanWfh(wfh);
-    setCanEnroll(enroll);
+    const snap = await storage.getAccessSnapshot();
+    setRole(snap.role);
+    setCanWfh(snap.canWfh);
+    setCanEnroll(snap.canEnroll);
     setTab((current) => {
       // Admin/BU do not use kiosk; send them to a management tab.
-      if (adminLike && current === 'kiosk') return 'attendance';
-      if (current === 'attendance' && !canAttendance) return 'kiosk';
-      if (!enroll && current === 'enroll') return canAttendance ? 'attendance' : 'kiosk';
-      if (!wfh && current === 'wfh') return canAttendance ? 'attendance' : 'kiosk';
+      if (snap.adminLike && current === 'kiosk') return 'attendance';
+      if (current === 'attendance' && !snap.canAttendance) return 'kiosk';
+      if (!snap.canEnroll && current === 'enroll') return snap.canAttendance ? 'attendance' : 'kiosk';
+      if (!snap.canWfh && current === 'wfh') return snap.canAttendance ? 'attendance' : 'kiosk';
       return current;
     });
   }, []);
@@ -97,11 +112,30 @@ function Shell() {
           },
         ]}
       >
-        {tab === 'kiosk' && !storage.isAdminLike(role) && <KioskScreen />}
-        {tab === 'enroll' && canEnroll && <EnrollScreen />}
-        {tab === 'attendance' && canAttendance && <AttendanceScreen />}
-        {tab === 'wfh' && canWfh && <RegularizationScreen role={role} />}
-        {tab === 'settings' && <SettingsScreen onAuthChange={refreshRole} />}
+        {/* Keep screens mounted so Attendance does not remount/refetch on every tab switch. */}
+        {!adminLike && (
+          <TabPanel active={tab === 'kiosk'}>
+            <KioskScreen />
+          </TabPanel>
+        )}
+        {canEnroll && (
+          <TabPanel active={tab === 'enroll'}>
+            <EnrollScreen />
+          </TabPanel>
+        )}
+        {canAttendance && (
+          <TabPanel active={tab === 'attendance'}>
+            <AttendanceScreen active={tab === 'attendance'} />
+          </TabPanel>
+        )}
+        {canWfh && (
+          <TabPanel active={tab === 'wfh'}>
+            <RegularizationScreen role={role} />
+          </TabPanel>
+        )}
+        <TabPanel active={tab === 'settings'}>
+          <SettingsScreen onAuthChange={refreshRole} />
+        </TabPanel>
       </View>
       <View
         style={[
@@ -187,6 +221,16 @@ const styles = StyleSheet.create({
   },
   roleText: { color: THEME.cyan, fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
   body: { flex: 1 },
+  panel: { flex: 1 },
+  panelHidden: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    opacity: 0,
+    zIndex: -1,
+  },
   tabs: {
     flexDirection: 'row',
     gap: 4,
@@ -212,4 +256,3 @@ const styles = StyleSheet.create({
   tabText: { color: THEME.textMuted, fontWeight: '700' },
   tabTextOn: { color: '#fff', fontWeight: '800' },
 });
-

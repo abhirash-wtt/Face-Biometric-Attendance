@@ -58,6 +58,14 @@ export class EmployeesService {
     return this.withEnrollment(filtered);
   }
 
+  /** Lightweight employee list for attendance roster — no face enrollment join. */
+  async listForRoster() {
+    return this.repo.find({
+      select: ['id', 'code', 'display_name', 'reporting_manager_id', 'bu_owner_id'],
+      order: { code: 'ASC' },
+    });
+  }
+
   async get(id: string) {
     const emp = await this.repo.findOne({ where: { id } });
     if (!emp) throw new NotFoundException('Employee not found');

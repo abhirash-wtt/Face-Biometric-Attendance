@@ -16,9 +16,11 @@ describe('AttendanceService - clock-out replacement & duplicate handling', () =>
 
   beforeEach(() => {
     mockQueryBuilder = {
+      select: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
       getOne: jest.fn(),
+      getMany: jest.fn().mockResolvedValue([]),
     };
 
     repo = {
@@ -27,10 +29,14 @@ describe('AttendanceService - clock-out replacement & duplicate handling', () =>
       create: jest.fn((data) => ({ id: 'log-new', ...data })),
       save: jest.fn(async (data) => data),
     };
-    users = { find: jest.fn() };
+    users = { find: jest.fn().mockResolvedValue([]) };
     sites = { assertGpsInside: jest.fn() };
     shifts = { noteForEvent: jest.fn() };
-    employees = { get: jest.fn().mockResolvedValue({ id: 'emp-1', working_mode: 'office' }) };
+    employees = {
+      get: jest.fn().mockResolvedValue({ id: 'emp-1', working_mode: 'office' }),
+      listForRoster: jest.fn().mockResolvedValue([]),
+      findAll: jest.fn(),
+    };
     storage = { put: jest.fn() };
     config = { get: jest.fn().mockReturnValue(60) };
     recognition = { verify: jest.fn() };
@@ -50,6 +56,35 @@ describe('AttendanceService - clock-out replacement & duplicate handling', () =>
       recognition,
       regularization,
     );
+  });
+
+  it('loads roster without enrollment-heavy findAll', async () => {
+    employees.listForRoster.mockResolvedValue([
+      {
+        id: 'emp-1',
+        code: 'E1',
+        display_name: 'Ada',
+        reporting_manager_id: null,
+        bu_owner_id: null,
+      },
+    ]);
+    users.find.mockResolvedValue([{ id: 'u1', employee_id: 'emp-1', email: 'ada@ex.com', role: 'employee' }]);
+    mockQueryBuilder.getMany.mockResolvedValue([]);
+
+    const result = await service.roster('2026-03-20');
+
+    expect(employees.listForRoster).toHaveBeenCalled();
+    expect(employees.findAll).not.toHaveBeenCalled();
+    expect(users.find).toHaveBeenCalledWith({ select: ['id', 'employee_id', 'email', 'role'] });
+    expect(mockQueryBuilder.select).toHaveBeenCalled();
+    expect(result.employees).toHaveLength(1);
+    expect(result.employees[0]).toMatchObject({
+      employee_id: 'emp-1',
+      employee_code: 'E1',
+      display_name: 'Ada',
+      email: 'ada@ex.com',
+      status: 'Absent',
+    });
   });
 
   it('saves first clock-out of the day normally', async () => {

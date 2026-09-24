@@ -30,11 +30,18 @@ const defaultSettings: Settings = {
 /** Roles with the same privileges as employee (own face / own clock-in only). */
 const EMPLOYEE_LIKE_ROLES: ReadonlySet<string> = new Set(['employee', 'manager', 'hr']);
 
+/** In-memory caches so attendance loads do not wait on AsyncStorage every time. */
+let tokenCache: string | null | undefined;
+let settingsCache: Settings | undefined;
+
 export const storage = {
   async getToken() {
-    return AsyncStorage.getItem(TOKEN_KEY);
+    if (tokenCache !== undefined) return tokenCache;
+    tokenCache = await AsyncStorage.getItem(TOKEN_KEY);
+    return tokenCache;
   },
   async setToken(token: string | null) {
+    tokenCache = token;
     if (token) await AsyncStorage.setItem(TOKEN_KEY, token);
     else await AsyncStorage.removeItem(TOKEN_KEY);
   },
@@ -114,11 +121,29 @@ export const storage = {
     const token = await this.getToken();
     return this.isAccountToken(token) && !!this.roleFromToken(token);
   },
+  /** Single AsyncStorage read for role + capability flags (used on app start / auth change). */
+  async getAccessSnapshot() {
+    const token = await this.getToken();
+    const role = this.roleFromToken(token);
+    const account = this.isAccountToken(token);
+    return {
+      role,
+      canWfh: account && !!role,
+      canEnroll:
+        account &&
+        (this.canEnrollAnyEmployee(role) || this.isEmployeeLike(role) || role === 'bu'),
+      canAttendance: this.canAccessAttendance(role),
+      adminLike: this.isAdminLike(role),
+    };
+  },
   async getSettings(): Promise<Settings> {
+    if (settingsCache) return settingsCache;
     const raw = await AsyncStorage.getItem(SETTINGS_KEY);
-    return raw ? { ...defaultSettings, ...JSON.parse(raw) } : defaultSettings;
+    settingsCache = raw ? { ...defaultSettings, ...JSON.parse(raw) } : { ...defaultSettings };
+    return settingsCache;
   },
   async setSettings(settings: Settings) {
+    settingsCache = settings;
     await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   },
   async getQueue(): Promise<QueuedEvent[]> {

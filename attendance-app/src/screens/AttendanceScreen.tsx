@@ -170,7 +170,14 @@ function DatePickerField({
   );
 }
 
-function StatusPill({ status }: { status: string }) {
+/** Survives tab switches so returning to Attendance paints instantly. */
+let rosterCache: {
+  date: string;
+  timezone: string;
+  rows: AttendanceStatusRow[];
+} | null = null;
+
+const StatusPill = React.memo(function StatusPill({ status }: { status: string }) {
   const tone =
     status === 'Present' ? 'present' : status === 'Half Day' ? 'halfDay' : 'absent';
   return (
@@ -178,28 +185,106 @@ function StatusPill({ status }: { status: string }) {
       <Text style={[styles.pillText, styles[`${tone}Text`]]}>{status.toUpperCase()}</Text>
     </View>
   );
-}
+});
 
-export function AttendanceScreen() {
+const AttendanceRow = React.memo(function AttendanceRow({
+  item,
+  stackRows,
+}: {
+  item: AttendanceStatusRow;
+  stackRows: boolean;
+}) {
+  if (stackRows) {
+    return (
+      <View style={styles.card}>
+        <View style={styles.cardHead}>
+          <View style={styles.cardWho}>
+            <Text style={styles.name}>{item.display_name}</Text>
+            <Text style={styles.code}>{item.employee_code}</Text>
+            {!!item.email && (
+              <Text style={styles.email} numberOfLines={1}>
+                {item.email}
+              </Text>
+            )}
+          </View>
+          <StatusPill status={item.status} />
+        </View>
+        <View style={styles.cardTimes}>
+          <View style={styles.cardTime}>
+            <Text style={styles.cardTimeLabel}>Clock in</Text>
+            <Text style={styles.cardTimeValue}>{formatPunch(item.clock_in)}</Text>
+          </View>
+          <View style={styles.cardTime}>
+            <Text style={styles.cardTimeLabel}>Clock out</Text>
+            <Text style={styles.cardTimeValue}>{formatPunch(item.clock_out)}</Text>
+          </View>
+        </View>
+        <View style={styles.cardOrg}>
+          <View style={styles.cardTime}>
+            <Text style={styles.cardTimeLabel}>Reporting Manager</Text>
+            <Text style={styles.cardTimeValue}>{item.reporting_manager || '—'}</Text>
+          </View>
+          <View style={styles.cardTime}>
+            <Text style={styles.cardTimeLabel}>BU Owner</Text>
+            <Text style={styles.cardTimeValue}>{item.bu_owner || '—'}</Text>
+          </View>
+        </View>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.row}>
+      <View style={styles.colName}>
+        <Text style={styles.name}>
+          {item.display_name} ({item.employee_code})
+        </Text>
+        {!!item.email && <Text style={styles.email}>{item.email}</Text>}
+      </View>
+      <Text style={[styles.time, styles.colTime]}>{formatPunch(item.clock_in)}</Text>
+      <Text style={[styles.time, styles.colTime]}>{formatPunch(item.clock_out)}</Text>
+      <View style={styles.colStatus}>
+        <StatusPill status={item.status} />
+      </View>
+      <Text style={[styles.org, styles.colOrg]} numberOfLines={2}>
+        {item.reporting_manager || '—'}
+      </Text>
+      <Text style={[styles.org, styles.colOrg]} numberOfLines={2}>
+        {item.bu_owner || '—'}
+      </Text>
+    </View>
+  );
+});
+
+export function AttendanceScreen({ active = true }: { active?: boolean }) {
   const layout = useLayout();
-  const [date, setDate] = useState(todayIst());
-  const [rows, setRows] = useState<AttendanceStatusRow[]>([]);
-  const [timezone, setTimezone] = useState('Asia/Kolkata');
-  const [message, setMessage] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [date, setDate] = useState(rosterCache?.date || todayIst());
+  const [rows, setRows] = useState<AttendanceStatusRow[]>(rosterCache?.rows || []);
+  const [timezone, setTimezone] = useState(rosterCache?.timezone || 'Asia/Kolkata');
+  const [message, setMessage] = useState(
+    rosterCache?.rows?.length
+      ? `${rosterCache.rows.length} employee${rosterCache.rows.length === 1 ? '' : 's'}`
+      : '',
+  );
+  const [busy, setBusy] = useState(!rosterCache?.rows?.length);
   const [showSearch, setShowSearch] = useState(false);
   const [showFilter, setShowFilter] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('');
+  const loadedRef = React.useRef(!!rosterCache?.rows?.length);
 
-  const load = useCallback(async (queryDate = date) => {
+  const load = useCallback(async (queryDate = date, opts?: { silent?: boolean }) => {
     try {
-      setBusy(true);
+      if (!opts?.silent || !rosterCache?.rows?.length) setBusy(true);
       const res = await api.attendanceStatus(queryDate || undefined);
-      setRows(res.employees || []);
+      const nextRows = res.employees || [];
+      const nextDate = res.date || queryDate;
+      const nextTz = res.timezone || 'Asia/Kolkata';
+      rosterCache = { date: nextDate, timezone: nextTz, rows: nextRows };
+      loadedRef.current = true;
+      setRows(nextRows);
       if (res.date) setDate(res.date);
       if (res.timezone) setTimezone(res.timezone);
-      setMessage(`${(res.employees || []).length} employee${(res.employees || []).length === 1 ? '' : 's'}`);
+      setMessage(`${nextRows.length} employee${nextRows.length === 1 ? '' : 's'}`);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Unable to load attendance');
     } finally {
@@ -207,9 +292,18 @@ export function AttendanceScreen() {
     }
   }, [date]);
 
+  const loadRef = React.useRef(load);
+  loadRef.current = load;
+
   useEffect(() => {
-    load(todayIst());
-  }, []);
+    if (!active) return;
+    if (loadedRef.current && rosterCache?.rows?.length) {
+      // Instant paint from cache; refresh in background.
+      loadRef.current(rosterCache.date || todayIst(), { silent: true });
+      return;
+    }
+    loadRef.current(todayIst());
+  }, [active]);
 
   const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -221,10 +315,29 @@ export function AttendanceScreen() {
     });
   }, [rows, searchQuery, roleFilter]);
 
-  const totalCount = rows.length;
-  const presentCount = rows.filter((r) => r.status === 'Present').length;
-  const halfDayCount = rows.filter((r) => r.status === 'Half Day').length;
-  const absentCount = rows.filter((r) => r.status === 'Absent').length;
+  const { totalCount, presentCount, halfDayCount, absentCount } = useMemo(() => {
+    let present = 0;
+    let halfDay = 0;
+    let absent = 0;
+    for (const r of rows) {
+      if (r.status === 'Present') present += 1;
+      else if (r.status === 'Half Day') halfDay += 1;
+      else absent += 1;
+    }
+    return {
+      totalCount: rows.length,
+      presentCount: present,
+      halfDayCount: halfDay,
+      absentCount: absent,
+    };
+  }, [rows]);
+
+  const renderItem = useCallback(
+    ({ item }: { item: AttendanceStatusRow }) => (
+      <AttendanceRow item={item} stackRows={layout.stackRows} />
+    ),
+    [layout.stackRows],
+  );
 
   const exportCsv = async () => {
     if (!filteredRows.length) {
@@ -382,68 +495,19 @@ export function AttendanceScreen() {
         data={filteredRows}
         keyExtractor={(item) => item.employee_id}
         refreshControl={<RefreshControl refreshing={busy} onRefresh={() => load(date)} tintColor={THEME.cyan} />}
-        ListEmptyComponent={<Text style={styles.empty}>No employees found</Text>}
+        ListEmptyComponent={
+          <Text style={styles.empty}>
+            {busy ? 'Loading attendance…' : 'No employees found'}
+          </Text>
+        }
         contentContainerStyle={styles.listContent}
         indicatorStyle="white"
         persistentScrollbar={false}
-        renderItem={({ item }) =>
-          layout.stackRows ? (
-            <View style={styles.card}>
-              <View style={styles.cardHead}>
-                <View style={styles.cardWho}>
-                  <Text style={styles.name}>{item.display_name}</Text>
-                  <Text style={styles.code}>{item.employee_code}</Text>
-                  {!!item.email && (
-                    <Text style={styles.email} numberOfLines={1}>
-                      {item.email}
-                    </Text>
-                  )}
-                </View>
-                <StatusPill status={item.status} />
-              </View>
-              <View style={styles.cardTimes}>
-                <View style={styles.cardTime}>
-                  <Text style={styles.cardTimeLabel}>Clock in</Text>
-                  <Text style={styles.cardTimeValue}>{formatPunch(item.clock_in)}</Text>
-                </View>
-                <View style={styles.cardTime}>
-                  <Text style={styles.cardTimeLabel}>Clock out</Text>
-                  <Text style={styles.cardTimeValue}>{formatPunch(item.clock_out)}</Text>
-                </View>
-              </View>
-              <View style={styles.cardOrg}>
-                <View style={styles.cardTime}>
-                  <Text style={styles.cardTimeLabel}>Reporting Manager</Text>
-                  <Text style={styles.cardTimeValue}>{item.reporting_manager || '—'}</Text>
-                </View>
-                <View style={styles.cardTime}>
-                  <Text style={styles.cardTimeLabel}>BU Owner</Text>
-                  <Text style={styles.cardTimeValue}>{item.bu_owner || '—'}</Text>
-                </View>
-              </View>
-            </View>
-          ) : (
-            <View style={styles.row}>
-              <View style={styles.colName}>
-                <Text style={styles.name}>
-                  {item.display_name} ({item.employee_code})
-                </Text>
-                {!!item.email && <Text style={styles.email}>{item.email}</Text>}
-              </View>
-              <Text style={[styles.time, styles.colTime]}>{formatPunch(item.clock_in)}</Text>
-              <Text style={[styles.time, styles.colTime]}>{formatPunch(item.clock_out)}</Text>
-              <View style={styles.colStatus}>
-                <StatusPill status={item.status} />
-              </View>
-              <Text style={[styles.org, styles.colOrg]} numberOfLines={2}>
-                {item.reporting_manager || '—'}
-              </Text>
-              <Text style={[styles.org, styles.colOrg]} numberOfLines={2}>
-                {item.bu_owner || '—'}
-              </Text>
-            </View>
-          )
-        }
+        initialNumToRender={16}
+        maxToRenderPerBatch={12}
+        windowSize={7}
+        removeClippedSubviews
+        renderItem={renderItem}
       />
       {!!message && <Text style={styles.status}>{message}</Text>}
     </View>
