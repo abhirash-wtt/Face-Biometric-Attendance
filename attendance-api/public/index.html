@@ -443,10 +443,62 @@
       border-radius:12px; padding:12px 14px; min-height:var(--tap);
       font-size:15px; font-weight:600; font-family:inherit;
     }
-    .roster-filter-row { display:flex; flex-wrap:wrap; gap:8px; }
+    .roster-filter-row { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 10px; }
     .roster-filter-row > button.toggle {
-      flex:1 1 90px; width:auto; margin:0; min-width:0;
+      flex:1 1 120px; width:auto; margin:0; min-width:0;
       padding:10px 12px; font-size:12px;
+    }
+    .roster-filter-input-row { display:flex; gap:8px; align-items:center; margin:0 0 8px; }
+    .roster-filter-input-row input { flex:1; min-width:0; }
+    .roster-filter-clear {
+      flex:0 0 auto; width:auto; margin:0; min-height:var(--tap);
+      padding:10px 14px; border-radius:12px; font-size:12px; font-weight:800;
+      background:rgba(15, 23, 42, 0.5); border:1px solid var(--line); color:var(--mint);
+      font-family:inherit; cursor:pointer;
+    }
+    .roster-filter-clear.hidden { display:none; }
+    .roster-filter-dropdown {
+      max-height:180px; overflow:auto; border-radius:12px;
+      border:1px solid var(--line); background:rgba(15, 23, 42, 0.6);
+    }
+    .roster-filter-option {
+      display:block; width:100%; margin:0; padding:12px 14px; text-align:left;
+      background:transparent; border:0; border-bottom:1px solid rgba(255,255,255,0.06);
+      color:var(--text); font-size:14px; font-weight:700; font-family:inherit; cursor:pointer;
+    }
+    .roster-filter-option:last-child { border-bottom:0; }
+    .roster-filter-option:hover { background:rgba(255,255,255,0.06); }
+    .roster-filter-option.on { background:rgba(6, 182, 212, 0.18); color:#fff; }
+    .roster-filter-empty {
+      margin:0; padding:16px 14px; text-align:center; color:var(--muted);
+      font-size:13px; font-weight:600;
+    }
+    button.roster-tool.filter-trigger {
+      position:relative;
+      justify-content:center;
+      align-items:center;
+      padding-left:22px;
+      padding-right:22px;
+    }
+    button.roster-tool.filter-trigger .filter-label {
+      width:100%;
+      min-width:0;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+      text-align:center;
+      line-height:1.2;
+    }
+    button.roster-tool.filter-trigger .filter-chevron {
+      position:absolute;
+      right:10px;
+      top:50%;
+      transform:translateY(-50%);
+      flex:0 0 auto;
+      font-size:12px;
+      opacity:0.9;
+      line-height:1;
+      pointer-events:none;
     }
     .date-picker { flex:1 1 200px; position:relative; }
     .date-picker > label {
@@ -647,7 +699,10 @@
       <p id="rosterMeta">Clock-in, clock-out, and current status for every employee.</p>
       <div class="roster-actions" role="toolbar" aria-label="Attendance tools">
         <button type="button" class="roster-tool" id="rosterSearchBtn" aria-pressed="false">Search</button>
-        <button type="button" class="roster-tool" id="rosterFilterBtn" aria-pressed="false">Filter</button>
+        <button type="button" class="roster-tool filter-trigger" id="rosterFilterBtn" aria-pressed="false">
+          <span class="filter-label" id="rosterFilterLabel">Filter</span>
+          <span class="filter-chevron" id="rosterFilterChevron" aria-hidden="true">▾</span>
+        </button>
         <button type="button" class="roster-tool" id="rosterExportBtn">Export</button>
       </div>
       <div class="roster-panel hidden" id="rosterSearchPanel">
@@ -655,12 +710,17 @@
                autocapitalize="none" autocomplete="off" spellcheck="false" enterkeyhint="search" />
       </div>
       <div class="roster-panel hidden" id="rosterFilterPanel">
-        <div class="roster-filter-row" id="rosterFilterRow">
-          <button type="button" class="toggle" data-role="bu">BU</button>
-          <button type="button" class="toggle" data-role="manager">Manager</button>
-          <button type="button" class="toggle" data-role="hr">HR</button>
-          <button type="button" class="toggle" data-role="employee">Employee</button>
+        <div class="roster-filter-row" id="rosterFilterKindRow" role="group" aria-label="Filter by">
+          <button type="button" class="toggle on" data-kind="reporting_manager">Reporting Manager</button>
+          <button type="button" class="toggle" data-kind="employee">Employee</button>
         </div>
+        <div class="roster-filter-input-row">
+          <input id="rosterPersonFilter" type="search" placeholder="Search reporting manager…"
+                 autocapitalize="words" autocomplete="off" spellcheck="false" enterkeyhint="search"
+                 aria-autocomplete="list" aria-controls="rosterFilterOptions" />
+          <button type="button" class="roster-filter-clear hidden" id="rosterFilterClear">Clear</button>
+        </div>
+        <div class="roster-filter-dropdown" id="rosterFilterOptions" role="listbox" aria-label="Filter names"></div>
       </div>
       <div class="roster-toolbar">
         <div class="date-picker">
@@ -2422,7 +2482,7 @@
       if (e.key === 'Escape') closeAllCalendars();
     });
 
-    let rosterRoleFilter = '';
+    let rosterPersonFilterKind = 'reporting_manager';
     let rosterLoadInFlight = null;
 
     function rosterCacheKey() {
@@ -2466,17 +2526,46 @@
       return rosterLoadInFlight;
     }
 
-    function matchesRoleFilter(role, filter) {
-      if (!filter) return true;
-      const normalized = role || 'employee';
-      if (filter === 'employee') return normalized === 'employee';
-      return normalized === filter;
+    function uniqueSortedNames(values) {
+      const seen = new Set();
+      const out = [];
+      for (const raw of values) {
+        const name = String(raw || '').trim();
+        if (!name) continue;
+        const key = name.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(name);
+      }
+      return out.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    }
+
+    function rosterPersonFilterQuery() {
+      return (($('rosterPersonFilter') && $('rosterPersonFilter').value) || '').trim();
+    }
+
+    function personFilterOptions() {
+      const names = uniqueSortedNames(
+        state.rosterRows.map((r) =>
+          rosterPersonFilterKind === 'reporting_manager' ? r.reporting_manager : r.display_name,
+        ),
+      );
+      const q = rosterPersonFilterQuery().toLowerCase();
+      if (!q) return names;
+      return names.filter((n) => n.toLowerCase().includes(q));
     }
 
     function filteredRosterRows() {
       const q = (($('rosterSearch') && $('rosterSearch').value) || '').trim().toLowerCase();
+      const personQ = rosterPersonFilterQuery().toLowerCase();
       return state.rosterRows.filter((r) => {
-        if (!matchesRoleFilter(r.role, rosterRoleFilter)) return false;
+        if (personQ) {
+          const hay =
+            rosterPersonFilterKind === 'reporting_manager'
+              ? String(r.reporting_manager || '').toLowerCase()
+              : String(r.display_name || '').toLowerCase();
+          if (!hay.includes(personQ)) return false;
+        }
         if (!q) return true;
         const hay = ((r.display_name || '') + ' ' + (r.employee_code || '') + ' ' + (r.email || '') + ' ' + (r.role || '')).toLowerCase();
         return hay.includes(q);
@@ -2487,6 +2576,23 @@
       if (statusName === 'Present') return 'present';
       if (statusName === 'Half Day') return 'pending';
       return 'absent';
+    }
+
+    function renderPersonFilterOptions() {
+      const list = $('rosterFilterOptions');
+      if (!list) return;
+      const options = personFilterOptions();
+      const selected = rosterPersonFilterQuery().toLowerCase();
+      list.innerHTML = options.length
+        ? options.map((name) => {
+            const on = selected && selected === name.toLowerCase();
+            return (
+              '<button type="button" class="roster-filter-option' + (on ? ' on' : '') + '"' +
+              ' role="option" aria-selected="' + (on ? 'true' : 'false') + '"' +
+              ' data-name="' + esc(name) + '">' + esc(name) + '</button>'
+            );
+          }).join('')
+        : '<p class="roster-filter-empty">No matches</p>';
     }
 
     function renderRoster() {
@@ -2503,19 +2609,31 @@
       const suffix = rows.length !== state.rosterRows.length ? ' of ' + state.rosterRows.length : '';
       status('rosterStatus', rows.length + ' employee' + (rows.length === 1 ? '' : 's') + suffix);
       syncRosterToolButtons();
+      renderPersonFilterOptions();
     }
 
     function syncRosterToolButtons() {
       const searchOpen = !$('rosterSearchPanel').classList.contains('hidden');
       const filterOpen = !$('rosterFilterPanel').classList.contains('hidden');
-      const filterActive = !!rosterRoleFilter;
+      const personQ = rosterPersonFilterQuery();
+      const filterActive = !!personQ;
       $('rosterSearchBtn').classList.toggle('on', searchOpen);
       $('rosterSearchBtn').setAttribute('aria-pressed', searchOpen ? 'true' : 'false');
       $('rosterFilterBtn').classList.toggle('on', filterOpen || filterActive);
       $('rosterFilterBtn').setAttribute('aria-pressed', (filterOpen || filterActive) ? 'true' : 'false');
-      Array.from($('rosterFilterRow').querySelectorAll('button[data-role]')).forEach((b) => {
-        b.classList.toggle('on', (b.getAttribute('data-role') || '') === rosterRoleFilter);
+      $('rosterFilterLabel').textContent = filterActive ? personQ : 'Filter';
+      $('rosterFilterChevron').textContent = filterOpen ? '▴' : '▾';
+      $('rosterFilterClear').classList.toggle('hidden', !filterActive);
+      Array.from($('rosterFilterKindRow').querySelectorAll('button[data-kind]')).forEach((b) => {
+        b.classList.toggle('on', (b.getAttribute('data-kind') || '') === rosterPersonFilterKind);
       });
+      const input = $('rosterPersonFilter');
+      if (input) {
+        input.placeholder =
+          rosterPersonFilterKind === 'reporting_manager'
+            ? 'Search reporting manager…'
+            : 'Search employee…';
+      }
     }
 
     function csvEscape(value) {
@@ -2569,7 +2687,10 @@
       const panel = $('rosterFilterPanel');
       const open = panel.classList.contains('hidden');
       panel.classList.toggle('hidden', !open);
-      if (open) $('rosterSearchPanel').classList.add('hidden');
+      if (open) {
+        $('rosterSearchPanel').classList.add('hidden');
+        setTimeout(() => $('rosterPersonFilter').focus(), 0);
+      }
       syncRosterToolButtons();
     };
     $('rosterExportBtn').onclick = () => exportRosterCsv();
@@ -2578,11 +2699,30 @@
       clearTimeout(rosterSearchTimer);
       rosterSearchTimer = setTimeout(() => renderRoster(), 120);
     };
-    $('rosterFilterRow').onclick = (e) => {
-      const btn = e.target.closest('button[data-role]');
+    let rosterPersonFilterTimer = 0;
+    $('rosterPersonFilter').oninput = () => {
+      clearTimeout(rosterPersonFilterTimer);
+      rosterPersonFilterTimer = setTimeout(() => renderRoster(), 120);
+    };
+    $('rosterFilterClear').onclick = () => {
+      $('rosterPersonFilter').value = '';
+      renderRoster();
+      $('rosterPersonFilter').focus();
+    };
+    $('rosterFilterKindRow').onclick = (e) => {
+      const btn = e.target.closest('button[data-kind]');
       if (!btn) return;
-      const next = btn.getAttribute('data-role') || '';
-      rosterRoleFilter = rosterRoleFilter === next ? '' : next;
+      const next = btn.getAttribute('data-kind') || 'employee';
+      if (next === rosterPersonFilterKind) return;
+      rosterPersonFilterKind = next;
+      $('rosterPersonFilter').value = '';
+      renderRoster();
+      $('rosterPersonFilter').focus();
+    };
+    $('rosterFilterOptions').onclick = (e) => {
+      const btn = e.target.closest('button[data-name]');
+      if (!btn) return;
+      $('rosterPersonFilter').value = btn.getAttribute('data-name') || '';
       renderRoster();
     };
 

@@ -4,6 +4,7 @@ import {
   Modal,
   Pressable,
   RefreshControl,
+  ScrollView,
   Share,
   StyleSheet,
   Text,
@@ -16,21 +17,25 @@ import { THEME } from '../theme/colors';
 
 const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
-type RoleFilter = '' | 'bu' | 'manager' | 'hr' | 'employee';
+type PersonFilterKind = 'reporting_manager' | 'employee';
 
-const ROLE_FILTERS: Array<{ id: RoleFilter; label: string }> = [
-  { id: 'bu', label: 'BU' },
-  { id: 'manager', label: 'Manager' },
-  { id: 'hr', label: 'HR' },
+const PERSON_FILTER_KINDS: Array<{ id: PersonFilterKind; label: string }> = [
+  { id: 'reporting_manager', label: 'Reporting Manager' },
   { id: 'employee', label: 'Employee' },
 ];
 
-/** Map linked user role onto the four filter buckets (unlinked → employee). */
-function matchesRoleFilter(role: string | null | undefined, filter: RoleFilter): boolean {
-  if (!filter) return true;
-  const normalized = role || 'employee';
-  if (filter === 'employee') return normalized === 'employee';
-  return normalized === filter;
+function uniqueSortedNames(values: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of values) {
+    const name = (raw || '').trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(name);
+  }
+  return out.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 }
 
 function todayIst(): string {
@@ -269,7 +274,8 @@ export function AttendanceScreen({ active = true }: { active?: boolean }) {
   const [showSearch, setShowSearch] = useState(false);
   const [showFilter, setShowFilter] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [roleFilter, setRoleFilter] = useState<RoleFilter>('');
+  const [filterKind, setFilterKind] = useState<PersonFilterKind>('reporting_manager');
+  const [filterQuery, setFilterQuery] = useState('');
   const loadedRef = React.useRef(!!rosterCache?.rows?.length);
 
   const load = useCallback(async (queryDate = date, opts?: { silent?: boolean }) => {
@@ -305,15 +311,32 @@ export function AttendanceScreen({ active = true }: { active?: boolean }) {
     loadRef.current(todayIst());
   }, [active]);
 
+  const personFilterOptions = useMemo(() => {
+    const names =
+      filterKind === 'reporting_manager'
+        ? uniqueSortedNames(rows.map((r) => r.reporting_manager))
+        : uniqueSortedNames(rows.map((r) => r.display_name));
+    const q = filterQuery.trim().toLowerCase();
+    if (!q) return names;
+    return names.filter((n) => n.toLowerCase().includes(q));
+  }, [rows, filterKind, filterQuery]);
+
   const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
+    const personQ = filterQuery.trim().toLowerCase();
     return rows.filter((r) => {
-      if (!matchesRoleFilter(r.role, roleFilter)) return false;
+      if (personQ) {
+        const hay =
+          filterKind === 'reporting_manager'
+            ? (r.reporting_manager || '').toLowerCase()
+            : r.display_name.toLowerCase();
+        if (!hay.includes(personQ)) return false;
+      }
       if (!q) return true;
       const hay = `${r.display_name} ${r.employee_code} ${r.email || ''} ${r.role || ''}`.toLowerCase();
       return hay.includes(q);
     });
-  }, [rows, searchQuery, roleFilter]);
+  }, [rows, searchQuery, filterKind, filterQuery]);
 
   const { totalCount, presentCount, halfDayCount, absentCount } = useMemo(() => {
     let present = 0;
@@ -371,7 +394,9 @@ export function AttendanceScreen({ active = true }: { active?: boolean }) {
     }
   };
 
-  const filterActive = !!roleFilter;
+  const filterActive = !!filterQuery.trim();
+  const filterPlaceholder =
+    filterKind === 'reporting_manager' ? 'Search reporting manager…' : 'Search employee…';
 
   return (
     <View
@@ -421,16 +446,23 @@ export function AttendanceScreen({ active = true }: { active?: boolean }) {
           }}
           accessibilityRole="button"
           accessibilityState={{ selected: showFilter || filterActive }}
-          style={[styles.actionBtn, (showFilter || filterActive) && styles.actionBtnOn]}
+          style={[styles.actionBtn, styles.filterTrigger, (showFilter || filterActive) && styles.actionBtnOn]}
         >
           <Text
             style={[
               styles.actionBtnText,
+              styles.filterTriggerLabel,
               (showFilter || filterActive) && styles.actionBtnTextOn,
             ]}
+            numberOfLines={1}
           >
-            Filter
+            {filterActive ? filterQuery.trim() : 'Filter'}
           </Text>
+          <View style={styles.filterChevronWrap} pointerEvents="none">
+            <Text style={[styles.filterChevron, (showFilter || filterActive) && styles.actionBtnTextOn]}>
+              {showFilter ? '▴' : '▾'}
+            </Text>
+          </View>
         </Pressable>
         <Pressable onPress={exportCsv} accessibilityRole="button" style={styles.actionBtn}>
           <Text style={styles.actionBtnText}>Export</Text>
@@ -452,21 +484,77 @@ export function AttendanceScreen({ active = true }: { active?: boolean }) {
       )}
 
       {showFilter && (
-        <View style={styles.filterRow}>
-          {ROLE_FILTERS.map((opt) => {
-            const on = roleFilter === opt.id;
-            return (
+        <View style={styles.filterPanel}>
+          <View style={styles.filterRow}>
+            {PERSON_FILTER_KINDS.map((opt) => {
+              const on = filterKind === opt.id;
+              return (
+                <Pressable
+                  key={opt.id}
+                  onPress={() => {
+                    if (filterKind === opt.id) return;
+                    setFilterKind(opt.id);
+                    setFilterQuery('');
+                  }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
+                  style={[styles.filterChip, on && styles.filterChipOn]}
+                >
+                  <Text style={[styles.filterChipText, on && styles.filterChipTextOn]}>{opt.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <View style={styles.filterInputRow}>
+            <TextInput
+              value={filterQuery}
+              onChangeText={setFilterQuery}
+              placeholder={filterPlaceholder}
+              placeholderTextColor={THEME.textSubtle}
+              style={styles.filterInput}
+              autoCapitalize="words"
+              autoCorrect={false}
+              clearButtonMode="while-editing"
+              returnKeyType="search"
+              accessibilityLabel={filterPlaceholder}
+            />
+            {filterActive && (
               <Pressable
-                key={opt.id}
-                onPress={() => setRoleFilter((prev) => (prev === opt.id ? '' : opt.id))}
+                onPress={() => setFilterQuery('')}
                 accessibilityRole="button"
-                accessibilityState={{ selected: on }}
-                style={[styles.filterChip, on && styles.filterChipOn]}
+                accessibilityLabel="Clear filter"
+                style={styles.filterClearBtn}
               >
-                <Text style={[styles.filterChipText, on && styles.filterChipTextOn]}>{opt.label}</Text>
+                <Text style={styles.filterClearText}>Clear</Text>
               </Pressable>
-            );
-          })}
+            )}
+          </View>
+          <ScrollView
+            style={styles.filterDropdown}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+          >
+            {personFilterOptions.length ? (
+              personFilterOptions.map((name) => {
+                const on = filterQuery.trim().toLowerCase() === name.toLowerCase();
+                return (
+                  <Pressable
+                    key={name}
+                    onPress={() => setFilterQuery(name)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: on }}
+                    style={[styles.filterOption, on && styles.filterOptionOn]}
+                  >
+                    <Text style={[styles.filterOptionText, on && styles.filterOptionTextOn]} numberOfLines={1}>
+                      {name}
+                    </Text>
+                  </Pressable>
+                );
+              })
+            ) : (
+              <Text style={styles.filterEmpty}>No matches</Text>
+            )}
+          </ScrollView>
         </View>
       )}
 
@@ -552,6 +640,30 @@ const styles = StyleSheet.create({
   },
   actionBtnText: { color: THEME.cyanLight, fontWeight: '800', fontSize: 13 },
   actionBtnTextOn: { color: '#fff' },
+  filterTrigger: {
+    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 22,
+  },
+  filterTriggerLabel: {
+    width: '100%',
+    textAlign: 'center',
+  },
+  filterChevronWrap: {
+    position: 'absolute',
+    right: 10,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  filterChevron: {
+    color: THEME.cyanLight,
+    fontWeight: '800',
+    fontSize: 12,
+    lineHeight: 14,
+  },
   searchInput: {
     minHeight: TAP_TARGET,
     borderWidth: 1,
@@ -565,8 +677,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  filterPanel: {
+    marginBottom: 10,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+  },
   filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
   filterChip: {
+    flexGrow: 1,
+    flexBasis: '40%',
     minHeight: 36,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -574,6 +696,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: THEME.border,
     backgroundColor: 'rgba(15, 23, 42, 0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   filterChipOn: {
     borderColor: 'rgba(6, 182, 212, 0.5)',
@@ -581,6 +705,55 @@ const styles = StyleSheet.create({
   },
   filterChipText: { color: THEME.textMuted, fontWeight: '800', fontSize: 12 },
   filterChipTextOn: { color: '#fff' },
+  filterInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  filterInput: {
+    flex: 1,
+    minHeight: TAP_TARGET,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    color: '#fff',
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  filterClearBtn: {
+    minHeight: TAP_TARGET - 4,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+  },
+  filterClearText: { color: THEME.cyanLight, fontWeight: '800', fontSize: 12 },
+  filterDropdown: {
+    maxHeight: 180,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+  },
+  filterOption: {
+    minHeight: 40,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  filterOptionOn: { backgroundColor: 'rgba(6, 182, 212, 0.18)' },
+  filterOptionText: { color: THEME.textSecondary, fontWeight: '700', fontSize: 14 },
+  filterOptionTextOn: { color: '#fff' },
+  filterEmpty: {
+    color: THEME.textMuted,
+    textAlign: 'center',
+    paddingVertical: 16,
+    fontSize: 13,
+    fontWeight: '600',
+  },
   toolbar: { marginBottom: 14 },
   dateCaption: {
     color: THEME.textMuted,
