@@ -1,10 +1,5 @@
 export const ATTENDANCE_TZ = 'Asia/Kolkata';
 
-/** Full-day threshold: clock-out − clock-in. */
-export const PRESENT_MIN_HOURS = 9;
-/** Half-day lower bound (inclusive). Upper bound is exclusive of PRESENT_MIN_HOURS. */
-export const HALF_DAY_MIN_HOURS = 4;
-
 export type RosterLog = {
   employee_id?: string;
   type: 'IN' | 'OUT';
@@ -132,18 +127,17 @@ export function workedHours(
 }
 
 /**
- * Status from worked hours (clock-out − clock-in):
- * Present ≥ 9h; Half Day 4–&lt;9h; Absent &lt; 4h or incomplete punches.
+ * Status from completed punches (clock-out − clock-in):
+ * Present when both clock-in and clock-out exist (any duration); Absent otherwise.
  */
 export function statusFromWorkedHours(hours: number | null): AttendanceDayStatus {
-  if (hours == null || hours < HALF_DAY_MIN_HOURS) return 'Absent';
-  if (hours >= PRESENT_MIN_HOURS) return 'Present';
-  return 'Half Day';
+  if (hours == null) return 'Absent';
+  return 'Present';
 }
 
 /**
- * Status from first IN / last OUT duration, or Present when admin approved mark-present.
- * No fixed office time-range is used.
+ * Status from first IN / last OUT (Present when both exist, any duration),
+ * or Present when admin approved mark-present. No fixed office time-range is used.
  */
 export function buildRoster(
   employees: RosterEmployee[],

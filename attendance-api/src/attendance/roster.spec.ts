@@ -34,42 +34,28 @@ describe('attendance roster', () => {
     expect(row.clock_out).toBeNull();
   });
 
-  it('marks 9+ hours as Present', () => {
-    const [row] = buildRoster(
+  it('marks completed punches as Present regardless of duration', () => {
+    const [fullDay] = buildRoster(
       [emp],
       [
         { employee_id: 'e1', type: 'IN', event_time: '2026-09-15T03:30:00.000Z' },
         { employee_id: 'e1', type: 'OUT', event_time: '2026-09-15T12:30:00.000Z' },
       ],
     );
-    expect(workedHours(row.clock_in, row.clock_out)).toBe(9);
-    expect(row.status).toBe('Present');
-    expect(row.clock_in).toBe('2026-09-15T03:30:00.000Z');
-    expect(row.clock_out).toBe('2026-09-15T12:30:00.000Z');
-  });
+    expect(workedHours(fullDay.clock_in, fullDay.clock_out)).toBe(9);
+    expect(fullDay.status).toBe('Present');
+    expect(fullDay.clock_in).toBe('2026-09-15T03:30:00.000Z');
+    expect(fullDay.clock_out).toBe('2026-09-15T12:30:00.000Z');
 
-  it('marks 4–4.5 hours as Half Day', () => {
-    const [row] = buildRoster(
-      [emp],
-      [
-        { employee_id: 'e1', type: 'IN', event_time: '2026-09-15T03:30:00.000Z' },
-        { employee_id: 'e1', type: 'OUT', event_time: '2026-09-15T07:45:00.000Z' },
-      ],
-    );
-    expect(workedHours(row.clock_in, row.clock_out)).toBe(4.25);
-    expect(row.status).toBe('Half Day');
-  });
-
-  it('marks under 4 hours as Absent', () => {
-    const [row] = buildRoster(
+    const [shortDay] = buildRoster(
       [emp],
       [
         { employee_id: 'e1', type: 'IN', event_time: '2026-09-15T03:30:00.000Z' },
         { employee_id: 'e1', type: 'OUT', event_time: '2026-09-15T06:30:00.000Z' },
       ],
     );
-    expect(workedHours(row.clock_in, row.clock_out)).toBe(3);
-    expect(row.status).toBe('Absent');
+    expect(workedHours(shortDay.clock_in, shortDay.clock_out)).toBe(3);
+    expect(shortDay.status).toBe('Present');
   });
 
   it('uses first clock-in and latest clock-out for duration', () => {
@@ -95,9 +81,9 @@ describe('attendance roster', () => {
         { employee_id: 'e1', type: 'IN', event_time: '2026-09-15T09:00:00.000Z' },
       ],
     );
-    // 4.5h between first IN and last OUT → Half Day; open second IN does not extend hours
+    // Open second IN does not extend hours; completed span still marks Present
     expect(workedHours(row.clock_in, row.clock_out)).toBe(4.5);
-    expect(row.status).toBe('Half Day');
+    expect(row.status).toBe('Present');
     expect(row.clock_in).toBe('2026-09-15T03:30:00.000Z');
     expect(row.clock_out).toBe('2026-09-15T08:00:00.000Z');
   });
@@ -131,14 +117,12 @@ describe('attendance roster', () => {
     expect(rows[1].clock_in).toBe('2026-09-15T03:30:00.000Z');
   });
 
-  it('maps hour thresholds correctly', () => {
+  it('maps completed punches to Present regardless of hours', () => {
     expect(statusFromWorkedHours(null)).toBe('Absent');
-    expect(statusFromWorkedHours(3.99)).toBe('Absent');
-    expect(statusFromWorkedHours(4)).toBe('Half Day');
-    expect(statusFromWorkedHours(4.5)).toBe('Half Day');
-    expect(statusFromWorkedHours(8.99)).toBe('Half Day');
+    expect(statusFromWorkedHours(0)).toBe('Present');
+    expect(statusFromWorkedHours(3)).toBe('Present');
+    expect(statusFromWorkedHours(4.5)).toBe('Present');
     expect(statusFromWorkedHours(9)).toBe('Present');
-    expect(statusFromWorkedHours(10)).toBe('Present');
   });
 
   it('defaults an invalid date query to today in Asia/Kolkata', () => {

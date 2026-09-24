@@ -447,8 +447,8 @@ export function AttendanceScreen({ active = true }: { active?: boolean }) {
     >
       <Text style={styles.title}>Attendance</Text>
       <Text style={styles.meta}>
-        Times in {timezone} for {rangeLabel}. Status from worked hours (Present ≥9h, Half Day
-        ≥4h, Absent &lt;4h).
+        Times in {timezone} for {rangeLabel}. Present when Clock In and Clock Out both exist
+        (any duration); Absent otherwise.
       </Text>
 
       <View style={styles.kpiContainer}>
