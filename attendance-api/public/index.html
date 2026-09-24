@@ -220,6 +220,16 @@
       margin-top:0;
     }
     #changePasswordBtn { margin-top:12px; }
+    .change-password-actions {
+      margin-top:4px;
+      align-items:stretch;
+    }
+    .change-password-actions > button {
+      flex:1 1 0;
+      width:auto;
+      margin:0;
+      min-width:0;
+    }
     button.cta:hover { transform:translateY(-1px); box-shadow:0 6px 20px rgba(6, 182, 212, 0.4); }
     button.cta:active { transform:translateY(0); }
     button.alt {
@@ -761,7 +771,10 @@
         <input id="newPassword" type="password" autocomplete="new-password" enterkeyhint="next" />
         <label for="confirmNewPassword">Confirm New Password</label>
         <input id="confirmNewPassword" type="password" autocomplete="new-password" enterkeyhint="go" />
-        <button type="button" class="cta" id="changePasswordSubmitBtn">Change Password</button>
+        <div class="row change-password-actions">
+          <button type="button" class="toggle" id="changePasswordCancelBtn">Cancel</button>
+          <button type="button" class="cta" id="changePasswordSubmitBtn">Change Password</button>
+        </div>
       </div>
       <button type="button" class="alt" id="authModeRegister">Register</button>
       <button class="alt" id="bindBtn">Register this device</button>
@@ -2903,6 +2916,11 @@
       state.showChangePassword = true;
       updateChangePasswordUi(!!jwtRole());
       $('currentPassword').focus();
+    };
+    $('changePasswordCancelBtn').onclick = () => {
+      resetChangePasswordForm();
+      updateChangePasswordUi(!!jwtRole());
+      status('settingsStatus', '');
     };
     $('changePasswordSubmitBtn').onclick = async () => {
       const currentPassword = $('currentPassword').value;

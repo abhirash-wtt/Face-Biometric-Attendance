@@ -235,13 +235,28 @@ export function SettingsScreen({ onAuthChange }: { onAuthChange?: () => void }) 
                     returnKeyType="go"
                     onSubmit={changePassword}
                   />
-                  <Pressable
-                    onPress={changePassword}
-                    accessibilityRole="button"
-                    style={styles.btnPrimary}
-                  >
-                    <Text style={styles.btnText}>Change Password</Text>
-                  </Pressable>
+                  <View style={styles.btnRow}>
+                    <Pressable
+                      onPress={() => {
+                        setShowChangePassword(false);
+                        setCurrentPassword('');
+                        setNewPassword('');
+                        setConfirmPassword('');
+                        setMessage('');
+                      }}
+                      accessibilityRole="button"
+                      style={[styles.btnSecondary, styles.flexBtn, styles.btnRowItem]}
+                    >
+                      <Text style={styles.btnSecondaryText}>Cancel</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={changePassword}
+                      accessibilityRole="button"
+                      style={[styles.btnPrimary, styles.flexBtn, styles.btnRowItem]}
+                    >
+                      <Text style={styles.btnText}>Change Password</Text>
+                    </Pressable>
+                  </View>
                 </View>
               )}
             </>
@@ -340,6 +355,7 @@ const styles = StyleSheet.create({
   },
   btnRow: { flexDirection: 'row', gap: 10, marginTop: 4 },
   flexBtn: { flex: 1 },
+  btnRowItem: { marginTop: 6 },
   btnPrimary: {
     minHeight: TAP_TARGET,
     backgroundColor: THEME.cyan,
