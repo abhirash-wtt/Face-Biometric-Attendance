@@ -695,12 +695,32 @@
       letter-spacing:0.45em; text-align:center; font-size:22px; font-weight:800;
     }
     .rbac-hide { display:none !important; }
+    html.tablet-kiosk .nav-tabs,
+    html.tablet-kiosk .clock-actions,
+    html.tablet-kiosk #loginBtn,
+    html.tablet-kiosk #logoutBtn,
+    html.tablet-kiosk #authModeRegister { display:none !important; }
+    html.tablet-kiosk header { justify-content:center; }
+    html.tablet-kiosk #kioskStatus {
+      font-size:22px; text-align:center; min-height:2.6em;
+    }
     .role-badge {
       display:inline-block; background:rgba(6, 182, 212, 0.12); color:var(--accent);
       border:1px solid rgba(6, 182, 212, 0.25); border-radius:999px; padding:4px 12px;
       font-size:12px; font-weight:800; margin-bottom:14px;
     }
   </style>
+  <script>
+    (function () {
+      var ua = navigator.userAgent || '';
+      var tablet = /iPad|Tablet|PlayBook|Silk/i.test(ua) || (/Android/i.test(ua) && !/Mobile/i.test(ua)) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
+      try {
+        var shortSide = Math.min(screen.width, screen.height);
+        if (!tablet && window.matchMedia('(pointer: coarse)').matches && shortSide >= 600) tablet = true;
+      } catch (e) {}
+      if (tablet) document.documentElement.classList.add('tablet-kiosk');
+    })();
+  </script>
 </head>
 <body>
   <header>
@@ -1200,8 +1220,9 @@
         $('roleBadge').textContent = 'Not signed in';
       }
       let fallback = '';
-      if (adminLike && state.tab === 'kiosk') fallback = 'attendance';
-      else if ((state.tab === 'attendance' && !attendanceOk) || (state.tab === 'enroll' && !enrollOk) || (state.tab === 'wfh' && !wfhOk)) {
+      const tabletKiosk = document.documentElement.classList.contains('tablet-kiosk');
+      if (!tabletKiosk && adminLike && state.tab === 'kiosk') fallback = 'attendance';
+      else if (!tabletKiosk && ((state.tab === 'attendance' && !attendanceOk) || (state.tab === 'enroll' && !enrollOk) || (state.tab === 'wfh' && !wfhOk))) {
         fallback = attendanceOk ? 'attendance' : 'kiosk';
       }
       if (fallback) {
@@ -1214,8 +1235,104 @@
         if (camHidden) stopCam();
         else if (!camActive()) ensureCam(false);
       }
+      if (tabletKiosk) applyTabletLock();
       // Admin/BU land on Attendance via applyAccess without clicking the tab — load roster then.
       ensureAttendanceData(false);
+    }
+    function applyTabletLock() {
+      state.tab = 'kiosk';
+      ['enroll', 'attendance', 'wfh', 'settings'].forEach((id) => $(id).classList.add('hidden'));
+      $('kiosk').classList.remove('hidden');
+      $('cameraPanel').classList.remove('hidden');
+      $('livenessPrompt').style.visibility = 'visible';
+      $('livenessPrompt').innerHTML = '<span class="prompt-dot"></span>Look at the camera';
+      if (!$('kioskStatus').textContent) {
+        status('kioskStatus', 'Look at the camera to mark attendance.');
+      }
+    }
+    function isTabletKiosk() {
+      return document.documentElement.classList.contains('tablet-kiosk');
+    }
+    async function ensureTabletDevice() {
+      if (isDeviceToken() && !isJwtExpired(state.token, 0)) return;
+      clearSession();
+      const res = await api('/devices/register', {
+        method: 'POST',
+        body: {
+          device_id: state.settings.deviceId || 'KIOSK-01',
+          site_code: state.settings.siteCode || 'HQ',
+          bootstrap_secret: state.settings.bootstrapSecret || 'bind-device-once',
+          description: 'Tablet kiosk',
+        },
+      });
+      setSession(res);
+    }
+    function showKioskNotice(msg, holdMs) {
+      status('kioskStatus', msg);
+      state.kioskNoticeUntil = Date.now() + (holdMs || 5000);
+    }
+    function startAutoKiosk() {
+      if (!isTabletKiosk() || state.autoKioskStarted) return;
+      state.autoKioskStarted = true;
+      const tick = async () => {
+        if (!isTabletKiosk()) return;
+        let wait = 2500;
+        if (state.tab === 'kiosk' && camActive() && $('camOverlay').classList.contains('hidden') && !state.autoKioskBusy) {
+          state.autoKioskBusy = true;
+          try {
+            const gpsPromise = getGps().catch(() => null);
+            const image_b64 = await captureB64();
+            const gps = await gpsPromise;
+            const res = await api('/attend/kiosk', {
+              method: 'POST',
+              body: {
+                device_id: state.settings.deviceId,
+                site_code: state.settings.siteCode,
+                gps,
+                image_b64,
+                liveness: 0.95,
+              },
+            });
+            const minSim = (res.thresholds && res.thresholds.similarity) || 0.9;
+            const minLive = (res.thresholds && res.thresholds.liveness) || 0.6;
+            if (res.ok && res.action && res.similarity >= minSim && res.liveness >= minLive) {
+              const empName = res.name || res.employee_code || 'Employee';
+              const welcomeMessage = welcomePunchMessage(res.action, res.event_time);
+              showKioskNotice(welcomeMessage, 6000);
+              $('confirmTitle').textContent = welcomeMessage;
+              $('confirmMsg').textContent = empName + ' — Clock ' + res.action + ' recorded successfully.';
+              if (!$('confirm').open) $('confirm').showModal();
+              if (window._confirmTimer) clearTimeout(window._confirmTimer);
+              window._confirmTimer = setTimeout(() => {
+                if ($('confirm').open) $('confirm').close();
+              }, 2500);
+              wait = 6000;
+            } else if (!(state.kioskNoticeUntil && Date.now() < state.kioskNoticeUntil)) {
+              status('kioskStatus', 'Look at the camera to mark attendance.');
+            }
+          } catch (e) {
+            const msg = e.message || 'Please try again';
+            if (/duplicate entry detected/i.test(msg)) {
+              showKioskNotice('Duplicate entry detected.', 8000);
+              wait = 8000;
+            } else if (/already completed/i.test(msg)) {
+              showKioskNotice('Attendance already completed for today.', 8000);
+              wait = 8000;
+            } else if (/geofence|location is required|outside office/i.test(msg)) {
+              showKioskNotice(msg, 6000);
+              wait = 6000;
+            } else if (!(state.kioskNoticeUntil && Date.now() < state.kioskNoticeUntil)) {
+              if (!/too dark|not recognized|no face|liveness|missing/i.test(msg)) {
+                status('kioskStatus', msg);
+              }
+            }
+          } finally {
+            state.autoKioskBusy = false;
+          }
+        }
+        state.autoTimer = setTimeout(tick, wait);
+      };
+      state.autoTimer = setTimeout(tick, 1200);
     }
     function gpsErrorMessage(code, secureContext) {
       if (secureContext) {
@@ -3532,9 +3649,18 @@
 
     fillSettings();
     applyAccess();
-    restoreSession().then(() => {
+    restoreSession().then(async () => {
       fillSettings();
       applyAccess();
+      if (!isTabletKiosk()) return;
+      try {
+        await ensureTabletDevice();
+        applyAccess();
+        if (!cameraPanelHidden()) ensureCam(false);
+        startAutoKiosk();
+      } catch (e) {
+        status('kioskStatus', e.message || 'Could not start the kiosk');
+      }
     });
     rollPrompt();
     // Do not open the camera behind Attendance/WFH/Settings — it delays first paint.

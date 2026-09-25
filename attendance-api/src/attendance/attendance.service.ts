@@ -235,6 +235,45 @@ export class AttendanceService {
     return log;
   }
 
+  /**
+   * Shared kiosk: pick Clock In, Clock Out, or neither from today's punches.
+   * A repeat of the same person inside the cooldown does not write a new row.
+   */
+  async recordAutomatic(dto: CreateAttendanceDto) {
+    await this.employees.get(dto.employee_id);
+    const today = localDateYmd();
+    const { from, to } = dayBoundsIst(today);
+    const punches = await this.repo
+      .createQueryBuilder('a')
+      .where(
+        "a.employee_id = :empId AND a.type IN ('IN', 'OUT') AND a.event_time >= :from AND a.event_time <= :to",
+        {
+          empId: dto.employee_id,
+          from,
+          to,
+        },
+      )
+      .orderBy('a.event_time', 'ASC')
+      .getMany();
+
+    const cooldownSec = Number(this.config.get<number>('attendanceCooldownSec')) || 60;
+    const latest = punches[punches.length - 1];
+    if (latest?.event_time) {
+      const ageMs = Date.now() - new Date(latest.event_time).getTime();
+      if (ageMs >= 0 && ageMs < cooldownSec * 1000) {
+        throw new UnprocessableEntityException('Duplicate entry detected.');
+      }
+    }
+
+    const hasIn = punches.some((row) => row.type === 'IN');
+    const hasOut = punches.some((row) => row.type === 'OUT');
+    if (hasIn && hasOut) {
+      throw new UnprocessableEntityException('Attendance already completed for today.');
+    }
+
+    return this.create({ ...dto, type: hasIn ? 'OUT' : 'IN' });
+  }
+
   async roster(opts?: { date?: string; start_date?: string; end_date?: string }) {
     let start: string;
     let end: string;

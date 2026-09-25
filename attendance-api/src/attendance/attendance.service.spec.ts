@@ -18,6 +18,7 @@ describe('AttendanceService - clock-out replacement & duplicate handling', () =>
     mockQueryBuilder = {
       select: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
       getOne: jest.fn(),
       getMany: jest.fn().mockResolvedValue([]),
@@ -166,6 +167,85 @@ describe('AttendanceService - clock-out replacement & duplicate handling', () =>
     ).rejects.toThrow(
       new UnprocessableEntityException('Duplicate entry detected. You clocked in at 09:15 AM.'),
     );
+
+    expect(repo.save).not.toHaveBeenCalled();
+  });
+
+  it('clocks in automatically when today has no clock-in', async () => {
+    mockQueryBuilder.getMany.mockResolvedValue([]);
+    mockQueryBuilder.getOne.mockResolvedValue(null);
+
+    const log = await service.recordAutomatic({
+      employee_id: 'emp-1',
+      type: 'IN',
+      device_id: 'kiosk-1',
+      site_code: 'HQ',
+    });
+
+    expect(log.type).toBe('IN');
+    expect(repo.save).toHaveBeenCalled();
+  });
+
+  it('clocks out automatically when clock-in is older than the cooldown and clock-out is missing', async () => {
+    mockQueryBuilder.getMany.mockResolvedValue([
+      {
+        id: 'log-in-1',
+        employee_id: 'emp-1',
+        type: 'IN',
+        event_time: new Date(Date.now() - 2 * 60 * 1000),
+      },
+    ]);
+    mockQueryBuilder.getOne.mockResolvedValue(null);
+
+    const log = await service.recordAutomatic({
+      employee_id: 'emp-1',
+      type: 'IN',
+      device_id: 'kiosk-1',
+      site_code: 'HQ',
+    });
+
+    expect(log.type).toBe('OUT');
+    expect(repo.save).toHaveBeenCalled();
+  });
+
+  it('rejects a repeat scan within one minute without writing a punch', async () => {
+    mockQueryBuilder.getMany.mockResolvedValue([
+      {
+        id: 'log-in-1',
+        employee_id: 'emp-1',
+        type: 'IN',
+        event_time: new Date(),
+      },
+    ]);
+
+    await expect(
+      service.recordAutomatic({
+        employee_id: 'emp-1',
+        type: 'IN',
+      }),
+    ).rejects.toThrow(new UnprocessableEntityException('Duplicate entry detected.'));
+
+    expect(repo.save).not.toHaveBeenCalled();
+  });
+
+  it('does not create another punch when clock-in and clock-out already exist', async () => {
+    const earlier = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    mockQueryBuilder.getMany.mockResolvedValue([
+      { id: 'log-in-1', employee_id: 'emp-1', type: 'IN', event_time: earlier },
+      {
+        id: 'log-out-1',
+        employee_id: 'emp-1',
+        type: 'OUT',
+        event_time: new Date(earlier.getTime() + 60 * 60 * 1000),
+      },
+    ]);
+
+    await expect(
+      service.recordAutomatic({
+        employee_id: 'emp-1',
+        type: 'IN',
+      }),
+    ).rejects.toThrow(new UnprocessableEntityException('Attendance already completed for today.'));
 
     expect(repo.save).not.toHaveBeenCalled();
   });

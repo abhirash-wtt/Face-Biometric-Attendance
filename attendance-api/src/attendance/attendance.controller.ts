@@ -115,6 +115,72 @@ export class AttendanceController {
     };
   }
 
+  @Post('attend/kiosk')
+  @Roles('employee')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  @ApiConsumes('multipart/form-data', 'application/json')
+  @ApiOperation({
+    summary:
+      'Identify a face and clock in, clock out, or reject based on today\'s attendance. No manual punch selection.',
+  })
+  @ApiBody({ type: IdentifyDto })
+  async kiosk(
+    @Body() dto: IdentifyDto,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: JwtUser,
+  ) {
+    const hasEmbed = Array.isArray(dto.embedding) && dto.embedding.length > 0;
+    const imageBuf =
+      file?.buffer ||
+      (dto.image_b64
+        ? Buffer.from(dto.image_b64.replace(/^data:image\/\w+;base64,/, ''), 'base64')
+        : Buffer.alloc(0));
+    if (!imageBuf.length && !hasEmbed) {
+      throw new BadRequestException('Provide multipart file, image_b64, or embedding');
+    }
+    const siteCode = dto.site_code || user.site_code;
+    const result = await this.recognition.identify(imageBuf, {
+      embedding: dto.embedding,
+      clientLiveness: dto.liveness,
+    });
+    const th = this.recognition.thresholds();
+    if (!result.ok || !result.match?.employee_id) {
+      return {
+        ok: false,
+        reason: result.reason,
+        similarity: result.similarity,
+        liveness: result.liveness,
+        thresholds: th,
+        device_id: dto.device_id || user.device_id,
+        site_code: siteCode,
+      };
+    }
+    const image_b64 = dto.image_b64 || (imageBuf.length ? imageBuf.toString('base64') : undefined);
+    const log = await this.attendance.recordAutomatic({
+      employee_id: result.match.employee_id,
+      type: 'IN',
+      device_id: dto.device_id || user.device_id,
+      site_code: siteCode,
+      gps: dto.gps,
+      similarity: result.similarity,
+      liveness_score: result.liveness,
+      image_b64,
+    });
+    return {
+      ok: true,
+      action: log.type,
+      event_time: log.event_time,
+      employee_id: result.match.employee_id,
+      employee_code: result.match.code,
+      name: result.match.display_name,
+      similarity: result.similarity,
+      liveness: result.liveness,
+      thresholds: th,
+      device_id: dto.device_id || user.device_id,
+      site_code: siteCode,
+    };
+  }
+
   @Post('attend/verify')
   @Roles('employee')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))

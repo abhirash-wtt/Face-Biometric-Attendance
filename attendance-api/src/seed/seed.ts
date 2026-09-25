@@ -174,8 +174,15 @@ async function run() {
   const empBu = await employees.findOne({ where: { code: 'EMPBU' } });
   await ensureRoleUser('bu@attendance.local', 'Bu@123', 'bu', empBu?.id);
 
+  // Abhirash stays unassigned from the default reporting manager and BU.
+  if (emp001 && (emp001.reporting_manager_id || emp001.bu_owner_id)) {
+    emp001.reporting_manager_id = null;
+    emp001.bu_owner_id = null;
+    await employees.save(emp001);
+  }
+
   // Sample org links so Attendance columns have values.
-  for (const emp of [emp001, emp002, emp007, empHr].filter(Boolean)) {
+  for (const emp of [emp002, emp007, empHr].filter(Boolean)) {
     let changed = false;
     if (empMgr && emp!.reporting_manager_id !== empMgr.id) {
       emp!.reporting_manager_id = empMgr.id;
