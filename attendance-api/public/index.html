@@ -582,6 +582,7 @@
       width:var(--roster-emp-width); min-width:var(--roster-emp-width); max-width:var(--roster-emp-width);
       background:#0b1220;
       box-shadow:6px 0 12px rgba(0,0,0,0.28);
+      overflow:hidden;
     }
     table.roster.roster-matrix thead th.emp-col { z-index:4; background:#0a101c; }
     table.roster.roster-matrix th.day-col,
@@ -615,10 +616,23 @@
     .emp-name { display:block; font-weight:700; color:#fff; font-size:14px; line-height:1.3; }
     .emp-code { display:block; color:var(--accent); font-size:12px; font-weight:800; margin-top:2px; }
     .emp-meta { display:block; color:var(--muted); font-size:12px; margin-top:2px; line-height:1.35; }
+    .emp-name, .emp-code, .emp-meta {
+      max-width:100%;
+      overflow-wrap:anywhere;
+      word-break:break-word;
+    }
+    .emp-email {
+      white-space:nowrap;
+      overflow-wrap:normal;
+      word-break:normal;
+      width:max-content;
+      max-width:none;
+      font-size:var(--emp-email-size, 11px);
+    }
 
     @media (max-width: 640px) {
       table.roster.roster-matrix {
-        --roster-emp-width:150px;
+        --roster-emp-width:200px;
       }
       table.roster.roster-matrix th.day-col,
       table.roster.roster-matrix td.day-col { padding:10px 6px; }
@@ -3071,10 +3085,28 @@
       if (!wrap || !table) return;
       const VISIBLE_DAY_COLUMNS = 5;
       const compact = window.matchMedia('(max-width: 640px)').matches;
-      const empWidth = compact ? 150 : 200;
+      const emailPx = 11;
+      let textWidth = 0;
+      const probe = document.createElement('span');
+      probe.className = 'emp-meta emp-email';
+      probe.style.cssText = 'position:absolute;left:-9999px;visibility:hidden;white-space:nowrap;width:max-content;max-width:none;font-size:' + emailPx + 'px;';
+      document.body.appendChild(probe);
+      table.querySelectorAll('.emp-email').forEach((el) => {
+        probe.textContent = el.textContent || '';
+        textWidth = Math.max(textWidth, probe.scrollWidth);
+      });
+      probe.remove();
+      table.style.setProperty('--emp-email-size', emailPx + 'px');
+      const visibleDays = 2;
+      const dayFloor = compact ? 68 : 88;
+      const needed = textWidth + 28;
+      const roomForDays = wrap.clientWidth - needed;
+      const empWidth = roomForDays >= dayFloor * visibleDays
+        ? Math.max(needed, compact ? 160 : 200)
+        : Math.max(140, wrap.clientWidth - dayFloor * visibleDays);
       const slots = Math.min(Math.max(dateCount || 0, 1), VISIBLE_DAY_COLUMNS);
-      const available = Math.max(wrap.clientWidth - empWidth, slots * 64);
-      const dayWidth = Math.floor(available / slots);
+      const fitted = Math.floor((wrap.clientWidth - empWidth) / slots);
+      const dayWidth = Math.max(dayFloor, fitted);
       table.style.setProperty('--roster-emp-width', empWidth + 'px');
       table.style.setProperty('--roster-day-width', dayWidth + 'px');
       wrap.style.setProperty('--roster-emp-width', empWidth + 'px');
@@ -3107,7 +3139,7 @@
             const who =
               '<span class="emp-name">' + esc(emp.display_name) + '</span>' +
               '<span class="emp-code">' + esc(emp.employee_code) + '</span>' +
-              (emp.email ? '<span class="emp-meta">' + esc(emp.email) + '</span>' : '') +
+              (emp.email ? '<span class="emp-meta emp-email">' + esc(emp.email) + '</span>' : '') +
               (emp.reporting_manager
                 ? '<span class="emp-meta">RM: ' + esc(emp.reporting_manager) + '</span>'
                 : '') +
