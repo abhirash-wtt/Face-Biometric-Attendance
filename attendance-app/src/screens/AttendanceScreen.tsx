@@ -427,8 +427,9 @@ export function AttendanceScreen({ active = true }: { active?: boolean }) {
   const periodRef = React.useRef(period);
   periodRef.current = period;
 
+  const VISIBLE_DAY_COLUMNS = 5;
   const empColWidth = layout.compact ? 132 : 168;
-  const dayColWidth = layout.compact ? 78 : 88;
+  const matrixContentWidth = Math.min(layout.width, layout.maxContentWidth) - layout.gutter * 2;
 
   const rangeLabel = useMemo(() => {
     const label = periodLabel(period);
@@ -439,6 +440,12 @@ export function AttendanceScreen({ active = true }: { active?: boolean }) {
 
   const matrixDates = useMemo(() => enumerateDates(startDate, endDate), [startDate, endDate]);
 
+  // Size day columns so exactly 5 fit in the viewport (no partial 6th date).
+  const dayColWidth = useMemo(() => {
+    const daySlots = Math.min(Math.max(matrixDates.length, 1), VISIBLE_DAY_COLUMNS);
+    const available = Math.max(matrixContentWidth - empColWidth, daySlots * 64);
+    return Math.floor(available / daySlots);
+  }, [matrixContentWidth, empColWidth, matrixDates.length]);
   const load = useCallback(
     async (
       range: { start_date: string; end_date: string } = { start_date: startDate, end_date: endDate },
@@ -754,8 +761,12 @@ export function AttendanceScreen({ active = true }: { active?: boolean }) {
           nestedScrollEnabled
           showsHorizontalScrollIndicator
           contentContainerStyle={styles.matrixHContent}
+          snapToInterval={matrixDates.length > VISIBLE_DAY_COLUMNS ? dayColWidth : undefined}
+          snapToAlignment="start"
+          decelerationRate="fast"
+          disableIntervalMomentum={matrixDates.length > VISIBLE_DAY_COLUMNS}
         >
-          <View style={{ minWidth: Math.max(tableMinWidth, layout.width - layout.gutter * 2) }}>
+          <View style={{ minWidth: Math.max(tableMinWidth, matrixContentWidth) }}>
             <MatrixHeader dates={matrixDates} empWidth={empColWidth} dayWidth={dayColWidth} />
             {matrixEmployees.length ? (
               matrixEmployees.map((item) => (

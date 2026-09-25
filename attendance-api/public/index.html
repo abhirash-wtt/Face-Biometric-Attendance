@@ -555,6 +555,8 @@
     .roster-wrap {
       overflow-x:auto; -webkit-overflow-scrolling:touch;
       border:1px solid var(--card-border); border-radius:16px; background:var(--card);
+      scroll-snap-type:x mandatory;
+      scroll-padding-left:var(--roster-emp-width, 200px);
     }
     table.roster { width:100%; border-collapse:collapse; font-size:15px; }
     table.roster th, table.roster td { text-align:left; padding:14px 16px; border-bottom:1px solid rgba(255,255,255,0.05); vertical-align:middle; }
@@ -566,23 +568,27 @@
 
     /* Date-wise attendance matrix (employees × dates) */
     table.roster.roster-matrix {
-      width:max-content; min-width:100%; font-size:13px;
+      width:max-content; min-width:100%; font-size:13px; table-layout:fixed;
+      --roster-emp-width:200px;
+      --roster-day-width:92px;
     }
     table.roster.roster-matrix th,
     table.roster.roster-matrix td {
-      padding:12px 10px; vertical-align:top;
+      padding:12px 10px; vertical-align:top; box-sizing:border-box;
     }
     table.roster.roster-matrix th.emp-col,
     table.roster.roster-matrix td.emp-col {
       position:sticky; left:0; z-index:3;
-      min-width:200px; max-width:280px;
+      width:var(--roster-emp-width); min-width:var(--roster-emp-width); max-width:var(--roster-emp-width);
       background:#0b1220;
       box-shadow:6px 0 12px rgba(0,0,0,0.28);
     }
     table.roster.roster-matrix thead th.emp-col { z-index:4; background:#0a101c; }
     table.roster.roster-matrix th.day-col,
     table.roster.roster-matrix td.day-col {
-      text-align:center; min-width:92px; max-width:110px;
+      text-align:center;
+      width:var(--roster-day-width); min-width:var(--roster-day-width); max-width:var(--roster-day-width);
+      scroll-snap-align:start;
     }
     table.roster.roster-matrix th.day-col {
       text-transform:none; letter-spacing:0; font-weight:800;
@@ -608,10 +614,11 @@
     .emp-meta { display:block; color:var(--muted); font-size:12px; margin-top:2px; line-height:1.35; }
 
     @media (max-width: 640px) {
-      table.roster.roster-matrix th.emp-col,
-      table.roster.roster-matrix td.emp-col { min-width:150px; max-width:180px; }
+      table.roster.roster-matrix {
+        --roster-emp-width:150px;
+      }
       table.roster.roster-matrix th.day-col,
-      table.roster.roster-matrix td.day-col { min-width:84px; padding:10px 6px; }
+      table.roster.roster-matrix td.day-col { padding:10px 6px; }
       .day-time { font-size:11px; }
     }
     
@@ -2928,6 +2935,21 @@
         : '<p class="roster-filter-empty">No matches</p>';
     }
 
+    function syncRosterDayColWidths(dateCount) {
+      const wrap = document.querySelector('.roster-wrap');
+      const table = document.querySelector('table.roster-matrix');
+      if (!wrap || !table) return;
+      const VISIBLE_DAY_COLUMNS = 5;
+      const compact = window.matchMedia('(max-width: 640px)').matches;
+      const empWidth = compact ? 150 : 200;
+      const slots = Math.min(Math.max(dateCount || 0, 1), VISIBLE_DAY_COLUMNS);
+      const available = Math.max(wrap.clientWidth - empWidth, slots * 64);
+      const dayWidth = Math.floor(available / slots);
+      table.style.setProperty('--roster-emp-width', empWidth + 'px');
+      table.style.setProperty('--roster-day-width', dayWidth + 'px');
+      wrap.style.setProperty('--roster-emp-width', empWidth + 'px');
+    }
+
     function renderRoster() {
       const flatRows = filteredRosterRows();
       const dates = enumerateDates($('rosterStartDate').value, $('rosterEndDate').value);
@@ -2968,6 +2990,7 @@
         : '<tr><td colspan="' + colCount + '" class="muted">' +
             (rosterLoadInFlight ? 'Loading…' : 'No employees found') +
           '</td></tr>';
+      syncRosterDayColWidths(dates.length);
       const empCount = employees.length;
       const suffix = flatRows.length !== state.rosterRows.length ? ' (filtered)' : '';
       status(
@@ -2979,6 +3002,16 @@
       syncRosterToolButtons();
       renderPersonFilterOptions();
     }
+
+    let rosterResizeTimer = null;
+    window.addEventListener('resize', () => {
+      if (rosterResizeTimer) clearTimeout(rosterResizeTimer);
+      rosterResizeTimer = setTimeout(() => {
+        if (state.tab !== 'attendance') return;
+        const dates = enumerateDates($('rosterStartDate').value, $('rosterEndDate').value);
+        syncRosterDayColWidths(dates.length);
+      }, 100);
+    });
 
     function syncRosterToolButtons() {
       const searchOpen = !$('rosterSearchPanel').classList.contains('hidden');
