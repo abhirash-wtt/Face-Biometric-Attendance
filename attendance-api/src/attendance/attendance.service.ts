@@ -159,17 +159,20 @@ export class AttendanceService {
     }
 
     if (dto.type === 'IN') {
-      const cooldown = this.config.get<number>('attendanceCooldownSec') || 60;
-      const last = await this.repo.findOne({
-        where: { employee_id: dto.employee_id },
-        order: { event_time: 'DESC' },
-      });
-      if (last && last.type === 'IN') {
-        const delta = (Date.now() - new Date(last.event_time).getTime()) / 1000;
-        const lastDay = localDateYmd(new Date(last.event_time));
-        if (delta < cooldown || lastDay === today) {
-          throw new UnprocessableEntityException('Duplicate entry detected.');
-        }
+      // One clock-in per IST day — reject even after a later clock-out.
+      const existingIn = await this.repo
+        .createQueryBuilder('a')
+        .where('a.employee_id = :empId AND a.type = :type AND a.event_time >= :from AND a.event_time <= :to', {
+          empId: dto.employee_id,
+          type: 'IN',
+          from,
+          to,
+        })
+        .orderBy('a.event_time', 'DESC')
+        .getOne();
+
+      if (existingIn) {
+        throw new UnprocessableEntityException('Duplicate entry detected.');
       }
     }
 

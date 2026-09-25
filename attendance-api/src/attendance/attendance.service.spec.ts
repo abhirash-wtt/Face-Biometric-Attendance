@@ -135,7 +135,7 @@ describe('AttendanceService - clock-out replacement & duplicate handling', () =>
 
   it('rejects duplicate IN on the same day without modifying original clock-in', async () => {
     const twoHoursAgo = new Date(Date.now() - 2 * 3600 * 1000);
-    repo.findOne.mockResolvedValue({
+    mockQueryBuilder.getOne.mockResolvedValue({
       id: 'log-in-1',
       employee_id: 'emp-1',
       type: 'IN',
@@ -150,5 +150,46 @@ describe('AttendanceService - clock-out replacement & duplicate handling', () =>
     ).rejects.toThrow(new UnprocessableEntityException('Duplicate entry detected.'));
 
     expect(repo.save).not.toHaveBeenCalled();
+  });
+
+  it('rejects second IN after IN then OUT on the same day', async () => {
+    const existingIn = {
+      id: 'log-in-1',
+      employee_id: 'emp-1',
+      type: 'IN',
+      event_time: new Date(Date.now() - 4 * 3600 * 1000),
+    };
+    // Same-day IN exists regardless of a later OUT being the latest punch.
+    mockQueryBuilder.getOne.mockResolvedValue(existingIn);
+
+    await expect(
+      service.create({
+        employee_id: 'emp-1',
+        type: 'IN',
+        device_id: 'kiosk-1',
+        site_code: 'HQ',
+      }),
+    ).rejects.toThrow(new UnprocessableEntityException('Duplicate entry detected.'));
+
+    expect(repo.save).not.toHaveBeenCalled();
+    expect(mockQueryBuilder.where).toHaveBeenCalledWith(
+      'a.employee_id = :empId AND a.type = :type AND a.event_time >= :from AND a.event_time <= :to',
+      expect.objectContaining({ empId: 'emp-1', type: 'IN' }),
+    );
+  });
+
+  it('allows first IN of the day when no prior IN exists', async () => {
+    mockQueryBuilder.getOne.mockResolvedValue(null);
+
+    const log = await service.create({
+      employee_id: 'emp-1',
+      type: 'IN',
+      device_id: 'kiosk-1',
+      site_code: 'HQ',
+    });
+
+    expect(log).toBeDefined();
+    expect(log.type).toBe('IN');
+    expect(repo.save).toHaveBeenCalled();
   });
 });
