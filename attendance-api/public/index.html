@@ -561,6 +561,59 @@
     table.roster th { color:var(--muted); font-weight:800; font-size:12px; text-transform:uppercase; letter-spacing:.05em; background:rgba(0,0,0,0.2); }
     table.roster tr:last-child td { border-bottom:0; }
     table.roster tr:hover td { background:rgba(255,255,255,0.02); }
+    table.roster.roster-matrix tr:hover td.emp-col { background:#0b1220; }
+    table.roster.roster-matrix thead tr:hover th.emp-col { background:#0a101c; }
+
+    /* Date-wise attendance matrix (employees × dates) */
+    table.roster.roster-matrix {
+      width:max-content; min-width:100%; font-size:13px;
+    }
+    table.roster.roster-matrix th,
+    table.roster.roster-matrix td {
+      padding:12px 10px; vertical-align:top;
+    }
+    table.roster.roster-matrix th.emp-col,
+    table.roster.roster-matrix td.emp-col {
+      position:sticky; left:0; z-index:3;
+      min-width:200px; max-width:280px;
+      background:#0b1220;
+      box-shadow:6px 0 12px rgba(0,0,0,0.28);
+    }
+    table.roster.roster-matrix thead th.emp-col { z-index:4; background:#0a101c; }
+    table.roster.roster-matrix th.day-col,
+    table.roster.roster-matrix td.day-col {
+      text-align:center; min-width:92px; max-width:110px;
+    }
+    table.roster.roster-matrix th.day-col {
+      text-transform:none; letter-spacing:0; font-weight:800;
+    }
+    .day-head-num { display:block; color:#fff; font-size:15px; font-weight:800; line-height:1.2; }
+    .day-head-wd {
+      display:block; color:var(--muted); font-size:11px; font-weight:700;
+      text-transform:uppercase; letter-spacing:.04em; margin-top:2px;
+    }
+    .day-times { display:flex; flex-direction:column; gap:6px; align-items:center; justify-content:center; min-height:44px; }
+    .day-time {
+      font-variant-numeric:tabular-nums; font-weight:700; font-size:12px;
+      color:#e2e8f0; line-height:1.2; white-space:nowrap;
+    }
+    .day-time.out { color:#94a3b8; }
+    .day-time.empty { color:rgba(148, 163, 184, 0.45); }
+    .day-time-label {
+      display:block; font-size:9px; font-weight:800; letter-spacing:.04em;
+      text-transform:uppercase; color:var(--muted); margin-bottom:1px;
+    }
+    .emp-name { display:block; font-weight:700; color:#fff; font-size:14px; line-height:1.3; }
+    .emp-code { display:block; color:var(--accent); font-size:12px; font-weight:800; margin-top:2px; }
+    .emp-meta { display:block; color:var(--muted); font-size:12px; margin-top:2px; line-height:1.35; }
+
+    @media (max-width: 640px) {
+      table.roster.roster-matrix th.emp-col,
+      table.roster.roster-matrix td.emp-col { min-width:150px; max-width:180px; }
+      table.roster.roster-matrix th.day-col,
+      table.roster.roster-matrix td.day-col { min-width:84px; padding:10px 6px; }
+      .day-time { font-size:11px; }
+    }
     
     .pill { display:inline-flex; align-items:center; gap:6px; border-radius:999px; padding:5px 12px; font-weight:800; font-size:12px; text-transform:uppercase; letter-spacing:0.04em; }
     .pill.present { background:rgba(16, 185, 129, 0.15); color:#34d399; border:1px solid rgba(16, 185, 129, 0.3); }
@@ -713,7 +766,7 @@
     </section>
     <section id="attendance" class="hidden">
       <h1>Attendance</h1>
-      <p id="rosterMeta">Clock-in, clock-out, and current status for every employee.</p>
+      <p id="rosterMeta">Clock In and Clock Out times for every employee by date.</p>
       <div class="roster-actions" role="toolbar" aria-label="Attendance tools">
         <button type="button" class="roster-tool" id="rosterSearchBtn" aria-pressed="false">Search</button>
         <button type="button" class="roster-tool filter-trigger" id="rosterFilterBtn" aria-pressed="false">
@@ -757,18 +810,8 @@
         </div>
       </div>
       <div class="roster-wrap">
-        <table class="roster">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Employee</th>
-              <th>Clock in</th>
-              <th>Clock out</th>
-              <th>Status</th>
-              <th>Reporting Manager</th>
-              <th>BU Owner</th>
-            </tr>
-          </thead>
+        <table class="roster roster-matrix">
+          <thead id="rosterHead"></thead>
           <tbody id="rosterBody"></tbody>
         </table>
       </div>
@@ -2345,6 +2388,70 @@
         return String(iso);
       }
     }
+    function formatPunchShort(iso) {
+      if (!iso) return '—';
+      try {
+        return new Date(iso).toLocaleTimeString('en-IN', {
+          timeZone: 'Asia/Kolkata',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+      } catch {
+        return String(iso);
+      }
+    }
+    function enumerateDates(start, end) {
+      const out = [];
+      if (!start) return out;
+      const e = end || start;
+      const sp = start.split('-').map(Number);
+      const ep = e.split('-').map(Number);
+      if (sp.length !== 3 || ep.length !== 3 || sp.some((n) => !n) || ep.some((n) => !n)) return out;
+      const cur = new Date(Date.UTC(sp[0], sp[1] - 1, sp[2]));
+      const last = new Date(Date.UTC(ep[0], ep[1] - 1, ep[2]));
+      while (cur <= last) {
+        out.push(toYmd(cur.getUTCFullYear(), cur.getUTCMonth(), cur.getUTCDate()));
+        cur.setUTCDate(cur.getUTCDate() + 1);
+      }
+      return out;
+    }
+    function formatDayHeader(ymd) {
+      const parts = String(ymd || '').split('-').map(Number);
+      if (parts.length !== 3 || parts.some((n) => !n)) return { day: ymd || '—', weekday: '' };
+      const dt = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+      return {
+        day: String(parts[2]).padStart(2, '0'),
+        weekday: dt.toLocaleDateString('en-IN', { weekday: 'short', timeZone: 'UTC' }),
+      };
+    }
+    function pivotRoster(rows) {
+      const byEmp = new Map();
+      for (const r of rows || []) {
+        const id = r.employee_id;
+        if (!id) continue;
+        let emp = byEmp.get(id);
+        if (!emp) {
+          emp = {
+            employee_id: id,
+            employee_code: r.employee_code,
+            display_name: r.display_name,
+            email: r.email,
+            role: r.role,
+            reporting_manager: r.reporting_manager,
+            bu_owner: r.bu_owner,
+            days: {},
+          };
+          byEmp.set(id, emp);
+        }
+        const date = r.date || '';
+        if (date) {
+          emp.days[date] = { clock_in: r.clock_in, clock_out: r.clock_out };
+        }
+      }
+      return Array.from(byEmp.values()).sort((a, b) =>
+        String(a.display_name || '').localeCompare(String(b.display_name || ''), undefined, { sensitivity: 'base' }),
+      );
+    }
     function todayYmd() {
       return new Intl.DateTimeFormat('en-CA', {
         timeZone: 'Asia/Kolkata',
@@ -2637,7 +2744,8 @@
           }
           const rangeText = rosterRangeLabel();
           $('rosterMeta').textContent =
-            'Times in ' + (res.timezone || 'Asia/Kolkata') + (rangeText ? ' for ' + rangeText : '') + '.';
+            'Clock In / Clock Out in ' + (res.timezone || 'Asia/Kolkata') +
+            (rangeText ? ' for ' + rangeText : '') + '.';
           state.rosterRows = res.employees || [];
           state.rosterLoadedKey = rosterCacheKey();
           renderRoster();
@@ -2710,6 +2818,23 @@
       return 'absent';
     }
 
+    function dayTimeCell(day) {
+      const cin = day && day.clock_in ? formatPunchShort(day.clock_in) : '—';
+      const cout = day && day.clock_out ? formatPunchShort(day.clock_out) : '—';
+      const inEmpty = cin === '—';
+      const outEmpty = cout === '—';
+      return (
+        '<div class="day-times">' +
+          '<div class="day-time' + (inEmpty ? ' empty' : '') + '">' +
+            '<span class="day-time-label">In</span>' + esc(cin) +
+          '</div>' +
+          '<div class="day-time out' + (outEmpty ? ' empty' : '') + '">' +
+            '<span class="day-time-label">Out</span>' + esc(cout) +
+          '</div>' +
+        '</div>'
+      );
+    }
+
     function renderPersonFilterOptions() {
       const list = $('rosterFilterOptions');
       if (!list) return;
@@ -2728,19 +2853,53 @@
     }
 
     function renderRoster() {
-      const rows = filteredRosterRows();
-      $('rosterBody').innerHTML = rows.length
-        ? rows.map((r) => {
-            const day = esc(r.date || $('rosterStartDate').value || '—');
-            const who = esc(r.display_name) + ' (' + esc(r.employee_code) + ')';
-            const email = r.email ? '<div class="muted">' + esc(r.email) + '</div>' : '';
-            const role = r.role ? '<div class="muted">' + esc(String(r.role).toUpperCase()) + '</div>' : '';
-            const pill = rosterStatusClass(r.status);
-            return '<tr><td data-label="Date">' + day + '</td><td data-label="Employee">' + who + email + role + '</td><td data-label="Clock in">' + formatPunch(r.clock_in) + '</td><td data-label="Clock out">' + formatPunch(r.clock_out) + '</td><td data-label="Status"><span class="pill ' + pill + '">' + esc(r.status) + '</span></td><td data-label="Reporting Manager">' + esc(r.reporting_manager || '—') + '</td><td data-label="BU Owner">' + esc(r.bu_owner || '—') + '</td></tr>';
+      const flatRows = filteredRosterRows();
+      const dates = enumerateDates($('rosterStartDate').value, $('rosterEndDate').value);
+      const employees = pivotRoster(flatRows);
+      const head = $('rosterHead');
+      if (head) {
+        const dayHeads = dates.map((ymd) => {
+          const h = formatDayHeader(ymd);
+          return (
+            '<th class="day-col" scope="col" title="' + esc(formatDateLabel(ymd)) + '">' +
+              '<span class="day-head-num">' + esc(h.day) + '</span>' +
+              '<span class="day-head-wd">' + esc(h.weekday) + '</span>' +
+            '</th>'
+          );
+        }).join('');
+        head.innerHTML =
+          '<tr>' +
+            '<th class="emp-col" scope="col">Employee</th>' +
+            dayHeads +
+          '</tr>';
+      }
+      const colCount = 1 + Math.max(dates.length, 1);
+      $('rosterBody').innerHTML = employees.length
+        ? employees.map((emp) => {
+            const who =
+              '<span class="emp-name">' + esc(emp.display_name) + '</span>' +
+              '<span class="emp-code">' + esc(emp.employee_code) + '</span>' +
+              (emp.email ? '<span class="emp-meta">' + esc(emp.email) + '</span>' : '') +
+              (emp.reporting_manager
+                ? '<span class="emp-meta">RM: ' + esc(emp.reporting_manager) + '</span>'
+                : '') +
+              (emp.bu_owner ? '<span class="emp-meta">BU: ' + esc(emp.bu_owner) + '</span>' : '');
+            const dayCells = dates.map((ymd) => {
+              return '<td class="day-col">' + dayTimeCell(emp.days[ymd]) + '</td>';
+            }).join('');
+            return '<tr><td class="emp-col">' + who + '</td>' + dayCells + '</tr>';
           }).join('')
-        : '<tr><td colspan="7" class="muted">' + (rosterLoadInFlight ? 'Loading…' : 'No employees found') + '</td></tr>';
-      const suffix = rows.length !== state.rosterRows.length ? ' of ' + state.rosterRows.length : '';
-      status('rosterStatus', rows.length + ' row' + (rows.length === 1 ? '' : 's') + suffix);
+        : '<tr><td colspan="' + colCount + '" class="muted">' +
+            (rosterLoadInFlight ? 'Loading…' : 'No employees found') +
+          '</td></tr>';
+      const empCount = employees.length;
+      const suffix = flatRows.length !== state.rosterRows.length ? ' (filtered)' : '';
+      status(
+        'rosterStatus',
+        empCount + ' employee' + (empCount === 1 ? '' : 's') +
+          (dates.length ? ' · ' + dates.length + ' day' + (dates.length === 1 ? '' : 's') : '') +
+          suffix,
+      );
       syncRosterToolButtons();
       renderPersonFilterOptions();
     }
@@ -2782,7 +2941,7 @@
         status('rosterStatus', 'Nothing to export');
         return;
       }
-      const header = 'Date,Employee,Code,Email,Role,Clock In,Clock Out,Status,Reporting Manager,BU Owner';
+      const header = 'Date,Employee,Code,Email,Role,Clock In,Clock Out,Reporting Manager,BU Owner';
       const lines = rows.map((r) => [
         csvEscape(r.date || $('rosterStartDate').value || ''),
         csvEscape(r.display_name),
@@ -2791,7 +2950,6 @@
         csvEscape(r.role || 'employee'),
         csvEscape(formatPunch(r.clock_in)),
         csvEscape(formatPunch(r.clock_out)),
-        csvEscape(r.status),
         csvEscape(r.reporting_manager || ''),
         csvEscape(r.bu_owner || ''),
       ].join(','));
