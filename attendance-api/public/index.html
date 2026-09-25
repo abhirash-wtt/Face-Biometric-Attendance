@@ -1300,6 +1300,21 @@
       if (reason === 'employee_not_found') return 'This employee account is not active';
       return 'Please try again';
     }
+    function formatWelcomePunchTime(isoOrDate) {
+      const date = isoOrDate ? new Date(isoOrDate) : new Date();
+      const safe = Number.isNaN(date.getTime()) ? new Date() : date;
+      return safe.toLocaleTimeString('en-US', {
+        timeZone: 'Asia/Kolkata',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      });
+    }
+    function welcomePunchMessage(type, eventTime) {
+      const timeLabel = formatWelcomePunchTime(eventTime);
+      const action = type === 'IN' ? 'clocked in' : 'clocked out';
+      return 'Welcome! You ' + action + ' at ' + timeLabel + '.';
+    }
     function insecureOrigin() {
       return !window.isSecureContext && !['localhost', '127.0.0.1', '::1'].includes(location.hostname);
     }
@@ -1995,10 +2010,11 @@
         const minLive = (res.thresholds && res.thresholds.liveness) || 0.6;
         if (res.ok && res.similarity >= minSim && res.liveness >= minLive && res.employee_id) {
           const empName = res.name || res.employee_code || 'Employee';
+          let welcomeMessage = welcomePunchMessage(punch);
           try {
             // Automatically record attendance immediately
             const gpsFix = gps || undefined;
-            await api('/attendance', {
+            const log = await api('/attendance', {
               method: 'POST',
               body: {
                 employee_id: res.employee_id,
@@ -2012,7 +2028,8 @@
                 image_b64,
               },
             });
-            status('kioskStatus', 'Welcome ' + empName);
+            welcomeMessage = welcomePunchMessage(punch, log && log.event_time);
+            status('kioskStatus', welcomeMessage);
           } catch (attErr) {
             const attMsg = attErr.message || '';
             if (/duplicate/i.test(attMsg)) {
@@ -2047,8 +2064,8 @@
           }
 
           // Show confirmation pop-up without Cancel and Confirm buttons
-          $('confirmTitle').textContent = 'Welcome ' + empName;
-          $('confirmMsg').textContent = 'Clock ' + punch + ' recorded successfully!';
+          $('confirmTitle').textContent = welcomeMessage;
+          $('confirmMsg').textContent = empName + ' — Clock ' + punch + ' recorded successfully.';
           $('confirm').showModal();
           rollPrompt();
 

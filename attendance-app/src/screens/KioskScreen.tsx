@@ -58,6 +58,30 @@ function buildFailureMessage(reason?: string): string {
   return `${reasonText}\n\nPlease ensure good lighting, look straight into the camera without accessories, and try again.`;
 }
 
+function formatPunchTime(isoOrDate?: string | Date | null): string {
+  const date = isoOrDate ? new Date(isoOrDate) : new Date();
+  if (Number.isNaN(date.getTime())) {
+    return new Date().toLocaleTimeString('en-US', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  }
+  return date.toLocaleTimeString('en-US', {
+    timeZone: 'Asia/Kolkata',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
+function welcomePunchMessage(type: PunchType, eventTime?: string | Date | null): string {
+  const timeLabel = formatPunchTime(eventTime);
+  const action = type === 'IN' ? 'clocked in' : 'clocked out';
+  return `Welcome! You ${action} at ${timeLabel}.`;
+}
+
 export function KioskScreen({ active = true }: { active?: boolean }) {
   const dispatch = useDispatch<AppDispatch>();
   const layout = useLayout();
@@ -71,6 +95,7 @@ export function KioskScreen({ active = true }: { active?: boolean }) {
     type: PunchType;
     similarity: number;
     liveness: number;
+    welcomeMessage: string;
   } | null>(null);
   const [failure, setFailure] = useState<{
     title: string;
@@ -118,9 +143,11 @@ export function KioskScreen({ active = true }: { active?: boolean }) {
           face_crop_url: res.face_crop_url,
           image_b64,
         };
+        let welcomeMessage = welcomePunchMessage(type);
         try {
-          await api.attendance(body);
-          dispatch(setLastMessage(`Welcome ${empName}`));
+          const log = (await api.attendance(body)) as { event_time?: string } | undefined;
+          welcomeMessage = welcomePunchMessage(type, log?.event_time);
+          dispatch(setLastMessage(welcomeMessage));
           dispatch(rollLivenessPrompt());
         } catch (err) {
           const message = err instanceof Error ? err.message : 'Please try again';
@@ -156,6 +183,7 @@ export function KioskScreen({ active = true }: { active?: boolean }) {
           type,
           similarity: res.similarity,
           liveness: res.liveness,
+          welcomeMessage,
         });
       } else {
         const failMsg = identifyFailMessage(res.reason);
@@ -261,10 +289,10 @@ export function KioskScreen({ active = true }: { active?: boolean }) {
       {!!lastMessage && <Text style={styles.status}>{lastMessage}</Text>}
       <ConfirmModal
         visible={!!success || !!failure}
-        title={success ? `Welcome ${success.name}` : failure?.title || 'Face Verification Failed'}
+        title={success ? success.welcomeMessage : failure?.title || 'Face Verification Failed'}
         message={
           success
-            ? `Clock ${success.type} recorded successfully!`
+            ? `${success.name} — Clock ${success.type} recorded successfully.`
             : failure?.message || ''
         }
         confirmLabel={failure ? 'Try Again' : ''}
