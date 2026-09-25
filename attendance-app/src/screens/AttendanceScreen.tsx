@@ -15,17 +15,56 @@ import { TAP_TARGET, useLayout } from '../theme/responsive';
 import { THEME } from '../theme/colors';
 
 type PersonFilterKind = 'reporting_manager' | 'employee';
-type AttendancePeriod = 'today' | 'weekly' | 'monthly';
+/** Fixed periods plus `month-YYYY-MM` for prior months in the current IST year. */
+type AttendancePeriod = string;
+
+type PeriodOption = { id: AttendancePeriod; label: string };
+
+const FIXED_ATTENDANCE_PERIODS: PeriodOption[] = [
+  { id: 'today', label: 'Today' },
+  { id: 'weekly', label: 'This Week' },
+  { id: 'previous_week', label: 'Previous Week' },
+  { id: 'monthly', label: 'This Month' },
+];
+
+function monthPeriodId(year: number, month1to12: number): AttendancePeriod {
+  return `month-${year}-${String(month1to12).padStart(2, '0')}`;
+}
+
+function parseMonthPeriod(period: AttendancePeriod): { year: number; month: number } | null {
+  const match = /^month-(\d{4})-(\d{2})$/.exec(period);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (!year || month < 1 || month > 12) return null;
+  return { year, month };
+}
+
+function buildAttendancePeriods(): PeriodOption[] {
+  const today = todayIst();
+  const [y, m] = today.split('-').map(Number);
+  const periods: PeriodOption[] = [...FIXED_ATTENDANCE_PERIODS];
+  // Prior months in the current IST year, newest first (e.g. August … January).
+  for (let month = (m || 1) - 1; month >= 1; month--) {
+    periods.push({
+      id: monthPeriodId(y, month),
+      label: new Date(Date.UTC(y, month - 1, 1)).toLocaleDateString('en-IN', {
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'UTC',
+      }),
+    });
+  }
+  return periods;
+}
+
+function isValidPeriod(period: AttendancePeriod): boolean {
+  return buildAttendancePeriods().some((p) => p.id === period);
+}
 
 const PERSON_FILTER_KINDS: Array<{ id: PersonFilterKind; label: string }> = [
   { id: 'reporting_manager', label: 'Reporting Manager' },
   { id: 'employee', label: 'Employee' },
-];
-
-const ATTENDANCE_PERIODS: Array<{ id: AttendancePeriod; label: string }> = [
-  { id: 'today', label: 'Today' },
-  { id: 'weekly', label: 'Weekly' },
-  { id: 'monthly', label: 'Monthly' },
 ];
 
 function uniqueSortedNames(values: Array<string | null | undefined>): string[] {
@@ -147,11 +186,14 @@ function rangeForPeriod(period: AttendancePeriod): { start_date: string; end_dat
   const [y, m, d] = today.split('-').map(Number);
   const todayUtc = new Date(Date.UTC(y, m - 1, d));
 
-  if (period === 'weekly') {
+  if (period === 'weekly' || period === 'previous_week') {
     const dow = todayUtc.getUTCDay(); // 0 = Sunday
     const daysFromMonday = (dow + 6) % 7;
     const monday = new Date(todayUtc);
     monday.setUTCDate(todayUtc.getUTCDate() - daysFromMonday);
+    if (period === 'previous_week') {
+      monday.setUTCDate(monday.getUTCDate() - 7);
+    }
     const sunday = new Date(monday);
     sunday.setUTCDate(monday.getUTCDate() + 6);
     return {
@@ -160,6 +202,16 @@ function rangeForPeriod(period: AttendancePeriod): { start_date: string; end_dat
     };
   }
 
+  const monthParts = parseMonthPeriod(period);
+  if (monthParts) {
+    const lastDay = new Date(Date.UTC(monthParts.year, monthParts.month, 0)).getUTCDate();
+    return {
+      start_date: toYmd(monthParts.year, monthParts.month - 1, 1),
+      end_date: toYmd(monthParts.year, monthParts.month - 1, lastDay),
+    };
+  }
+
+  // monthly (default) = current IST calendar month
   const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
   return {
     start_date: toYmd(y, m - 1, 1),
@@ -168,7 +220,7 @@ function rangeForPeriod(period: AttendancePeriod): { start_date: string; end_dat
 }
 
 function periodLabel(period: AttendancePeriod) {
-  return ATTENDANCE_PERIODS.find((p) => p.id === period)?.label || 'Today';
+  return buildAttendancePeriods().find((p) => p.id === period)?.label || 'Today';
 }
 
 function csvEscape(value: string) {
@@ -184,6 +236,7 @@ function PeriodDropdown({
   onChange: (next: AttendancePeriod) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const options = useMemo(() => buildAttendancePeriods(), [open]);
 
   return (
     <>
@@ -201,25 +254,27 @@ function PeriodDropdown({
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <Pressable style={styles.periodBackdrop} onPress={() => setOpen(false)}>
           <Pressable style={styles.periodMenu} onPress={(e) => e.stopPropagation()}>
-            {ATTENDANCE_PERIODS.map((opt) => {
-              const on = opt.id === value;
-              return (
-                <Pressable
-                  key={opt.id}
-                  onPress={() => {
-                    onChange(opt.id);
-                    setOpen(false);
-                  }}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: on }}
-                  style={[styles.periodOption, on && styles.periodOptionOn]}
-                >
-                  <Text style={[styles.periodOptionText, on && styles.periodOptionTextOn]}>
-                    {opt.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
+            <ScrollView style={styles.periodMenuScroll} bounces={false} keyboardShouldPersistTaps="handled">
+              {options.map((opt) => {
+                const on = opt.id === value;
+                return (
+                  <Pressable
+                    key={opt.id}
+                    onPress={() => {
+                      onChange(opt.id);
+                      setOpen(false);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: on }}
+                    style={[styles.periodOption, on && styles.periodOptionOn]}
+                  >
+                    <Text style={[styles.periodOptionText, on && styles.periodOptionTextOn]}>
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
@@ -344,10 +399,12 @@ const MatrixHeader = React.memo(function MatrixHeader({
 
 export function AttendanceScreen({ active = true }: { active?: boolean }) {
   const layout = useLayout();
-  const initialRange = rosterCache
+  const cachedPeriod =
+    rosterCache?.period && isValidPeriod(rosterCache.period) ? rosterCache.period : 'today';
+  const initialRange = rosterCache && cachedPeriod === rosterCache.period
     ? { start_date: rosterCache.startDate, end_date: rosterCache.endDate }
-    : rangeForPeriod('today');
-  const [period, setPeriod] = useState<AttendancePeriod>(rosterCache?.period || 'today');
+    : rangeForPeriod(cachedPeriod);
+  const [period, setPeriod] = useState<AttendancePeriod>(cachedPeriod);
   const [startDate, setStartDate] = useState(initialRange.start_date);
   const [endDate, setEndDate] = useState(initialRange.end_date);
   const [rows, setRows] = useState<AttendanceStatusRow[]>(rosterCache?.rows || []);
@@ -916,12 +973,14 @@ const styles = StyleSheet.create({
   periodMenu: {
     width: '100%',
     maxWidth: 360,
+    maxHeight: '70%',
     backgroundColor: THEME.cardSolid,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: THEME.border,
     overflow: 'hidden',
   },
+  periodMenuScroll: { maxHeight: 420 },
   periodOption: {
     minHeight: TAP_TARGET,
     paddingHorizontal: 16,
