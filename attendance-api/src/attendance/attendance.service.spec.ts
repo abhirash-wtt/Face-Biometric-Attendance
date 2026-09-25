@@ -107,7 +107,7 @@ describe('AttendanceService - clock-out replacement & duplicate handling', () =>
   });
 
   it('updates previous clock-out with latest time and throws Duplicate entry detected on subsequent clock-out', async () => {
-    const previousOutTime = new Date(Date.now() - 4 * 3600 * 1000); // 4 hours ago (e.g. early accidental clock out)
+    const previousOutTime = new Date('2026-03-20T12:30:00+05:30');
     const existingOut = {
       id: 'log-out-1',
       employee_id: 'emp-1',
@@ -118,23 +118,39 @@ describe('AttendanceService - clock-out replacement & duplicate handling', () =>
     };
     mockQueryBuilder.getOne.mockResolvedValue(existingOut);
 
-    await expect(
-      service.create({
+    const before = Date.now();
+    let thrown: unknown;
+    try {
+      await service.create({
         employee_id: 'emp-1',
         type: 'OUT',
         device_id: 'kiosk-2',
         site_code: 'HQ',
-      }),
-    ).rejects.toThrow(new UnprocessableEntityException('Duplicate entry detected.'));
+      });
+    } catch (err) {
+      thrown = err;
+    }
+    const after = Date.now();
 
-    // Verify existing record was updated with new event_time and saved
+    expect(thrown).toBeInstanceOf(UnprocessableEntityException);
     expect(repo.save).toHaveBeenCalledWith(existingOut);
-    expect(existingOut.event_time.getTime()).toBeGreaterThan(previousOutTime.getTime());
+    expect(existingOut.event_time.getTime()).toBeGreaterThanOrEqual(before);
+    expect(existingOut.event_time.getTime()).toBeLessThanOrEqual(after);
     expect(existingOut.device_id).toBe('kiosk-2');
+
+    const recordedLabel = existingOut.event_time.toLocaleTimeString('en-US', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+    expect(thrown).toEqual(
+      new UnprocessableEntityException(`Duplicate entry detected. You clocked out at ${recordedLabel}.`),
+    );
   });
 
   it('rejects duplicate IN on the same day without modifying original clock-in', async () => {
-    const twoHoursAgo = new Date(Date.now() - 2 * 3600 * 1000);
+    const twoHoursAgo = new Date('2026-03-20T09:15:00+05:30');
     mockQueryBuilder.getOne.mockResolvedValue({
       id: 'log-in-1',
       employee_id: 'emp-1',
@@ -147,7 +163,9 @@ describe('AttendanceService - clock-out replacement & duplicate handling', () =>
         employee_id: 'emp-1',
         type: 'IN',
       }),
-    ).rejects.toThrow(new UnprocessableEntityException('Duplicate entry detected.'));
+    ).rejects.toThrow(
+      new UnprocessableEntityException('Duplicate entry detected. You clocked in at 09:15 AM.'),
+    );
 
     expect(repo.save).not.toHaveBeenCalled();
   });
@@ -157,7 +175,7 @@ describe('AttendanceService - clock-out replacement & duplicate handling', () =>
       id: 'log-in-1',
       employee_id: 'emp-1',
       type: 'IN',
-      event_time: new Date(Date.now() - 4 * 3600 * 1000),
+      event_time: new Date('2026-03-20T09:15:00+05:30'),
     };
     // Same-day IN exists regardless of a later OUT being the latest punch.
     mockQueryBuilder.getOne.mockResolvedValue(existingIn);
@@ -169,7 +187,9 @@ describe('AttendanceService - clock-out replacement & duplicate handling', () =>
         device_id: 'kiosk-1',
         site_code: 'HQ',
       }),
-    ).rejects.toThrow(new UnprocessableEntityException('Duplicate entry detected.'));
+    ).rejects.toThrow(
+      new UnprocessableEntityException('Duplicate entry detected. You clocked in at 09:15 AM.'),
+    );
 
     expect(repo.save).not.toHaveBeenCalled();
     expect(mockQueryBuilder.where).toHaveBeenCalledWith(

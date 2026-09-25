@@ -2033,7 +2033,7 @@
           } catch (attErr) {
             const attMsg = attErr.message || '';
             if (/duplicate/i.test(attMsg)) {
-              status('kioskStatus', 'Duplicate entry detected.');
+              status('kioskStatus', attMsg);
               rollPrompt();
               return;
             } else if (/geofence|location is required|outside office|not linked|does not match|Face verification required|only clock in|No face enrolled|enrollment is incomplete/i.test(attMsg)) {
@@ -2105,7 +2105,7 @@
       } catch (e) {
         const errorMsg = e.message || 'Please try again';
         if (/duplicate/i.test(errorMsg)) {
-          status('kioskStatus', 'Duplicate entry detected.');
+          status('kioskStatus', errorMsg);
           rollPrompt();
         } else {
           status('kioskStatus', errorMsg);

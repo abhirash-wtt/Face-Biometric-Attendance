@@ -65,6 +65,23 @@ export class AttendanceService {
     return { wfh_bypass: false, remote_bypass: false };
   }
 
+  private formatPunchClock(eventTime: Date | string): string {
+    const date = eventTime instanceof Date ? eventTime : new Date(eventTime);
+    const safe = Number.isNaN(date.getTime()) ? new Date() : date;
+    return safe.toLocaleTimeString('en-US', {
+      timeZone: ATTENDANCE_TZ,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  }
+
+  private duplicatePunchMessage(type: 'IN' | 'OUT', eventTime: Date | string): string {
+    const timeLabel = this.formatPunchClock(eventTime);
+    const action = type === 'IN' ? 'clocked in' : 'clocked out';
+    return `Duplicate entry detected. You ${action} at ${timeLabel}.`;
+  }
+
   async create(dto: CreateAttendanceDto, opts?: { requireFaceMatch?: boolean }) {
     if (dto.type !== 'IN' && dto.type !== 'OUT') {
       throw new BadRequestException('type must be IN or OUT');
@@ -115,7 +132,7 @@ export class AttendanceService {
           from,
           to,
         })
-        .orderBy('a.event_time', 'DESC')
+        .orderBy('a.event_time', 'ASC')
         .getOne();
 
       if (existingOut) {
@@ -154,7 +171,7 @@ export class AttendanceService {
           }),
         );
 
-        throw new UnprocessableEntityException('Duplicate entry detected.');
+        throw new UnprocessableEntityException(this.duplicatePunchMessage('OUT', event_time));
       }
     }
 
@@ -168,11 +185,11 @@ export class AttendanceService {
           from,
           to,
         })
-        .orderBy('a.event_time', 'DESC')
+        .orderBy('a.event_time', 'ASC')
         .getOne();
 
       if (existingIn) {
-        throw new UnprocessableEntityException('Duplicate entry detected.');
+        throw new UnprocessableEntityException(this.duplicatePunchMessage('IN', existingIn.event_time));
       }
     }
 

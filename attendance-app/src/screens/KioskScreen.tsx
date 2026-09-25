@@ -152,7 +152,7 @@ export function KioskScreen({ active = true }: { active?: boolean }) {
         } catch (err) {
           const message = err instanceof Error ? err.message : 'Please try again';
           if (/duplicate/i.test(message)) {
-            dispatch(setLastMessage('Duplicate entry detected.'));
+            dispatch(setLastMessage(message));
             dispatch(rollLivenessPrompt());
             return;
           } else if (/geofence|location is required|outside office|not linked|does not match|Face verification required|only clock in|No face enrolled|enrollment is incomplete/i.test(message)) {
@@ -228,7 +228,7 @@ export function KioskScreen({ active = true }: { active?: boolean }) {
       } else {
         const isDuplicate = /duplicate/i.test(message);
         if (isDuplicate) {
-          dispatch(setLastMessage('Duplicate entry detected.'));
+          dispatch(setLastMessage(message));
           dispatch(rollLivenessPrompt());
         } else {
           dispatch(setLastMessage(message));
