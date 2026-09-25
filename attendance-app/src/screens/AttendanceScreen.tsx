@@ -119,6 +119,14 @@ function formatDayHeader(ymd: string): { day: string; weekday: string } {
   };
 }
 
+/** Calendar Saturday/Sunday for a YYYY-MM-DD work day (UTC date parts). */
+function isWeekendYmd(ymd: string): boolean {
+  const [y, m, d] = ymd.split('-').map(Number);
+  if (!y || !m || !d) return false;
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return dow === 0 || dow === 6;
+}
+
 function enumerateDates(start: string, end: string): string[] {
   const out: string[] = [];
   if (!start) return out;
@@ -291,7 +299,22 @@ let rosterCache: {
   rows: AttendanceStatusRow[];
 } | null = null;
 
-const DayPunchCell = React.memo(function DayPunchCell({ day }: { day?: DayPunch }) {
+const DayPunchCell = React.memo(function DayPunchCell({
+  day,
+  ymd,
+}: {
+  day?: DayPunch;
+  ymd: string;
+}) {
+  if (isWeekendYmd(ymd)) {
+    return (
+      <View style={styles.dayCell}>
+        <Text style={styles.dayOffMark} accessibilityLabel="Weekend off">
+          O
+        </Text>
+      </View>
+    );
+  }
   const cin = formatPunchShort(day?.clock_in ?? null);
   const cout = formatPunchShort(day?.clock_out ?? null);
   return (
@@ -363,7 +386,7 @@ const MatrixRow = React.memo(function MatrixRow({
       <MatrixEmployeeCol item={item} width={empWidth} />
       {dates.map((ymd) => (
         <View key={ymd} style={[styles.dayCol, { width: dayWidth }]}>
-          <DayPunchCell day={item.days[ymd]} />
+          <DayPunchCell day={item.days[ymd]} ymd={ymd} />
         </View>
       ))}
     </View>
@@ -1042,6 +1065,12 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   dayCell: { alignItems: 'center', gap: 6, minHeight: 52, justifyContent: 'center' },
+  dayOffMark: {
+    color: THEME.textMuted,
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
   dayTimeBlock: { alignItems: 'center' },
   dayTimeLabel: {
     color: THEME.textMuted,

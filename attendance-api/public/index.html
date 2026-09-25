@@ -599,6 +599,9 @@
       text-transform:uppercase; letter-spacing:.04em; margin-top:2px;
     }
     .day-times { display:flex; flex-direction:column; gap:6px; align-items:center; justify-content:center; min-height:44px; }
+    .day-off {
+      color:var(--muted); font-size:18px; font-weight:800; letter-spacing:.04em; line-height:1;
+    }
     .day-time {
       font-variant-numeric:tabular-nums; font-weight:700; font-size:12px;
       color:#e2e8f0; line-height:1.2; white-space:nowrap;
@@ -2446,6 +2449,13 @@
         weekday: dt.toLocaleDateString('en-IN', { weekday: 'short', timeZone: 'UTC' }),
       };
     }
+    /** Calendar Saturday/Sunday for a YYYY-MM-DD work day (UTC date parts). */
+    function isWeekendYmd(ymd) {
+      const parts = String(ymd || '').split('-').map(Number);
+      if (parts.length !== 3 || parts.some((n) => !n)) return false;
+      const dow = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2])).getUTCDay();
+      return dow === 0 || dow === 6;
+    }
     function pivotRoster(rows) {
       const byEmp = new Map();
       for (const r of rows || []) {
@@ -2901,7 +2911,10 @@
       return 'absent';
     }
 
-    function dayTimeCell(day) {
+    function dayTimeCell(day, ymd) {
+      if (isWeekendYmd(ymd)) {
+        return '<div class="day-times" title="Weekend"><span class="day-off">O</span></div>';
+      }
       const cin = day && day.clock_in ? formatPunchShort(day.clock_in) : '—';
       const cout = day && day.clock_out ? formatPunchShort(day.clock_out) : '—';
       const inEmpty = cin === '—';
@@ -2983,7 +2996,7 @@
                 : '') +
               (emp.bu_owner ? '<span class="emp-meta">BU: ' + esc(emp.bu_owner) + '</span>' : '');
             const dayCells = dates.map((ymd) => {
-              return '<td class="day-col">' + dayTimeCell(emp.days[ymd]) + '</td>';
+              return '<td class="day-col">' + dayTimeCell(emp.days[ymd], ymd) + '</td>';
             }).join('');
             return '<tr><td class="emp-col">' + who + '</td>' + dayCells + '</tr>';
           }).join('')
