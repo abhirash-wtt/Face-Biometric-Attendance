@@ -6,6 +6,17 @@ import sharp from 'sharp';
 
 type Ort = typeof import('onnxruntime-node');
 
+export function isGitLfsPointer(filePath: string): boolean {
+  const fd = fs.openSync(filePath, 'r');
+  try {
+    const head = Buffer.alloc(64);
+    const read = fs.readSync(fd, head, 0, head.length, 0);
+    return head.subarray(0, read).toString('utf8').startsWith('version https://git-lfs');
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 @Injectable()
 export class EmbeddingsService implements OnModuleInit {
   private readonly logger = new Logger(EmbeddingsService.name);
@@ -25,10 +36,25 @@ export class EmbeddingsService implements OnModuleInit {
     const modelPath = path.resolve(
       this.config.get<string>('recognition.onnxModelPath') || './models/arcface_mobile.onnx',
     );
+    const required =
+      this.config.get<boolean>('recognition.requireModel') === true &&
+      this.config.get<string>('recognition.provider') === 'internal';
+    const unusable = (reason: string) => {
+      if (required) {
+        throw new Error(
+          `${reason} Face recognition needs the ONNX model in production ` +
+            '(set REQUIRE_FACE_MODEL=false to override).',
+        );
+      }
+      this.logger.warn(`${reason} Using deterministic prototype embeddings.`);
+    };
+
     if (!fs.existsSync(modelPath)) {
-      this.logger.warn(
-        `ONNX model not found at ${modelPath}. Using deterministic prototype embeddings.`,
-      );
+      unusable(`ONNX model not found at ${modelPath}.`);
+      return;
+    }
+    if (isGitLfsPointer(modelPath)) {
+      unusable(`ONNX model at ${modelPath} is a Git LFS pointer; run "git lfs pull".`);
       return;
     }
     try {
@@ -69,8 +95,8 @@ export class EmbeddingsService implements OnModuleInit {
         `ONNX embeddings ready (${this.inputName} [${this.isNchw ? 'NCHW' : 'NHWC'} ${this.inputDim}x${this.inputDim}] → ${this.outputName})`,
       );
     } catch (err) {
-      this.logger.warn(`ONNX load failed: ${(err as Error).message}. Using prototype embeddings.`);
       this.session = null;
+      unusable(`ONNX load failed: ${(err as Error).message}.`);
     }
   }
 

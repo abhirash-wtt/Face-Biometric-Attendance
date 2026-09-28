@@ -1,0 +1,11 @@
+node_modules
+dist
+coverage
+uploads
+certs
+minio
+.env
+.env.*
+*.log
+*.pem
+crop_*.jpg

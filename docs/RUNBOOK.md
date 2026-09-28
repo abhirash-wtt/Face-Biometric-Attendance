@@ -130,9 +130,53 @@ Authenticated GET:
 - `/attendance?from=&to=&format=csv`
 - `/attendance?from=&to=&format=payroll`
 
-## 6. Production notes
+## 6. Production deployment (company server)
 
-- TLS everywhere; rotate JWT secrets and MinIO keys.
-- Use managed Postgres with pgvector, S3/Blob, Redis.
-- Proof images: retention job deletes crops older than `RETENTION_DAYS` (default 90).
-- Place ArcFace ONNX at `models/arcface_mobile.onnx` for production 1:N quality.
+Target: Linux host with Docker Engine + Compose v2.24+, Nginx, git and **git-lfs**, a DNS
+name, and a TLS certificate. Only ports 80/443 should be open; Postgres, Redis, MinIO and
+the API stay on localhost / the Docker network.
+
+1. **Code and model.** The ArcFace model is stored with Git LFS, so install git-lfs before cloning:
+
+   ```bash
+   sudo apt-get install -y git-lfs && git lfs install
+   git clone https://github.com/abhirash-wtt/Face-Biometric-Attendance.git /opt/attendance
+   cd /opt/attendance && git lfs pull
+   ls -lh attendance-api/models/arcface_mobile.onnx   # ~90 MB, not a ~130 byte pointer
+   ```
+
+2. **Configuration.** `cp attendance-api/.env.production.example attendance-api/.env`, fill in every
+   `<...>` value, then `chmod 600 attendance-api/.env`. With `NODE_ENV=production` the API refuses to
+   start while placeholder secrets remain, SMTP is unset, or the ONNX model is missing.
+
+3. **Start the stack.**
+
+   ```bash
+   docker compose --env-file attendance-api/.env \
+     -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+   docker compose logs -f api          # expect "ONNX embeddings ready" and "Schema applied"
+   curl http://127.0.0.1:3000/health
+   ```
+
+   The schema and migrations are applied automatically on startup. Do **not** run `npm run seed`
+   in production; it creates test accounts whose passwords are listed in this runbook.
+
+4. **HTTPS.** Copy `deploy/nginx/attendance.conf` to `/etc/nginx/sites-available/attendance`, set
+   `server_name` and the certificate paths, symlink it into `sites-enabled`, then
+   `sudo nginx -t && sudo systemctl reload nginx`. Keep `HTTPS_ENABLED=false`; Nginx terminates TLS.
+
+5. **First login.** Open `https://<your-host>/` and sign in with `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
+   Check the HQ geofence in `attendance-api/src/sites/hq-office.ts`; it is re-applied on every start.
+   In the mobile app set **Settings → API URL** to `https://<your-host>`.
+
+6. **Backups.**
+
+   ```bash
+   docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' | gzip > /backup/attendance-$(date +%F).sql.gz
+   tar czf /backup/minio-$(date +%F).tgz -C /opt/attendance minio
+   ```
+
+7. **Updates.** `git pull && git lfs pull`, then rerun the `docker compose ... up -d --build` command.
+
+Proof images older than `RETENTION_DAYS` (default 90) are deleted automatically. The server-webcam
+routes (`/camera/*`) only work on Windows for local requests and are blocked by the Nginx config.

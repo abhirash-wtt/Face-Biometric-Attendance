@@ -1,3 +1,36 @@
+const INSECURE_PRODUCTION_VALUES: Array<[string, (value: string | undefined) => boolean]> = [
+  ['JWT_ACCESS_SECRET', (v) => !v || v.startsWith('change-me')],
+  ['JWT_REFRESH_SECRET', (v) => !v || v.startsWith('change-me')],
+  ['DATABASE_PASSWORD', (v) => !v || v === 'app'],
+  ['ADMIN_PASSWORD', (v) => !v || v === 'Admin@123'],
+  ['DEVICE_BOOTSTRAP_SECRET', (v) => !v || v === 'bind-device-once'],
+  ['SMTP_HOST', (v) => !v],
+];
+
+/**
+ * Production must not boot with the placeholder secrets from .env.example: they are
+ * public in the repository, so anyone could mint JWTs or log in as the bootstrap admin.
+ */
+export function assertProductionConfig(env: NodeJS.ProcessEnv = process.env) {
+  if (env.NODE_ENV !== 'production') return;
+  const problems = INSECURE_PRODUCTION_VALUES.filter(([key, isInsecure]) => isInsecure(env[key])).map(
+    ([key]) => key,
+  );
+  if (env.JWT_ACCESS_SECRET && env.JWT_ACCESS_SECRET === env.JWT_REFRESH_SECRET) {
+    problems.push('JWT_REFRESH_SECRET (must differ from JWT_ACCESS_SECRET)');
+  }
+  if ((env.STORAGE_PROVIDER || 'local') === 'minio') {
+    if (!env.MINIO_ACCESS_KEY || env.MINIO_ACCESS_KEY === 'minio') problems.push('MINIO_ACCESS_KEY');
+    if (!env.MINIO_SECRET_KEY || env.MINIO_SECRET_KEY === 'minio123') problems.push('MINIO_SECRET_KEY');
+  }
+  if (problems.length > 0) {
+    throw new Error(
+      `Refusing to start with NODE_ENV=production: set secure values for ${problems.join(', ')}. ` +
+        'See attendance-api/.env.production.example.',
+    );
+  }
+}
+
 export const configuration = () => ({
   nodeEnv: process.env.NODE_ENV || 'local',
   port: Number(process.env.PORT) || 3000,
@@ -41,6 +74,11 @@ export const configuration = () => ({
   recognition: {
     provider: process.env.RECOGNITION_PROVIDER || 'internal',
     onnxModelPath: process.env.ONNX_MODEL_PATH || './models/arcface_mobile.onnx',
+    // The prototype fallback cannot tell different people apart reliably, so production
+    // refuses to start without the ONNX model unless explicitly overridden.
+    requireModel: process.env.REQUIRE_FACE_MODEL
+      ? process.env.REQUIRE_FACE_MODEL === 'true'
+      : process.env.NODE_ENV === 'production',
     similarityThreshold: (() => {
       const parsed = Number(process.env.SIMILARITY_THRESHOLD);
       const value = Number.isFinite(parsed) ? parsed : 0.60;

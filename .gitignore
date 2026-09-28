@@ -9,7 +9,6 @@ minio/
 attendance-api/uploads/
 attendance-api/certs/
 *.pem
-attendance-api/models/*.onnx
 attendance-app/android/.gradle/
 attendance-app/android/local.properties
 attendance-app/android/app/build/

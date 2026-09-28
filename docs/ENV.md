@@ -1,6 +1,6 @@
 # Environment configuration
 
-Copy `attendance-api/.env.example` to `.env` per environment (`local` / `dev` / `stage` / `prod`).
+Copy `attendance-api/.env.example` to `.env` per environment (`local` / `dev` / `stage`). For production use `attendance-api/.env.production.example`; with `NODE_ENV=production` the API refuses to start if JWT secrets, `DATABASE_PASSWORD`, `ADMIN_PASSWORD`, `DEVICE_BOOTSTRAP_SECRET`, MinIO keys (when `STORAGE_PROVIDER=minio`) still hold their placeholder values, or `SMTP_HOST` is empty.
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -17,7 +17,8 @@ Copy `attendance-api/.env.example` to `.env` per environment (`local` / `dev` / 
 | `STORAGE_PROVIDER` | local | `local` or `minio` |
 | `MINIO_*` | minio/minio123 | Object storage for face crops |
 | `RECOGNITION_PROVIDER` | internal | `internal` (ONNX) or `compreface` |
-| `ONNX_MODEL_PATH` | ./models/arcface_mobile.onnx | ArcFace model |
+| `ONNX_MODEL_PATH` | ./models/arcface_mobile.onnx | ArcFace model (stored with Git LFS) |
+| `REQUIRE_FACE_MODEL` | true in production | Refuse to start when the ONNX model is missing instead of using prototype embeddings |
 | `SIMILARITY_THRESHOLD` | 0.90 | Cosine accept threshold (minimum 90%) |
 | `LIVENESS_THRESHOLD` | 0.6 | Liveness accept threshold |
 | `IDENTIFY_TOP_K` | 5 | Candidates returned for 1:N identify |
