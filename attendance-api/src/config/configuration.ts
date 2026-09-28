@@ -1,27 +1,76 @@
-const INSECURE_PRODUCTION_VALUES: Array<[string, (value: string | undefined) => boolean]> = [
-  ['JWT_ACCESS_SECRET', (v) => !v || v.startsWith('change-me')],
-  ['JWT_REFRESH_SECRET', (v) => !v || v.startsWith('change-me')],
-  ['DATABASE_PASSWORD', (v) => !v || v === 'app'],
-  ['ADMIN_PASSWORD', (v) => !v || v === 'Admin@123'],
-  ['DEVICE_BOOTSTRAP_SECRET', (v) => !v || v === 'bind-device-once'],
-  ['SMTP_HOST', (v) => !v],
+/** Secrets the API cannot run without in any environment; there are no built-in defaults. */
+const REQUIRED_SECRETS = [
+  'JWT_ACCESS_SECRET',
+  'JWT_REFRESH_SECRET',
+  'DATABASE_PASSWORD',
+  'DEVICE_BOOTSTRAP_SECRET',
 ];
 
 /**
- * Production must not boot with the placeholder secrets from .env.example: they are
- * public in the repository, so anyone could mint JWTs or log in as the bootstrap admin.
+ * Values that were once committed to this repository. They are public, so production must
+ * refuse them even when someone copies an old .env file.
+ */
+const LEAKED_VALUES: Record<string, string[]> = {
+  DATABASE_PASSWORD: ['app'],
+  ADMIN_PASSWORD: ['Admin@123'],
+  DEVICE_BOOTSTRAP_SECRET: ['bind-device-once'],
+  MINIO_ACCESS_KEY: ['minio'],
+  MINIO_SECRET_KEY: ['minio123'],
+};
+
+/** `.env.example` uses `<...>` placeholders; treat them the same as an unset value. */
+export function isPlaceholder(value: string | undefined): boolean {
+  return /^<.*>$/.test((value || '').trim());
+}
+
+function isUnset(value: string | undefined): boolean {
+  return !value || !value.trim() || isPlaceholder(value);
+}
+
+/** Reads a secret from the environment; empty and placeholder values count as unset. */
+export function secret(key: string, env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const value = env[key];
+  return isUnset(value) ? undefined : value!.trim();
+}
+
+function usesMinio(env: NodeJS.ProcessEnv): boolean {
+  return (env.STORAGE_PROVIDER || 'local') === 'minio';
+}
+
+/**
+ * Fails fast, before any module connects to the database or signs a token, when a secret
+ * is missing or still holds a `.env.example` placeholder.
+ */
+export function assertSecretsConfigured(env: NodeJS.ProcessEnv = process.env) {
+  const keys = usesMinio(env)
+    ? [...REQUIRED_SECRETS, 'MINIO_ACCESS_KEY', 'MINIO_SECRET_KEY']
+    : REQUIRED_SECRETS;
+  const missing = keys.filter((key) => isUnset(env[key]));
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing required secrets: ${missing.join(', ')}. ` +
+        'Copy attendance-api/.env.example to attendance-api/.env and set real values (see docs/ENV.md).',
+    );
+  }
+  assertProductionConfig(env);
+}
+
+/**
+ * Production additionally rejects secrets that are public (committed in the past or
+ * derived from the examples), so nobody can mint JWTs or log in as the bootstrap admin.
  */
 export function assertProductionConfig(env: NodeJS.ProcessEnv = process.env) {
   if (env.NODE_ENV !== 'production') return;
-  const problems = INSECURE_PRODUCTION_VALUES.filter(([key, isInsecure]) => isInsecure(env[key])).map(
-    ([key]) => key,
-  );
+  const keys = [...REQUIRED_SECRETS, 'ADMIN_PASSWORD', 'SMTP_HOST'];
+  if (usesMinio(env)) keys.push('MINIO_ACCESS_KEY', 'MINIO_SECRET_KEY');
+  const problems = keys.filter((key) => {
+    const value = env[key];
+    if (isUnset(value)) return true;
+    if (key.startsWith('JWT_') && value!.startsWith('change-me')) return true;
+    return (LEAKED_VALUES[key] || []).includes(value!);
+  });
   if (env.JWT_ACCESS_SECRET && env.JWT_ACCESS_SECRET === env.JWT_REFRESH_SECRET) {
     problems.push('JWT_REFRESH_SECRET (must differ from JWT_ACCESS_SECRET)');
-  }
-  if ((env.STORAGE_PROVIDER || 'local') === 'minio') {
-    if (!env.MINIO_ACCESS_KEY || env.MINIO_ACCESS_KEY === 'minio') problems.push('MINIO_ACCESS_KEY');
-    if (!env.MINIO_SECRET_KEY || env.MINIO_SECRET_KEY === 'minio123') problems.push('MINIO_SECRET_KEY');
   }
   if (problems.length > 0) {
     throw new Error(
@@ -55,12 +104,12 @@ export const configuration = () => ({
     host: process.env.DATABASE_HOST || 'localhost',
     port: Number(process.env.DATABASE_PORT) || 5432,
     user: process.env.DATABASE_USER || 'app',
-    password: process.env.DATABASE_PASSWORD || 'app',
+    password: secret('DATABASE_PASSWORD'),
     name: process.env.DATABASE_NAME || 'attendance',
   },
   jwt: {
-    accessSecret: process.env.JWT_ACCESS_SECRET || 'change-me-access',
-    refreshSecret: process.env.JWT_REFRESH_SECRET || 'change-me-refresh',
+    accessSecret: secret('JWT_ACCESS_SECRET'),
+    refreshSecret: secret('JWT_REFRESH_SECRET'),
     accessTtl: process.env.JWT_ACCESS_TTL || '15m',
     refreshTtl: process.env.JWT_REFRESH_TTL || '7d',
   },
@@ -74,8 +123,8 @@ export const configuration = () => ({
     minio: {
       endPoint: process.env.MINIO_ENDPOINT || 'localhost',
       port: Number(process.env.MINIO_PORT) || 9000,
-      accessKey: process.env.MINIO_ACCESS_KEY || 'minio',
-      secretKey: process.env.MINIO_SECRET_KEY || 'minio123',
+      accessKey: secret('MINIO_ACCESS_KEY'),
+      secretKey: secret('MINIO_SECRET_KEY'),
       bucket: process.env.MINIO_BUCKET || 'attendance-evidence',
       useSSL: process.env.MINIO_USE_SSL === 'true',
     },
@@ -98,7 +147,7 @@ export const configuration = () => ({
     maxFaceSamples: Number(process.env.MAX_FACE_SAMPLES) || 10,
     minFaceSamples: Number(process.env.MIN_FACE_SAMPLES) || 3,
     comprefaceUrl: process.env.COMPREFACE_URL || 'http://localhost:8000',
-    comprefaceApiKey: process.env.COMPREFACE_API_KEY || '',
+    comprefaceApiKey: secret('COMPREFACE_API_KEY') || '',
   },
   geofence: {
     enabled: process.env.GEOFENCE_ENABLED !== 'false',
@@ -108,17 +157,24 @@ export const configuration = () => ({
   },
   retentionDays: Number(process.env.RETENTION_DAYS) || 90,
   attendanceCooldownSec: Number(process.env.ATTENDANCE_COOLDOWN_SEC) || 60,
-  deviceBootstrapSecret: process.env.DEVICE_BOOTSTRAP_SECRET || 'bind-device-once',
+  deviceBootstrapSecret: secret('DEVICE_BOOTSTRAP_SECRET'),
   admin: {
     email: process.env.ADMIN_EMAIL || 'admin@attendance.local',
-    password: process.env.ADMIN_PASSWORD || 'Admin@123',
+    password: secret('ADMIN_PASSWORD'),
+  },
+  // Optional demo logins created on boot. Each account is skipped while its password is unset.
+  demoAccounts: {
+    employeePassword: secret('DEMO_EMPLOYEE_PASSWORD'),
+    buPassword: secret('DEMO_BU_PASSWORD'),
+    hrPassword: secret('DEMO_HR_PASSWORD'),
+    managerPassword: secret('DEMO_MANAGER_PASSWORD'),
   },
   mail: {
     host: process.env.SMTP_HOST || '',
     port: Number(process.env.SMTP_PORT) || 587,
     secure: process.env.SMTP_SECURE === 'true',
-    user: process.env.SMTP_USER || '',
-    pass: process.env.SMTP_PASS || '',
+    user: secret('SMTP_USER') || '',
+    pass: secret('SMTP_PASS') || '',
     from: process.env.MAIL_FROM || 'noreply@walkingtree.tech',
   },
 });

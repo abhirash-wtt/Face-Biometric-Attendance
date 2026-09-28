@@ -999,7 +999,7 @@
         apiBase: location.origin,
         deviceId: 'KIOSK-01',
         siteCode: 'HQ',
-        bootstrapSecret: 'bind-device-once',
+        bootstrapSecret: '',
       },
       employees: [],
       selected: null,
@@ -1269,13 +1269,16 @@
     }
     async function ensureTabletDevice() {
       if (isDeviceToken() && !isJwtExpired(state.token, 0)) return;
+      if (!state.settings.bootstrapSecret) {
+        throw new Error('Enter the device bind secret in Settings to start this kiosk.');
+      }
       clearSession();
       const res = await api('/devices/register', {
         method: 'POST',
         body: {
           device_id: state.settings.deviceId || 'KIOSK-01',
           site_code: state.settings.siteCode || 'HQ',
-          bootstrap_secret: state.settings.bootstrapSecret || 'bind-device-once',
+          bootstrap_secret: state.settings.bootstrapSecret,
           description: 'Tablet kiosk',
         },
       });
@@ -3402,9 +3405,9 @@
       $('apiBase').value = state.settings.apiBase;
       $('deviceId').value = state.settings.deviceId;
       $('siteCode').value = state.settings.siteCode;
-      $('secret').value = state.settings.bootstrapSecret;
-      $('email').value = localStorage.getItem('login_email') || 'admin@attendance.local';
-      $('password').value = state.token ? '' : 'Admin@123';
+      $('secret').value = state.settings.bootstrapSecret || '';
+      $('email').value = localStorage.getItem('login_email') || '';
+      $('password').value = '';
     }
     $('saveBtn').onclick = () => {
       state.settings = { apiBase: $('apiBase').value, deviceId: $('deviceId').value, siteCode: $('siteCode').value, bootstrapSecret: $('secret').value };

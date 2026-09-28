@@ -23,8 +23,8 @@ export function SettingsScreen({ onAuthChange }: { onAuthChange?: () => void }) 
     siteCode: '',
     bootstrapSecret: '',
   });
-  const [email, setEmail] = useState('admin@attendance.local');
-  const [password, setPassword] = useState('Admin@123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');

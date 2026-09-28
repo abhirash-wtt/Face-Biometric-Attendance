@@ -15,7 +15,7 @@ export const AppDataSource = new DataSource({
   host: process.env.DATABASE_HOST || 'localhost',
   port: Number(process.env.DATABASE_PORT) || 5432,
   username: process.env.DATABASE_USER || 'app',
-  password: process.env.DATABASE_PASSWORD || 'app',
+  password: process.env.DATABASE_PASSWORD,
   database: process.env.DATABASE_NAME || 'attendance',
   entities: [User, Employee, FaceTemplate, Site, Device, Shift, AttendanceLog],
   synchronize: false,

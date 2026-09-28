@@ -10,6 +10,7 @@ import { HQ_OFFICE } from '../sites/hq-office';
 import { Device } from '../devices/device.entity';
 import { Shift } from '../shifts/shift.entity';
 import { AttendanceLog } from '../attendance/attendance-log.entity';
+import { secret } from '../config/configuration';
 
 function loadEnv() {
   const p = path.join(process.cwd(), '.env');
@@ -25,14 +26,25 @@ function loadEnv() {
   }
 }
 
+/** Seeded logins take their password from the named env var and are skipped when it is unset. */
+function seedPassword(envKey: string, email: string): string | undefined {
+  const value = secret(envKey);
+  if (!value) console.log(`Skipping ${email}: ${envKey} is not set`);
+  return value;
+}
+
 async function run() {
   loadEnv();
+  const dbPassword = secret('DATABASE_PASSWORD');
+  if (!dbPassword) {
+    throw new Error('DATABASE_PASSWORD is not set. Configure attendance-api/.env (see .env.example).');
+  }
   const ds = new DataSource({
     type: 'postgres',
     host: process.env.DATABASE_HOST || 'localhost',
     port: Number(process.env.DATABASE_PORT) || 5432,
     username: process.env.DATABASE_USER || 'app',
-    password: process.env.DATABASE_PASSWORD || 'app',
+    password: dbPassword,
     database: process.env.DATABASE_NAME || 'attendance',
     entities: [User, Employee, FaceTemplate, Site, Device, Shift, AttendanceLog],
     synchronize: false,
@@ -44,34 +56,16 @@ async function run() {
   const sites = ds.getRepository(Site);
   const shifts = ds.getRepository(Shift);
 
-  const adminEmail = process.env.ADMIN_EMAIL || 'admin@attendance.local';
-  if (!(await users.findOne({ where: { email: adminEmail } }))) {
-    await users.save(
-      users.create({
-        email: adminEmail,
-        password_hash: await bcrypt.hash(process.env.ADMIN_PASSWORD || 'Admin@123', 10),
-        role: 'admin',
-      }),
-    );
+  async function ensureUser(email: string, envKey: string, role: 'admin' | 'employee' | 'bu') {
+    if (await users.findOne({ where: { email } })) return;
+    const password = seedPassword(envKey, email);
+    if (!password) return;
+    await users.save(users.create({ email, password_hash: await bcrypt.hash(password, 10), role }));
   }
-  if (!(await users.findOne({ where: { email: 'user@attendance.local' } }))) {
-    await users.save(
-      users.create({
-        email: 'user@attendance.local',
-        password_hash: await bcrypt.hash('User@123', 10),
-        role: 'employee',
-      }),
-    );
-  }
-  if (!(await users.findOne({ where: { email: 'bu@attendance.local' } }))) {
-    await users.save(
-      users.create({
-        email: 'bu@attendance.local',
-        password_hash: await bcrypt.hash('Bu@123', 10),
-        role: 'bu',
-      }),
-    );
-  }
+
+  await ensureUser(process.env.ADMIN_EMAIL || 'admin@attendance.local', 'ADMIN_PASSWORD', 'admin');
+  await ensureUser('user@attendance.local', 'DEMO_EMPLOYEE_PASSWORD', 'employee');
+  await ensureUser('bu@attendance.local', 'DEMO_BU_PASSWORD', 'bu');
   const legacy = await users.findOne({ where: { email: 'supervisor@attendance.local' } });
   if (legacy && legacy.role !== 'admin' && legacy.role !== 'bu') {
     legacy.role = 'employee';
@@ -124,12 +118,14 @@ async function run() {
 
   async function ensureRoleUser(
     email: string,
-    password: string,
+    envKey: string,
     role: 'hr' | 'manager' | 'employee' | 'bu',
     employeeId?: string,
   ) {
     const existing = await users.findOne({ where: { email } });
     if (!existing) {
+      const password = seedPassword(envKey, email);
+      if (!password) return;
       await users.save(
         users.create({
           email,
@@ -152,27 +148,27 @@ async function run() {
     if (changed) await users.save(existing);
   }
 
-  async function ensureEmployeeUser(email: string, password: string, employeeId?: string) {
-    await ensureRoleUser(email, password, 'employee', employeeId);
+  async function ensureEmployeeUser(email: string, envKey: string, employeeId?: string) {
+    await ensureRoleUser(email, envKey, 'employee', employeeId);
   }
 
   const emp001 = await employees.findOne({ where: { code: 'EMP001' } });
-  await ensureEmployeeUser('abhirash.garg@walkingtree.tech', 'faZWGpjhmB', emp001?.id);
+  await ensureEmployeeUser('abhirash.garg@walkingtree.tech', 'SEED_EMP001_PASSWORD', emp001?.id);
 
   const emp002 = await employees.findOne({ where: { code: 'EMP002' } });
-  await ensureEmployeeUser('yatharth.kapoor@walkingtree.tech', 'nR8wKq2mX7pL', emp002?.id);
+  await ensureEmployeeUser('yatharth.kapoor@walkingtree.tech', 'SEED_EMP002_PASSWORD', emp002?.id);
 
   const emp007 = await employees.findOne({ where: { code: 'EMP007' } });
-  await ensureEmployeeUser('pratham.vij@walkingtree.tech', 'pratham_', emp007?.id);
+  await ensureEmployeeUser('pratham.vij@walkingtree.tech', 'SEED_EMP007_PASSWORD', emp007?.id);
 
   const empHr = await employees.findOne({ where: { code: 'EMPHR' } });
-  await ensureRoleUser('hrrole@gmail.com', 'vrSzijkmZf', 'hr', empHr?.id);
+  await ensureRoleUser('hrrole@gmail.com', 'DEMO_HR_PASSWORD', 'hr', empHr?.id);
 
   const empMgr = await employees.findOne({ where: { code: 'EMPMGR' } });
-  await ensureRoleUser('managerrole@gmail.com', 'V9wbSaSeEt', 'manager', empMgr?.id);
+  await ensureRoleUser('managerrole@gmail.com', 'DEMO_MANAGER_PASSWORD', 'manager', empMgr?.id);
 
   const empBu = await employees.findOne({ where: { code: 'EMPBU' } });
-  await ensureRoleUser('bu@attendance.local', 'Bu@123', 'bu', empBu?.id);
+  await ensureRoleUser('bu@attendance.local', 'DEMO_BU_PASSWORD', 'bu', empBu?.id);
 
   // Abhirash stays unassigned from the default reporting manager and BU.
   if (emp001 && (emp001.reporting_manager_id || emp001.bu_owner_id)) {

@@ -51,65 +51,73 @@ export class AuthService implements OnModuleInit {
 
   async onModuleInit() {
     await this.dbInit.ensureSchema();
-    const email = this.config.get<string>('admin.email') || 'admin@attendance.local';
-    const password = this.config.get<string>('admin.password') || 'Admin@123';
-    const existing = await this.users.findOne({ where: { email } });
-    if (!existing) {
-      const password_hash = await bcrypt.hash(password, 10);
-      await this.users.save(
-        this.users.create({ email, password_hash, role: 'admin' }),
-      );
-      this.logger.log(`Seeded admin user ${email}`);
+    const adminEmail = this.config.get<string>('admin.email') || 'admin@attendance.local';
+    const adminPassword = this.config.get<string>('admin.password');
+    if (adminPassword) {
+      await this.ensureBootstrapUser(adminEmail, adminPassword, 'admin');
+    } else if (!(await this.users.findOne({ where: { email: adminEmail } }))) {
+      this.logger.warn(`ADMIN_PASSWORD is not set; the bootstrap admin ${adminEmail} was not created`);
     }
-    const userEmail = 'user@attendance.local';
-    const existingUser = await this.users.findOne({ where: { email: userEmail } });
-    if (!existingUser) {
-      await this.users.save(
-        this.users.create({
-          email: userEmail,
-          password_hash: await bcrypt.hash('User@123', 10),
-          role: 'employee',
-        }),
-      );
-      this.logger.log(`Seeded employee user ${userEmail}`);
-    }
-    const buEmail = 'bu@attendance.local';
-    const existingBu = await this.users.findOne({ where: { email: buEmail } });
-    if (!existingBu) {
-      await this.users.save(
-        this.users.create({
-          email: buEmail,
-          password_hash: await bcrypt.hash('Bu@123', 10),
-          role: 'bu',
-        }),
-      );
-      this.logger.log(`Seeded BU user ${buEmail}`);
-    }
-    const hrEmail = 'hrrole@gmail.com';
-    await this.ensureRoleUser(hrEmail, 'vrSzijkmZf', 'hr', 'EMPHR', 'HR Role');
-    const managerEmail = 'managerrole@gmail.com';
-    await this.ensureRoleUser(managerEmail, 'V9wbSaSeEt', 'manager', 'EMPMGR', 'Manager Role');
+    await this.ensureBootstrapUser(
+      'user@attendance.local',
+      this.config.get<string>('demoAccounts.employeePassword'),
+      'employee',
+    );
+    await this.ensureBootstrapUser(
+      'bu@attendance.local',
+      this.config.get<string>('demoAccounts.buPassword'),
+      'bu',
+    );
+    await this.ensureRoleUser(
+      'hrrole@gmail.com',
+      this.config.get<string>('demoAccounts.hrPassword'),
+      'hr',
+      'EMPHR',
+      'HR Role',
+    );
+    await this.ensureRoleUser(
+      'managerrole@gmail.com',
+      this.config.get<string>('demoAccounts.managerPassword'),
+      'manager',
+      'EMPMGR',
+      'Manager Role',
+    );
+  }
+
+  /** Creates the account once. Skipped when no password is configured for it. */
+  private async ensureBootstrapUser(
+    email: string,
+    password: string | undefined,
+    role: 'admin' | 'employee' | 'bu',
+  ) {
+    if (!password) return;
+    if (await this.users.findOne({ where: { email } })) return;
+    await this.users.save(
+      this.users.create({ email, password_hash: await bcrypt.hash(password, 10), role }),
+    );
+    this.logger.log(`Seeded ${role} user ${email}`);
   }
 
   private async ensureRoleUser(
     email: string,
-    password: string,
+    password: string | undefined,
     role: 'hr' | 'manager',
     employeeCode: string,
     displayName: string,
   ) {
+    const existing = await this.users.findOne({ where: { email } });
+    if (!existing && !password) return;
     let employee = await this.employees.findOne({ where: { code: employeeCode } });
     if (!employee) {
       employee = await this.employees.save(
         this.employees.create({ code: employeeCode, display_name: displayName }),
       );
     }
-    const existing = await this.users.findOne({ where: { email } });
     if (!existing) {
       await this.users.save(
         this.users.create({
           email,
-          password_hash: await bcrypt.hash(password, 10),
+          password_hash: await bcrypt.hash(password!, 10),
           role,
           employee_id: employee.id,
         }),
@@ -284,7 +292,7 @@ export class AuthService implements OnModuleInit {
   }
 
   private otpSecret() {
-    return this.config.get<string>('jwt.accessSecret') || 'change-me-access';
+    return this.config.get<string>('jwt.accessSecret') as string;
   }
 
   private otpSentResponse(email: string) {

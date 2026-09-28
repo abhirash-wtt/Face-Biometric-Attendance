@@ -10,7 +10,7 @@ import { join, resolve } from 'path';
 import { TLSSocket } from 'tls';
 import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
-import { assertProductionConfig } from './config/configuration';
+import { assertSecretsConfigured } from './config/configuration';
 
 type HttpsOptions = { key: Buffer; cert: Buffer };
 
@@ -63,7 +63,7 @@ function isLocalHost(host: string) {
 }
 
 async function bootstrap() {
-  assertProductionConfig();
+  assertSecretsConfigured();
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
   const logger = new Logger('Bootstrap');
   const config = app.get(ConfigService);

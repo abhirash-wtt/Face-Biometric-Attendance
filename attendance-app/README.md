@@ -45,4 +45,4 @@ Settings → API URL:
 - Emulator: `http://10.0.2.2:3000`
 - Physical phone (same Wi‑Fi as API PC): `http://<PC-LAN-IP>:3000`
 
-Bind the kiosk with secret `bind-device-once` (or admin login), enroll 3+ samples, then use Kiosk.
+Bind the kiosk by entering the server's `DEVICE_BOOTSTRAP_SECRET` in Settings (or admin login), enroll 3+ samples, then use Kiosk.

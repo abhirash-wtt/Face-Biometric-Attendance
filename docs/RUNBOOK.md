@@ -7,7 +7,8 @@ Local-first prototype: NestJS API + PostgreSQL/pgvector + React Native kiosk app
 Preferred (Docker):
 
 ```bash
-docker compose up -d db minio redis
+# credentials are read from attendance-api/.env (see section 2)
+docker compose --env-file attendance-api/.env up -d db minio redis
 ```
 
 This machine can also use a local PostgreSQL 16 install. Redis and MinIO are optional; the API falls back to in-memory cache and local disk storage (`STORAGE_PROVIDER=local`).
@@ -17,6 +18,8 @@ Create the database (psql as superuser), or from `attendance-api`:
 ```powershell
 .\setup-db.ps1 -PostgresPassword "the-password-you-set-during-postgres-install"
 ```
+
+The script creates the app role and database from `DATABASE_USER`, `DATABASE_PASSWORD` and `DATABASE_NAME` in `attendance-api/.env`, so create that file first (section 2).
 
 Use the real PostgreSQL superuser password, not placeholder text. If you forgot it, open **Administrator PowerShell** in `attendance-api` and run:
 
@@ -30,7 +33,7 @@ If `pgvector` is not installed, the API stores embeddings as text and searches i
 
 ```bash
 cd attendance-api
-copy .env.example .env   # already present
+copy .env.example .env   # then replace every <...> placeholder (never commit .env)
 npm install
 npm run start:dev
 ```
@@ -75,18 +78,19 @@ Seed employees / site / shift (admin user is also created on first boot):
 npm run seed
 ```
 
-Seeded users:
+Seeded users. Passwords are never stored in the code: each account is created only when the env var next to it is set in `attendance-api/.env`, and is skipped otherwise.
 
-- `admin@attendance.local` / `Admin@123` (admin — full access, including enroll any face, device bind, and viewing every employee’s clock-in/out and Present/Absent status)
-- `bu@attendance.local` / `Bu@123` (bu — same as admin for attendance, devices, and regularization review; enroll is employee-scoped and requires a linked `users.employee_id`)
-- `user@attendance.local` / `User@123` (employee — not linked to an employee record; cannot clock in until an admin sets `users.employee_id`)
-- `hrrole@gmail.com` / `vrSzijkmZf` (hr — Attendance roster/reports like admin; otherwise employee-scoped; linked to EMPHR)
-- `managerrole@gmail.com` / `V9wbSaSeEt` (manager — Attendance roster/reports like admin; otherwise employee-scoped; linked to EMPMGR)
-- `abhirash.garg@walkingtree.tech` / `faZWGpjhmB` (employee — EMP001 Abhirash; clock-in requires Abhirash’s enrolled face)
-- `yatharth.kapoor@walkingtree.tech` / `nR8wKq2mX7pL` (employee — EMP002 Yatharth Kapoor; clock-in requires Yatharth’s enrolled face)
+- `ADMIN_EMAIL` (default `admin@attendance.local`) / `ADMIN_PASSWORD` (admin — full access, including enroll any face, device bind, and viewing every employee’s clock-in/out and Present/Absent status)
+- `bu@attendance.local` / `DEMO_BU_PASSWORD` (bu — same as admin for attendance, devices, and regularization review; enroll is employee-scoped and requires a linked `users.employee_id`)
+- `user@attendance.local` / `DEMO_EMPLOYEE_PASSWORD` (employee — not linked to an employee record; cannot clock in until an admin sets `users.employee_id`)
+- `hrrole@gmail.com` / `DEMO_HR_PASSWORD` (hr — Attendance roster/reports like admin; otherwise employee-scoped; linked to EMPHR)
+- `managerrole@gmail.com` / `DEMO_MANAGER_PASSWORD` (manager — Attendance roster/reports like admin; otherwise employee-scoped; linked to EMPMGR)
+- `abhirash.garg@walkingtree.tech` / `SEED_EMP001_PASSWORD` (employee — EMP001 Abhirash; clock-in requires Abhirash’s enrolled face)
+- `yatharth.kapoor@walkingtree.tech` / `SEED_EMP002_PASSWORD` (employee — EMP002 Yatharth Kapoor; clock-in requires Yatharth’s enrolled face)
+- `pratham.vij@walkingtree.tech` / `SEED_EMP007_PASSWORD` (employee — EMP007 Pratham Vij)
 
 Seeded employees: EMP001 Abhirash, EMP002 Yatharth Kapoor.  
-Site: `HQ` — Walking Tree Technologies, Agra (rectangular building geofence). Device bind secret: `bind-device-once`.
+Site: `HQ` — Walking Tree Technologies, Agra (rectangular building geofence). Device bind secret: the value of `DEVICE_BOOTSTRAP_SECRET`; enter it once in the kiosk’s **Settings → Device bind secret**.
 
 ## 3. Mobile app
 
@@ -115,7 +119,7 @@ Camera: `react-native-vision-camera`. Active liveness prompts: blink, turn left/
 CompreFace (optional):
 
 ```bash
-docker compose --profile compreface up -d
+docker compose --env-file attendance-api/.env --profile compreface up -d
 ```
 
 Set `RECOGNITION_PROVIDER=compreface` and `COMPREFACE_API_KEY`.

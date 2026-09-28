@@ -25,7 +25,8 @@ const defaultSettings: Settings = {
   apiBase: 'http://10.0.2.2:3000',
   deviceId: 'KIOSK-01',
   siteCode: 'HQ',
-  bootstrapSecret: 'bind-device-once',
+  // Entered by an operator in Settings; never bundled into the app.
+  bootstrapSecret: '',
 };
 
 /** Roles with the same privileges as employee (own face / own clock-in only). */

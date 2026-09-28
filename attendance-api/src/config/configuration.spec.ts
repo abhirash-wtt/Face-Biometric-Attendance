@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { assertProductionConfig } from './configuration';
+import { assertProductionConfig, assertSecretsConfigured, secret } from './configuration';
 import { isGitLfsPointer } from '../recognition/embeddings.service';
 
 const secureEnv = {
@@ -46,6 +46,57 @@ describe('assertProductionConfig', () => {
   it('does not require MinIO keys when storing on local disk', () => {
     const { MINIO_ACCESS_KEY, MINIO_SECRET_KEY, ...rest } = secureEnv;
     expect(() => assertProductionConfig({ ...rest, STORAGE_PROVIDER: 'local' })).not.toThrow();
+  });
+
+  it('rejects secrets that were once committed to the repository', () => {
+    expect(() =>
+      assertProductionConfig({
+        ...secureEnv,
+        DATABASE_PASSWORD: 'app',
+        DEVICE_BOOTSTRAP_SECRET: 'bind-device-once',
+      }),
+    ).toThrow(/DATABASE_PASSWORD, DEVICE_BOOTSTRAP_SECRET/);
+  });
+});
+
+describe('assertSecretsConfigured', () => {
+  const localEnv = {
+    NODE_ENV: 'local',
+    JWT_ACCESS_SECRET: 'local-access',
+    JWT_REFRESH_SECRET: 'local-refresh',
+    DATABASE_PASSWORD: 'local-db',
+    DEVICE_BOOTSTRAP_SECRET: 'local-bind',
+  };
+
+  it('accepts a local environment with every required secret', () => {
+    expect(() => assertSecretsConfigured(localEnv)).not.toThrow();
+  });
+
+  it('requires secrets outside production too', () => {
+    const { JWT_ACCESS_SECRET, DEVICE_BOOTSTRAP_SECRET, ...rest } = localEnv;
+    expect(() => assertSecretsConfigured(rest)).toThrow(
+      /Missing required secrets: JWT_ACCESS_SECRET, DEVICE_BOOTSTRAP_SECRET/,
+    );
+  });
+
+  it('treats .env.example placeholders as missing', () => {
+    expect(() =>
+      assertSecretsConfigured({ ...localEnv, DATABASE_PASSWORD: '<database-password>' }),
+    ).toThrow(/DATABASE_PASSWORD/);
+  });
+
+  it('requires MinIO keys only when MinIO storage is enabled', () => {
+    expect(() => assertSecretsConfigured({ ...localEnv, STORAGE_PROVIDER: 'minio' })).toThrow(
+      /MINIO_ACCESS_KEY, MINIO_SECRET_KEY/,
+    );
+  });
+});
+
+describe('secret', () => {
+  it('returns undefined for empty and placeholder values', () => {
+    expect(secret('A', { A: '' })).toBeUndefined();
+    expect(secret('A', { A: '<smtp-password>' })).toBeUndefined();
+    expect(secret('A', { A: ' real ' })).toBe('real');
   });
 });
 

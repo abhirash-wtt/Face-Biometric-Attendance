@@ -11,15 +11,41 @@ $pgCtl = "C:\Program Files\PostgreSQL\16\bin\pg_ctl.exe"
 $dataDir = "C:\Program Files\PostgreSQL\16\data"
 $hba = Join-Path $dataDir "pg_hba.conf"
 $sqlFile = Join-Path $PSScriptRoot "src\database\setup-db.sql"
+$envFile = Join-Path $PSScriptRoot ".env"
+
+# The app role and database are created with the same credentials the API uses.
+function Read-DotEnv([string]$Path) {
+  $values = @{}
+  if (-not (Test-Path $Path)) { return $values }
+  foreach ($line in Get-Content $Path) {
+    $trimmed = $line.Trim()
+    if (-not $trimmed -or $trimmed.StartsWith('#')) { continue }
+    $i = $trimmed.IndexOf('=')
+    if ($i -lt 1) { continue }
+    $values[$trimmed.Substring(0, $i).Trim()] = $trimmed.Substring($i + 1).Trim().Trim('"').Trim("'")
+  }
+  return $values
+}
+
+$dotEnv = Read-DotEnv $envFile
+$appUser = if ($env:DATABASE_USER) { $env:DATABASE_USER } elseif ($dotEnv.DATABASE_USER) { $dotEnv.DATABASE_USER } else { "app" }
+$appPassword = if ($env:DATABASE_PASSWORD) { $env:DATABASE_PASSWORD } else { $dotEnv.DATABASE_PASSWORD }
+$appDb = if ($env:DATABASE_NAME) { $env:DATABASE_NAME } elseif ($dotEnv.DATABASE_NAME) { $dotEnv.DATABASE_NAME } else { "attendance" }
+
+if (-not $appPassword -or $appPassword -match '^<.*>$') {
+  Write-Host "DATABASE_PASSWORD is not set. Copy .env.example to .env and set DATABASE_PASSWORD first."
+  exit 1
+}
 
 function Invoke-SetupSql {
   param([string]$User, [string]$Password, [bool]$UseTrust)
+  $vars = @("-v", "db_user=$appUser", "-v", "db_password=$appPassword", "-v", "db_name=$appDb")
   if ($UseTrust) {
     Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
-    & $psql -U $User -h $HostName -d postgres -w -f $sqlFile
+    & $psql -U $User -h $HostName -d postgres -w @vars -f $sqlFile
   } else {
     $env:PGPASSWORD = $Password
-    & $psql -U $User -h $HostName -d postgres -f $sqlFile
+    & $psql -U $User -h $HostName -d postgres @vars -f $sqlFile
   }
   return $LASTEXITCODE
 }
@@ -52,7 +78,7 @@ If you forgot the password, open an Administrator PowerShell in this folder and 
 "@
     exit $code
   }
-  Write-Host "Database attendance and user app are ready."
+  Write-Host "Database $appDb and user $appUser are ready."
   exit 0
 }
 
@@ -77,7 +103,7 @@ try {
   if ($code -ne 0) {
     throw "Failed to apply setup-db.sql while trust auth was enabled."
   }
-  Write-Host "Database attendance and user app are ready."
+  Write-Host "Database $appDb and user $appUser are ready."
 }
 finally {
   Copy-Item $backup $hba -Force

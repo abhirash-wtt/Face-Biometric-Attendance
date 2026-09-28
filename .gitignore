@@ -2,7 +2,12 @@ node_modules/
 dist/
 build/
 *.tsbuildinfo
+# Secrets: real env files stay local; only placeholder templates are committed.
 .env
+.env.*
+*.env
+!.env.example
+!.env.*.example
 *.log
 .DS_Store
 coverage/
