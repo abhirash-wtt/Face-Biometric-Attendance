@@ -34,6 +34,15 @@ export function assertProductionConfig(env: NodeJS.ProcessEnv = process.env) {
 export const configuration = () => ({
   nodeEnv: process.env.NODE_ENV || 'local',
   port: Number(process.env.PORT) || 3000,
+  // Express "trust proxy" value. Only set it when every request arrives through a reverse
+  // proxy you control; otherwise clients can spoof X-Forwarded-For to dodge rate limits.
+  trustProxy: process.env.TRUST_PROXY || '',
+  rateLimit: {
+    perMinute: Number(process.env.RATE_LIMIT_PER_MIN) || 600,
+    authPerMinute: Number(process.env.AUTH_RATE_LIMIT_PER_MIN) || 20,
+    loginMaxFailures: Number(process.env.LOGIN_MAX_FAILURES) || 5,
+    loginLockoutSec: Number(process.env.LOGIN_LOCKOUT_SEC) || 15 * 60,
+  },
   https: {
     // Phone browsers only expose the camera and GPS on a secure context, so the kiosk
     // needs HTTPS whenever it is reached by hostname or LAN IP instead of localhost.

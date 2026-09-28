@@ -297,10 +297,26 @@ export class AuthService implements OnModuleInit {
   }
 
   async login(email: string, password: string) {
-    const user = await this.users.findOne({ where: { email: email.toLowerCase() } });
+    const normalized = email.toLowerCase();
+    // Per-account lockout complements the per-IP throttler: it also stops guessing that is
+    // spread across many IPs. The window restarts on every failed attempt.
+    const maxFailures = this.config.get<number>('rateLimit.loginMaxFailures') ?? 5;
+    const lockoutSec = this.config.get<number>('rateLimit.loginLockoutSec') ?? 15 * 60;
+    const failureKey = `login-fail:${normalized}`;
+    const failures = Number(await this.redis.get(failureKey)) || 0;
+    if (failures >= maxFailures) {
+      throw new HttpException(
+        `Too many failed sign-in attempts. Try again in ${Math.ceil(lockoutSec / 60)} minutes.`,
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    const user = await this.users.findOne({ where: { email: normalized } });
     if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+      await this.redis.set(failureKey, String(failures + 1), lockoutSec);
       throw new UnauthorizedException('Invalid credentials');
     }
+    await this.redis.del(failureKey);
     return this.issueUserTokens(user);
   }
 

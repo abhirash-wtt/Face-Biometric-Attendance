@@ -93,7 +93,7 @@ export class RecognitionService {
         features_complete: !!row.features_complete,
         features_coverage: row.features_coverage == null ? null : Number(row.features_coverage),
         liveness_score: row.liveness_score == null ? null : Number(row.liveness_score),
-        image_url: row.image_url || null,
+        image_url: this.storage.signUrl(row.image_url),
         created_at: row.created_at,
       }),
     );
@@ -166,7 +166,7 @@ export class RecognitionService {
       features_coverage: quality.coverage,
       features_complete: true,
       features_present: quality.present,
-      image_url,
+      image_url: this.storage.signUrl(image_url),
     };
   }
 

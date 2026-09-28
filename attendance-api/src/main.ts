@@ -49,6 +49,15 @@ function lanAddresses(): string[] {
   return found;
 }
 
+/** Rate limits key on req.ip, which is the proxy's address unless the proxy is trusted. */
+function parseTrustProxy(value: string | undefined): boolean | number | string | undefined {
+  const trimmed = (value || '').trim();
+  if (!trimmed || trimmed === 'false') return undefined;
+  if (trimmed === 'true') return true;
+  if (/^\d+$/.test(trimmed)) return Number(trimmed);
+  return trimmed;
+}
+
 function isLocalHost(host: string) {
   return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
 }
@@ -58,6 +67,8 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
   const logger = new Logger('Bootstrap');
   const config = app.get(ConfigService);
+  const trustProxy = parseTrustProxy(config.get<string>('trustProxy'));
+  if (trustProxy !== undefined) app.set('trust proxy', trustProxy);
   const httpsSettings = {
     enabled: config.get<boolean>('https.enabled') === true,
     port: config.get<number>('https.port') ?? 3443,

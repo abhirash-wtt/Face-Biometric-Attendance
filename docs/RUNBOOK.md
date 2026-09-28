@@ -178,5 +178,11 @@ the API stay on localhost / the Docker network.
 
 7. **Updates.** `git pull && git lfs pull`, then rerun the `docker compose ... up -d --build` command.
 
+Face images under `/evidence/*` are only served through signed links that expire after one
+hour; the API issues them in enrollment responses to users allowed to view that employee.
+Login, registration/OTP, change-password and device bind are limited to `AUTH_RATE_LIMIT_PER_MIN`
+per client IP, and an account locks for `LOGIN_LOCKOUT_SEC` after `LOGIN_MAX_FAILURES` wrong
+passwords. If all staff share one office NAT address, raise `AUTH_RATE_LIMIT_PER_MIN`.
+
 Proof images older than `RETENTION_DAYS` (default 90) are deleted automatically. The server-webcam
 routes (`/camera/*`) only work on Windows for local requests and are blocked by the Nginx config.

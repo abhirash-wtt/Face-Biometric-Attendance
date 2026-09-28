@@ -1,5 +1,6 @@
 import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import { AuthService } from './auth.service';
+import * as bcrypt from 'bcrypt';
 import { hashOtp, registrationOtpKey } from './registration-otp';
 
 jest.mock('./registration-otp', () => {
@@ -103,5 +104,43 @@ describe('AuthService registration OTP', () => {
     expect(
       hashOtp('123456', email, secret) === hashOtp('123456', 'other@walkingtree.tech', secret),
     ).toBe(false);
+  });
+
+  describe('login lockout', () => {
+    beforeEach(async () => {
+      const password_hash = await bcrypt.hash('Correct#1', 4);
+      users.findOne.mockResolvedValue({ id: 'u1', email, role: 'employee', password_hash });
+    });
+
+    it('locks the account after 5 wrong passwords, even with the right one', async () => {
+      for (let i = 0; i < 5; i++) {
+        await expect(service.login(email, 'wrong')).rejects.toBeInstanceOf(UnauthorizedException);
+      }
+      await expect(service.login(email, 'Correct#1')).rejects.toMatchObject({ status: 429 });
+      expect(redis.set).toHaveBeenLastCalledWith(`login-fail:${email}`, '5', 900);
+    });
+
+    it('counts attempts case-insensitively', async () => {
+      for (let i = 0; i < 5; i++) {
+        await expect(service.login(i % 2 ? email.toUpperCase() : email, 'wrong')).rejects.toBeInstanceOf(
+          UnauthorizedException,
+        );
+      }
+      await expect(service.login(email, 'Correct#1')).rejects.toMatchObject({ status: 429 });
+    });
+
+    it('clears the failure count after a successful login', async () => {
+      for (let i = 0; i < 4; i++) {
+        await expect(service.login(email, 'wrong')).rejects.toBeInstanceOf(UnauthorizedException);
+      }
+      await expect(service.login(email, 'Correct#1')).resolves.toMatchObject({ access_token: 'token' });
+      expect(store.has(`login-fail:${email}`)).toBe(false);
+    });
+
+    it('counts attempts for unknown accounts too', async () => {
+      users.findOne.mockResolvedValue(null);
+      await expect(service.login('ghost@walkingtree.tech', 'x')).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(store.get('login-fail:ghost@walkingtree.tech')).toBe('1');
+    });
   });
 });

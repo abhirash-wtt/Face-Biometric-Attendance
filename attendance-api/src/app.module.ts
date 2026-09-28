@@ -1,7 +1,9 @@
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { isAuthRateLimited } from './common/decorators/auth-rate-limit.decorator';
 import { ScheduleModule } from '@nestjs/schedule';
 import { configuration } from './config/configuration';
 import { DatabaseModule } from './database/database.module';
@@ -45,8 +47,19 @@ import { WfhRequest } from './regularization/wfh-request.entity';
         logging: config.get<string>('nodeEnv') === 'local',
       }),
     }),
-    ThrottlerModule.forRoot({
-      throttlers: [{ ttl: 60000, limit: 120 }],
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        throttlers: [
+          { name: 'default', ttl: 60_000, limit: config.get<number>('rateLimit.perMinute') ?? 600 },
+          {
+            name: 'auth',
+            ttl: 60_000,
+            limit: config.get<number>('rateLimit.authPerMinute') ?? 20,
+            skipIf: (context) => !isAuthRateLimited(context),
+          },
+        ],
+      }),
     }),
     ScheduleModule.forRoot(),
     DatabaseModule,
@@ -64,6 +77,6 @@ import { WfhRequest } from './regularization/wfh-request.entity';
     CameraModule,
   ],
   controllers: [HealthController],
-  providers: [RetentionService],
+  providers: [RetentionService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

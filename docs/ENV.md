@@ -8,6 +8,10 @@ Copy `attendance-api/.env.example` to `.env` per environment (`local` / `dev` / 
 | `PORT` | 3000 | HTTP port |
 | `HTTPS_ENABLED` | false | Also serve HTTPS, required for camera/GPS on phone browsers |
 | `HTTPS_PORT` | 3443 | HTTPS port |
+| `TRUST_PROXY` | empty | Express `trust proxy` value so rate limits see the real client IP behind Nginx. Set only when all traffic comes through your proxy (prod compose uses `loopback, uniquelocal`) |
+| `RATE_LIMIT_PER_MIN` | 600 | Requests per client IP per minute, all endpoints |
+| `AUTH_RATE_LIMIT_PER_MIN` | 20 | Per client IP per minute for login, registration/OTP, change-password and device bind |
+| `LOGIN_MAX_FAILURES` / `LOGIN_LOCKOUT_SEC` | 5 / 900 | Lock an account after this many wrong passwords; the lock lasts this long after the last failure |
 | `HTTPS_KEY_PATH` / `HTTPS_CERT_PATH` | ./certs/dev-{key,cert}.pem | TLS material; `npm run cert:dev` creates a local pair |
 | `DATABASE_*` | app/app@localhost:5432/attendance | PostgreSQL |
 | `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` | change-me-* | JWT secrets (rotate in prod) |

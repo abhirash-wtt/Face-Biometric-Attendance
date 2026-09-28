@@ -3,7 +3,15 @@ import { ConfigService } from '@nestjs/config';
 import * as Minio from 'minio';
 import * as fs from 'fs';
 import * as path from 'path';
-import { randomUUID } from 'crypto';
+import { createHash, createHmac, randomUUID, timingSafeEqual } from 'crypto';
+
+/** Every key written by put(): `<prefix>/<yyyy-mm-dd>/<uuid>.jpg`. Anything else is rejected. */
+const EVIDENCE_KEY = /^[a-z0-9_-]+\/\d{4}-\d{2}-\d{2}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$/;
+export const EVIDENCE_URL_TTL_SEC = 60 * 60;
+
+export function isSafeEvidenceKey(key: string): boolean {
+  return EVIDENCE_KEY.test(key);
+}
 
 @Injectable()
 export class StorageService implements OnModuleInit {
@@ -12,11 +20,44 @@ export class StorageService implements OnModuleInit {
   private bucket = 'attendance-evidence';
   private provider: string;
   private localDir: string;
+  private readonly signingKey: Buffer;
 
   constructor(private readonly config: ConfigService) {
     this.provider = this.config.get<string>('storage.provider') || 'local';
     this.localDir = path.resolve(this.config.get<string>('storage.localDir') || './uploads');
     this.bucket = this.config.get<string>('storage.minio.bucket') || 'attendance-evidence';
+    this.signingKey = createHash('sha256')
+      .update(`evidence-url:${this.config.get<string>('jwt.accessSecret') || ''}`)
+      .digest();
+  }
+
+  /**
+   * Face images are shown with plain <img>/<Image> tags that cannot send a bearer token,
+   * so callers that already authorised the viewer hand out a short-lived signed link.
+   */
+  signUrl(url: string | null | undefined, ttlSec = EVIDENCE_URL_TTL_SEC): string | null {
+    if (!url) return null;
+    const key = this.objectKey(url);
+    if (!key || !url.startsWith('/evidence/')) return null;
+    const exp = Math.floor(Date.now() / 1000) + ttlSec;
+    return `/evidence/${key}?exp=${exp}&sig=${this.signature(key, exp)}`;
+  }
+
+  verifySignedKey(key: string, exp: unknown, sig: unknown): boolean {
+    if (!isSafeEvidenceKey(key) || typeof exp !== 'string' || typeof sig !== 'string') return false;
+    if (!/^\d{1,12}$/.test(exp) || Number(exp) < Math.floor(Date.now() / 1000)) return false;
+    const expected = Buffer.from(this.signature(key, Number(exp)));
+    const given = Buffer.from(sig);
+    return given.length === expected.length && timingSafeEqual(given, expected);
+  }
+
+  private signature(key: string, exp: number): string {
+    return createHmac('sha256', this.signingKey).update(`${key}\n${exp}`).digest('base64url');
+  }
+
+  private localPath(key: string): string | null {
+    const full = path.resolve(this.localDir, key);
+    return full.startsWith(this.localDir + path.sep) ? full : null;
   }
 
   async onModuleInit() {
@@ -65,8 +106,8 @@ export class StorageService implements OnModuleInit {
       return this.readMinio(key);
     }
 
-    const full = path.join(this.localDir, key);
-    if (fs.existsSync(full)) return fs.readFileSync(full);
+    const full = this.localPath(key);
+    if (full && fs.existsSync(full)) return fs.readFileSync(full);
 
     if (this.minio) {
       try {
@@ -86,21 +127,21 @@ export class StorageService implements OnModuleInit {
       if (this.minio && (this.provider === 'minio' || url.startsWith('minio://'))) {
         await this.minio.removeObject(this.bucket, key);
       }
-      const full = path.join(this.localDir, key);
-      if (fs.existsSync(full)) fs.unlinkSync(full);
+      const full = this.localPath(key);
+      if (full && fs.existsSync(full)) fs.unlinkSync(full);
     } catch (err) {
       this.logger.warn(`Failed to remove ${url}: ${(err as Error).message}`);
     }
   }
 
   private objectKey(url: string): string | null {
-    if (url.startsWith('minio://')) {
-      return url.replace(`minio://${this.bucket}/`, '');
+    let key: string | null = null;
+    if (url.startsWith(`minio://${this.bucket}/`)) {
+      key = url.slice(`minio://${this.bucket}/`.length);
+    } else if (url.startsWith('/evidence/')) {
+      key = url.slice('/evidence/'.length);
     }
-    if (url.startsWith('/evidence/')) {
-      return url.replace('/evidence/', '');
-    }
-    return null;
+    return key && isSafeEvidenceKey(key) ? key : null;
   }
 
   private async readMinio(key: string): Promise<Buffer> {

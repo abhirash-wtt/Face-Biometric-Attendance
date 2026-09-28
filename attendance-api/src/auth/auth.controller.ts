@@ -6,6 +6,7 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { RegisterDto, ResendRegisterOtpDto, VerifyRegisterOtpDto } from './dto/register.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { AuthRateLimit } from '../common/decorators/auth-rate-limit.decorator';
 import { JwtUser } from './jwt.strategy';
 import { IsString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
@@ -22,6 +23,7 @@ export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   @Post('register')
+  @AuthRateLimit()
   @ApiOperation({
     summary:
       'Start self-registration with an official @walkingtree.tech email; sends a verification OTP',
@@ -31,6 +33,7 @@ export class AuthController {
   }
 
   @Post('register/verify')
+  @AuthRateLimit()
   @ApiOperation({
     summary: 'Verify the OTP sent to the company email and create the employee account',
   })
@@ -39,12 +42,14 @@ export class AuthController {
   }
 
   @Post('register/resend')
+  @AuthRateLimit()
   @ApiOperation({ summary: 'Resend the registration OTP to the company email' })
   resendRegisterOtp(@Body() dto: ResendRegisterOtpDto) {
     return this.auth.resendRegistrationOtp(dto.email);
   }
 
   @Post('login')
+  @AuthRateLimit()
   @ApiOperation({ summary: 'User login; returns access + refresh tokens' })
   login(@Body() dto: LoginDto) {
     return this.auth.login(dto.email, dto.password);
@@ -64,6 +69,7 @@ export class AuthController {
   }
 
   @Post('change-password')
+  @AuthRateLimit()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Change password after verifying the current password' })

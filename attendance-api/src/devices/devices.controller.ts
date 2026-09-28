@@ -7,6 +7,7 @@ import { OptionalJwtAuthGuard } from '../common/guards/optional-jwt.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { AuthRateLimit } from '../common/decorators/auth-rate-limit.decorator';
 import { JwtUser } from '../auth/jwt.strategy';
 
 @ApiTags('devices')
@@ -15,6 +16,7 @@ export class DevicesController {
   constructor(private readonly devices: DevicesService) {}
 
   @Post('register')
+  @AuthRateLimit()
   @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'One-time device bind; returns device token' })
   register(@Body() dto: RegisterDeviceDto, @CurrentUser() user?: JwtUser) {
